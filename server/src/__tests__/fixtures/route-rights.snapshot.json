@@ -399,6 +399,15 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /bons-sortie/:id/returns": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /bons-sortie/ligne/:ligneId/economat-lots": [
   "admin",
   "magasinier",
@@ -1687,6 +1696,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/capacity": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/disassembly": [
   "admin",
   "baker",
@@ -2113,6 +2130,15 @@
   "viennoiserie"
  ],
  "GET /recipes/:id/bom-versions/pending": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/equipements": [
   "admin",
   "baker",
   "beldi_sale",
@@ -2902,6 +2928,15 @@
  "POST /bank-reconciliation/statements/:id/auto-match": [
   "admin",
   "manager"
+ ],
+ "POST /bons-sortie/:id/returns": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
  ],
  "POST /bons-sortie/generate": [
   "admin",
@@ -5331,6 +5366,14 @@
   "viennoiserie"
  ],
  "PUT /recipes/:id/alternative": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/:id/equipements": [
   "admin",
   "baker",
   "beldi_sale",

@@ -129,7 +129,7 @@ export async function simulateOrder(userId: string, orderTypeCode?: string | nul
             ? { ligneId: l.id, actualQuantity: Number(l.allocated_quantity), source: 'manual' }
             : { ligneId: l.id, actualQuantity: Number(l.needed_quantity), source: 'manual', lotId: l.suggested_economat_lot_id ?? undefined })) as never);
           await bonSortieRepository.markAsReady(bon.id, userId);
-          await bonSortieRepository.acceptReception(bon.id, userId);
+          await bonSortieRepository.acceptReception(bon.id, userId, { selfCheck: true });
           return `Bon ${bon.numero} : ${lines.length} ligne(s) pesée(s), remis et accepté.`;
         }, lotId);
       } else {

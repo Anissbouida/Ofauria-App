@@ -59,6 +59,8 @@ router.get('/mrp/horizon', authenticate, can('production.view'), asyncHandler(pr
 router.get('/mrp/semi-finished', authenticate, can('production.view'), asyncHandler(productionController.mrpSemiFinished));
 router.post('/mrp/generate', authenticate, can('production.generate'), validate(mrpGenerateSchema), asyncHandler(productionController.mrpGenerate));
 // MRP — besoins matière (achats) & génération des demandes d'achat — roadmap lot 8
+// Audit 2026-11 C-19 : charge des équipements d'une journée (capacité physique).
+router.get('/capacity', authenticate, can('production.view'), asyncHandler(productionController.capacity));
 router.get('/mrp/material-requirements', authenticate, can('production.view'), asyncHandler(productionController.mrpMaterialRequirements));
 router.post('/mrp/generate-purchase-requests', authenticate, can('production.generate_purchase_requests'), validate(mrpGenerateSchema), asyncHandler(productionController.mrpGeneratePurchaseRequests));
 // Réglages de production centralisés — roadmap lot 9. Avant /:id.

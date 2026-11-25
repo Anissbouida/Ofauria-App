@@ -28,6 +28,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { EquipmentLoadPanel, MaterialReturnPanel } from './PlanFlowPanels';
 import { planStatusTag, bonStatusTag } from './status';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
@@ -1761,9 +1762,15 @@ export default function PlanDetailPage() {
           ses bandeaux de statut. */}
       {/* M8-01 : bon de sortie inscrit au registre. */}
       {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['bon-sortie']} />}
+      {/* Audit C-28 : matière déjà prélevée rendue au magasin (article annulé, reste). */}
+      {showIngr && activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string) && (
+        <MaterialReturnPanel bonId={activeBon.id as string} planId={id!} closed={plan.status === 'completed'} />
+      )}
 
       {/* M8-01 : panneaux de synthèse inscrits au registre (planPanels.tsx). */}
       {(showSynth || !hasTabs) && <PlanPanels tab="synthese" ctx={panelCtx} />}
+      {/* Audit C-19 : charge des équipements de la journée (seulement s'il en occupe). */}
+      {(showSynth || !hasTabs) && plan.status !== 'cancelled' && <EquipmentLoadPanel planId={id!} />}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des

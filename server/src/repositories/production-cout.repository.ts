@@ -38,14 +38,17 @@ export const productionCoutRepository = {
   async createEquipement(data: {
     nom: string; type: string; cout_horaire: number;
     puissance_kw?: number; cout_kwh?: number; notes?: string; store_id?: string;
+    capacite_par_cycle?: number | null; capacite_unite?: string | null; cycles_par_jour?: number | null;
   }) {
     // M1-03 : sans prix saisi, la politique « Prix du kWh » (établissement, puis société).
     const coutKwh = data.cout_kwh || await policyNumber('production.kwh_price', 'price', { storeId: data.store_id ?? null });
     const result = await db.query(
-      `INSERT INTO production_equipements (nom, type, cout_horaire, puissance_kw, cout_kwh, notes, store_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO production_equipements (nom, type, cout_horaire, puissance_kw, cout_kwh, notes, store_id,
+                                           capacite_par_cycle, capacite_unite, cycles_par_jour)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [data.nom, data.type, data.cout_horaire, data.puissance_kw || null,
-       coutKwh, data.notes || null, data.store_id || null]
+       coutKwh, data.notes || null, data.store_id || null,
+       data.capacite_par_cycle ?? null, data.capacite_unite ?? null, data.cycles_par_jour ?? null]
     );
     return result.rows[0];
   },
@@ -53,6 +56,7 @@ export const productionCoutRepository = {
   async updateEquipement(id: string, data: Partial<{
     nom: string; type: string; cout_horaire: number;
     puissance_kw: number; cout_kwh: number; notes: string; is_active: boolean;
+    capacite_par_cycle: number | null; capacite_unite: string | null; cycles_par_jour: number | null;
   }>) {
     const sets: string[] = [];
     const params: unknown[] = [];

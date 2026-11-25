@@ -241,6 +241,22 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
   },
   {
+    key: 'production.equipment_capacity', domain: 'production', section: 'production',
+    label: 'Capacité des équipements',
+    help: 'Contrôle, à la confirmation d\'un ordre, que les fournées du jour tiennent dans la capacité des équipements (plaques par four, kilos par batteur…) déclarée dans Production › Postes de travail et rattachée aux fiches. Signaler : l\'ordre est confirmé avec un avertissement. Bloquer : la confirmation est refusée tant qu\'un équipement est saturé.',
+    fields: [{ name: 'mode', label: 'Dépassement de capacité', type: 'enum', options: [{ value: 'off', label: 'Ne pas contrôler' }, ...MODE_WARN_BLOCK] }],
+    defaults: { mode: 'warn' },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
+  },
+  {
+    key: 'production.segregation_of_duties', domain: 'production', section: 'production',
+    label: 'Séparation des tâches sur les bons de sortie',
+    help: 'Activé : la personne qui prépare ou remet un bon de sortie ne peut pas accepter elle-même sa réception au laboratoire, ni enregistrer un retour de matière sur ce bon. Désactivé : une même personne peut tout faire (petites équipes).',
+    fields: [{ name: 'enabled', label: 'Séparer préparation et réception', type: 'boolean' }],
+    defaults: { enabled: false },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
     key: 'production.process_engine', domain: 'production', section: 'production',
     label: 'Moteur de parcours configurable',
     help: 'Éteint : le parcours historique décide seul. Ombre : le moteur évalue le parcours publié du type d\'ordre à côté du code actuel et journalise chaque désaccord, sans jamais bloquer. Actif : les gardes du parcours publié décident (la machine à états reste le filet de sécurité). Ne passer en actif qu\'après une période d\'ombre sans désaccord.',

@@ -17,6 +17,7 @@ import { activateBomVersion } from '../services/bom-version-activation.js';
 import { recipesForProduct, setAlternative } from '../services/recipe-for.js';
 import { recipeSubstituteRepository } from '../repositories/recipe-substitute.repository.js';
 import { recipeOutputRepository } from '../repositories/recipe-output.repository.js';
+import { equipmentCapacityRepository } from '../services/equipment-capacity.js';
 import { recipeWorkshopGuard, editableWorkshops, workshopFor } from '../services/recipe-workshop.js';
 import { duplicateRecipe, RecipeDuplicateError } from '../services/recipe-duplicate.js';
 import { workshopLabel } from '../services/workshops.js';
@@ -198,6 +199,25 @@ router.post('/:id/substitutes', authenticate, validateUuidParams('id'), can('rec
 router.delete('/substitutes/:subId', authenticate, validateUuidParams('subId'), can('recipes.edit'), recipeWorkshopGuard('substitute'), asyncHandler(async (req, res) => {
   const ok = await recipeSubstituteRepository.remove(req.params.subId as string);
   res.status(ok ? 200 : 404).json({ success: ok });
+}));
+// Audit 2026-11 C-19 : équipements occupés par la fiche (ou un format), charge par fournée.
+const recipeEquipmentsSchema = z.object({
+  rows: z.array(z.object({
+    formatId: z.string().guid().nullable().optional(),
+    equipementId: z.string().guid(),
+    chargeParFournee: z.number().positive().max(100000),
+  })).max(50),
+});
+router.get('/:id/equipements', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await equipmentCapacityRepository.recipeEquipments(req.params.id as string) });
+}));
+router.put('/:id/equipements', authenticate, validateUuidParams('id'), can('recipes.edit'), recipeWorkshopGuard('recipe'), validate(recipeEquipmentsSchema), asyncHandler(async (req, res) => {
+  try {
+    res.json({ success: true, data: await equipmentCapacityRepository.setRecipeEquipments(req.params.id as string, req.body.rows) });
+  } catch (err) {
+    const code = (err as { statusCode?: number }).statusCode;
+    res.status(code === 404 ? 404 : 400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+  }
 }));
 // Sorties déclarées : co-produits, sous-produits (M4-06).
 router.get('/:id/outputs', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {

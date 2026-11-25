@@ -20,7 +20,8 @@ export const equipmentLinkRepository = {
   /** Équipements, leurs liens, et pour ceux sans immobilisation les immobilisations au nom proche. */
   async overview(storeId?: string | null) {
     const eq = (await db.query(
-      `SELECT e.id, e.nom, e.type, e.work_center_id, wc.name AS work_center_name, e.fixed_asset_id, fa.label AS fixed_asset_label
+      `SELECT e.id, e.nom, e.type, e.work_center_id, wc.name AS work_center_name, e.fixed_asset_id, fa.label AS fixed_asset_label,
+              e.capacite_par_cycle::float8 AS capacite_par_cycle, e.capacite_unite, e.cycles_par_jour
          FROM production_equipements e
          LEFT JOIN work_centers wc ON wc.id = e.work_center_id
          LEFT JOIN fixed_assets fa ON fa.id = e.fixed_asset_id

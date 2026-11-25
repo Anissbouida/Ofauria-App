@@ -23,6 +23,7 @@ import AlternativeOfPanel from './AlternativeOfPanel';
 import SubstitutesPanel from './SubstitutesPanel';
 import RecipeOutputsPanel from './RecipeOutputsPanel';
 import RecipeRoutingPanel from './RecipeRoutingPanel';
+import RecipeEquipmentsPanel from './RecipeEquipmentsPanel';
 import '../production/production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
@@ -217,6 +218,8 @@ export default function NomenclaturePage() {
               </div>
               {tab === 'fabrication' && <>
                 <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
+                {/* Audit C-19 : charge de la fiche sur les équipements (contrôle de capacité). */}
+                <RecipeEquipmentsPanel recipeId={recipe.id} readOnly={readOnly} />
                 {/* Mode opératoire : imprimé avec la fiche remise au labo. */}
                 <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} editBlockedReason={readOnlyReason ?? (etapesStatus?.frozen ? etapesStatus.reason : null)} />
                 <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

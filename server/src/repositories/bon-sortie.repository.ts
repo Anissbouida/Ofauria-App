@@ -7,6 +7,7 @@ import { setActor, setReason, transitionPlan, transitionBon, withActor } from '.
 import { roundUpForLot } from '../services/container-rule.js';
 import { BSI_SOURCE, ZONE, type BsiSource } from '../services/stock-roles.js';
 import { sectorRepository } from './sector.repository.js';
+import { resolvePolicy } from '../services/policies.js';
 
 type BonRow = Record<string, any>;
 
@@ -397,6 +398,15 @@ async function applyClose(client: PoolClient, bonId: string, userId: string): Pr
 }
 
 /** Verrouille le bon et retourne sa ligne (null si introuvable). */
+/** Audit 2026-11 C-32 : politique « Séparation des tâches » de l'établissement du bon. */
+async function assertSegregation(bon: BonRow, userId: string, action: string) {
+  const { value } = await resolvePolicy<{ enabled: boolean }>('production.segregation_of_duties', { storeId: bon.store_id ?? null });
+  if (!value.enabled) return;
+  if ([bon.preparation_by, bon.ready_by].includes(userId)) {
+    throw Object.assign(new Error(`Séparation des tâches : vous avez préparé ou remis le bon ${bon.numero}, une autre personne doit ${action}.`), { statusCode: 403 });
+  }
+}
+
 async function lockBon(client: PoolClient, bonId: string): Promise<BonRow | null> {
   const r = await client.query(`SELECT * FROM production_bons_sortie WHERE id = $1 FOR UPDATE`, [bonId]);
   return r.rows[0] || null;
@@ -1105,7 +1115,7 @@ export const bonSortieRepository = {
   // UNE transaction pour les trois transitions. Le client enchainait trois appels :
   // un echec au milieu laissait le bon en 'prelevement' avec le stock deja consomme.
   // Idempotent : reprend la ou le bon en est (prelevement, verifie, cloture).
-  async acceptReception(bonId: string, userId: string) {
+  async acceptReception(bonId: string, userId: string, opts: { selfCheck?: boolean } = {}) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -1114,6 +1124,9 @@ export const bonSortieRepository = {
       if (!bon) throw new Error('Bon de sortie introuvable');
       let current = bon;
       if (current.status === 'cloture') { await client.query('COMMIT'); return current; }
+      // Audit 2026-11 C-32 : avec la séparation des tâches, qui a préparé ou remis le bon ne
+      // peut pas accepter sa réception. L'auto-contrôle de mise en route (selfCheck) en est exempt.
+      if (!opts.selfCheck) await assertSegregation(bon, userId, 'accepter la réception');
       if (!['pret', 'prelevement', 'verifie'].includes(current.status)) {
         throw new Error(`Le bon doit etre pret a remettre pour accepter la reception (statut actuel : ${current.status})`);
       }
@@ -2105,6 +2118,107 @@ export const bonSortieRepository = {
     } finally {
       client.release();
     }
+  },
+
+  // ─── Audit 2026-11 C-28 : retour de matière au magasin ───
+  /** Ce qui peut encore être rendu, par ligne et par lot (sorti moins déjà rendu), et
+   *  l'historique des retours du bon. */
+  async returnable(bonId: string) {
+    const lines = (await db.query(
+      `SELECT bsl.id AS ligne_id, bsl.ingredient_id, ing.name AS ingredient_name, bsl.unit,
+              plu.ingredient_lot_id, il.lot_number, il.expiration_date,
+              SUM(plu.quantity_used)::float8 AS returnable,
+              COALESCE((SELECT SUM(r.quantity) FROM production_material_returns r
+                         WHERE r.bon_ligne_id = bsl.id AND r.ingredient_lot_id = plu.ingredient_lot_id), 0)::float8 AS returned
+         FROM production_lot_usage plu
+         JOIN production_bons_sortie_lignes bsl ON bsl.id = plu.bon_ligne_id
+         JOIN ingredients ing ON ing.id = bsl.ingredient_id
+         JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
+        WHERE bsl.bon_id = $1
+        GROUP BY bsl.id, bsl.ingredient_id, ing.name, bsl.unit, plu.ingredient_lot_id, il.lot_number, il.expiration_date
+        HAVING SUM(plu.quantity_used) > 0
+        ORDER BY ing.name, il.lot_number`, [bonId])).rows;
+    const history = (await db.query(
+      `SELECT r.id, r.quantity::float8 AS quantity, r.unit, r.reason, r.returned_at, ing.name AS ingredient_name,
+              il.lot_number, COALESCE(p.name, br.name) AS item_label,
+              NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS returned_by_name
+         FROM production_material_returns r
+         JOIN ingredients ing ON ing.id = r.ingredient_id
+         JOIN ingredient_lots il ON il.id = r.ingredient_lot_id
+         LEFT JOIN production_plan_items ppi ON ppi.id = r.plan_item_id
+         LEFT JOIN products p ON p.id = ppi.product_id
+         LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
+         LEFT JOIN users u ON u.id = r.returned_by
+        WHERE r.bon_id = $1 ORDER BY r.returned_at DESC, ing.name`, [bonId])).rows;
+    return { lines, history };
+  },
+
+  /**
+   * Rend au magasin de la matière déjà prélevée (article annulé, fournée réduite, reste).
+   * Pour chaque (ligne, lot) : la quantité est bornée à ce que le plan a encore en sortie ;
+   * la sortie du plan (production_lot_usage) diminue d'autant, article par article — l'article
+   * désigné, sinon les articles annulés d'abord ; le lot reprend la quantité en en-cours ouvert
+   * (un lot épuisé redevient actif) ; un mouvement « production_return » trace l'entrée.
+   * Refusé avant le prélèvement (rien n'est sorti) et après la clôture de l'ordre (coût et
+   * écriture arrêtés).
+   */
+  async returnMaterial(bonId: string, lines: { ligneId: string; lotId: string; quantity: number; planItemId?: string | null }[], reason: string, userId: string) {
+    return withActor(userId, async (client) => {
+      const bon = await lockBon(client, bonId);
+      if (!bon) throw new Error('Retour de matière : bon de sortie introuvable');
+      if (!['prelevement', 'verifie', 'cloture'].includes(bon.status)) {
+        throw new Error('Retour de matière : le bon n\'a pas encore été prélevé, rien n\'est sorti du magasin (modifiez ou annulez le bon).');
+      }
+      const plan = (await client.query(`SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`, [bon.plan_id])).rows[0];
+      if (plan?.status === 'completed') {
+        throw Object.assign(new Error('Retour de matière : l\'ordre est clôturé, son coût et son écriture sont arrêtés. Déclarez le retour avant la clôture.'), { statusCode: 409 });
+      }
+      await assertSegregation(bon, userId, 'enregistrer le retour');
+      const done: { ligneId: string; lotId: string; ingredient: string; quantity: number }[] = [];
+      for (const l of lines) {
+        const qty = Math.round(Number(l.quantity) * 10000) / 10000;
+        if (!(qty > 0)) continue;
+        const usage = (await client.query(
+          `SELECT plu.id, plu.quantity_used::float8 AS q, plu.plan_item_id, bsl.ingredient_id, bsl.unit, ing.name AS ingredient_name
+             FROM production_lot_usage plu
+             JOIN production_bons_sortie_lignes bsl ON bsl.id = plu.bon_ligne_id
+             JOIN ingredients ing ON ing.id = bsl.ingredient_id
+             LEFT JOIN production_plan_items ppi ON ppi.id = plu.plan_item_id
+            WHERE plu.bon_ligne_id = $1 AND plu.ingredient_lot_id = $2 AND bsl.bon_id = $3
+              AND ($4::uuid IS NULL OR plu.plan_item_id = $4)
+            ORDER BY (ppi.status = 'cancelled') DESC NULLS LAST, plu.quantity_used DESC
+            FOR UPDATE OF plu`, [l.ligneId, l.lotId, bonId, l.planItemId ?? null])).rows;
+        if (!usage.length) throw new Error('Retour de matière : ce lot n\'est pas sorti sur cette ligne du bon.');
+        const out = usage.reduce((s, u) => s + Number(u.q), 0);
+        const name = usage[0].ingredient_name as string;
+        if (qty > out + 1e-6) {
+          throw new Error(`${name} : retour de ${qty} supérieur à ce qui reste sorti sur ce lot (${Math.round(out * 1000) / 1000}).`);
+        }
+        let left = qty;
+        for (const u of usage) {
+          if (left <= 1e-9) break;
+          const take = Math.min(Number(u.q), left);
+          if (Number(u.q) - take <= 1e-9) await client.query(`DELETE FROM production_lot_usage WHERE id = $1`, [u.id]);
+          else await client.query(`UPDATE production_lot_usage SET quantity_used = quantity_used - $2 WHERE id = $1`, [u.id, take]);
+          await client.query(
+            `INSERT INTO production_material_returns (plan_id, bon_id, bon_ligne_id, ingredient_id, ingredient_lot_id, plan_item_id, quantity, unit, reason, returned_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [bon.plan_id, bonId, l.ligneId, u.ingredient_id, l.lotId, u.plan_item_id, take, u.unit, reason, userId]);
+          await client.query(
+            `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id, plan_item_id)
+             VALUES ($1, 'production_return', $2, $3, $4, $5, $6, $7, $8)`,
+            [u.ingredient_id, take, `BSI ${bon.numero} — Retour au magasin : ${take} ${u.unit ?? ''} ${name} (${reason})`,
+             userId, bon.store_id, l.lotId, bon.plan_id, u.plan_item_id]);
+          left -= take;
+        }
+        const lot = (await client.query(`SELECT status FROM ingredient_lots WHERE id = $1 FOR UPDATE`, [l.lotId])).rows[0];
+        await client.query(`SELECT fn_lot_put($1::uuid, $2::numeric, 'en_cours_ouvert')`, [l.lotId, qty]);
+        if (lot?.status === 'depleted') await client.query(`UPDATE ingredient_lots SET status = 'active' WHERE id = $1`, [l.lotId]);
+        done.push({ ligneId: l.ligneId, lotId: l.lotId, ingredient: name, quantity: qty });
+      }
+      if (!done.length) throw new Error('Retour de matière : aucune quantité à rendre.');
+      return { returned: done };
+    }, `Retour de matière : ${reason}`);
   },
 
   // ─── Cancel the bon ───

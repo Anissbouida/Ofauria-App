@@ -21,6 +21,7 @@ import { resolvePolicy } from '../services/policies.js';
 import { checkStage, engineMode } from '../services/process-engine.js';
 import { qualityControlPlanRepository } from './quality-control-plan.repository.js';
 import { materialReservationRepository } from './material-reservation.repository.js';
+import { checkPlanCapacity, overloadMessage } from '../services/equipment-capacity.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -596,6 +597,19 @@ export const productionRepository = {
       // sont réservés dès la confirmation (la part non couverte devient un avertissement).
       if (await sectorRepository.featureOn('reservation_matiere')) {
         warnings.push(...await materialReservationRepository.reserveForPlan(client, planId, userId));
+      }
+
+      // Audit 2026-11 C-19 : les fournées du jour tiennent-elles dans les équipements ?
+      // Politique « Capacité des équipements » : avertissement (défaut) ou refus.
+      {
+        const cap = await checkPlanCapacity(client, planId);
+        if (cap.overloaded.length > 0) {
+          const msgs = cap.overloaded.map(overloadMessage);
+          if (cap.mode === 'block') {
+            throw Object.assign(new Error(`Capacité des équipements dépassée : ${msgs.join(' ; ')}. Réduisez ou déplacez des fournées.`), { statusCode: 409 });
+          }
+          warnings.push(...msgs.map(m => `Capacité : ${m}.`));
+        }
       }
 
       // Update plan status and persist warnings

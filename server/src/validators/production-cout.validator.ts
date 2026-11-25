@@ -10,6 +10,10 @@ export const createEquipementSchema = z.object({
   cout_kwh: z.number().min(0).optional(),
   notes: z.string().optional(),
   store_id: z.string().guid().optional(),
+  // Audit 2026-11 C-19 (mig 679) : capacité physique. null efface.
+  capacite_par_cycle: z.number().positive().max(1e6).nullable().optional(),
+  capacite_unite: z.enum(['plaque', 'contenant', 'kg', 'piece']).nullable().optional(),
+  cycles_par_jour: z.number().int().positive().max(1000).nullable().optional(),
 });
 
 export const updateEquipementSchema = createEquipementSchema.partial();

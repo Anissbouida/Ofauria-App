@@ -15,6 +15,15 @@ const substituteSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(500),
 });
 
+// Audit 2026-11 C-28 : retour de matière au magasin, ligne par ligne et lot par lot.
+const returnSchema = z.object({
+  reason: z.string().trim().min(3, 'Motif requis').max(500),
+  lines: z.array(z.object({
+    ligneId: z.string().guid(), lotId: z.string().guid(),
+    quantity: z.number().positive().max(1e6), planItemId: z.string().guid().nullable().optional(),
+  })).min(1).max(200),
+});
+
 const router = Router();
 const id = validateUuidParams('id');
 const ligneId = validateUuidParams('ligneId');
@@ -70,6 +79,8 @@ router.put('/:id/accept-reception', authenticate, id, can('stock.bons_sortie.acc
 router.put('/:id/chef-reject', authenticate, id, can('stock.bons_sortie.chef_reject'), validate(chefRejectBody), asyncHandler(bonSortieController.chefReject));
 
 // Annulation (avant prelevement) et regeneration
+router.get('/:id/returns', authenticate, id, can('stock.bons_sortie.view'), asyncHandler(bonSortieController.returnable));
+router.post('/:id/returns', authenticate, id, can('stock.bons_sortie.return'), validate(returnSchema), asyncHandler(bonSortieController.returnMaterial));
 router.put('/:id/cancel', authenticate, id, can('stock.bons_sortie.cancel'), validate(cancelBonBody), asyncHandler(bonSortieController.cancel));
 router.post('/plan/:planId/regenerate', authenticate, planId, can('stock.bons_sortie.regenerate'), validate(regenerateBonBody), asyncHandler(bonSortieController.regenerate));
 

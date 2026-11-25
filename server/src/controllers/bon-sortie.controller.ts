@@ -44,7 +44,9 @@ function safeErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 function fail(res: Response, err: unknown, fallback: string, status = 400) {
-  res.status(status).json({ success: false, error: { message: safeErrorMessage(err, fallback) } });
+  // Statut porté par l'erreur (403 séparation des tâches, 409 conflit) quand il y en a un.
+  const code = (err as { statusCode?: unknown } | null)?.statusCode;
+  res.status(typeof code === 'number' && code >= 400 && code < 500 ? code : status).json({ success: false, error: { message: safeErrorMessage(err, fallback) } });
 }
 function badRequest(res: Response, message: string) {
   res.status(400).json({ success: false, error: { message } });
@@ -283,6 +285,25 @@ export const bonSortieController = {
     } catch (err: unknown) {
       fail(res, err, 'Erreur lors de l\'acceptation de la reception');
     }
+  },
+
+  /** GET /bons-sortie/:id/returns — ce qui peut être rendu au magasin, et les retours faits (C-28). */
+  async returnable(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      if (!guardStore(req, res, await bonStoreId(id), 'Bon de sortie')) return;
+      res.json({ success: true, data: await bonSortieRepository.returnable(id) });
+    } catch (err: unknown) { fail(res, err, 'Erreur lors de la lecture des retours'); }
+  },
+
+  /** POST /bons-sortie/:id/returns — retour de matière au magasin (C-28). */
+  async returnMaterial(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      if (!guardStore(req, res, await bonStoreId(id), 'Bon de sortie')) return;
+      const data = await bonSortieRepository.returnMaterial(id, req.body.lines, req.body.reason, req.user!.userId);
+      res.json({ success: true, data });
+    } catch (err: unknown) { fail(res, err, 'Erreur lors du retour de matière'); }
   },
 
   async commitPartial(req: AuthRequest, res: Response) {

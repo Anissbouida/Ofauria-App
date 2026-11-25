@@ -24,6 +24,7 @@ import { logger } from '../utils/logger.js';
 import { ApprovalPendingError, gateApproval, planApprovalValues } from '../services/production-approvals.js';
 import { finalizeCompletedPlan } from '../services/production-closing.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
+import { equipmentCapacityRepository } from '../services/equipment-capacity.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -194,6 +195,26 @@ export const productionController = {
     const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
     if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
     res.json({ success: true, data: await mrpRepository.materialRequirements(storeId, date) });
+  },
+
+  /** Audit C-19 — charge des équipements d'une journée ; `plan` met en avant la part d'un ordre. */
+  async capacity(req: AuthRequest, res: Response) {
+    const planId = typeof req.query.plan === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.plan) ? req.query.plan : null;
+    if (planId) {
+      // Un ordre donné : sa journée et son établissement (contrôle d'appartenance au magasin).
+      const p = await equipmentCapacityRepository.planDay(planId);
+      if (!p) { res.status(404).json({ success: false, error: { message: 'Plan non trouvé' } }); return; }
+      if (req.user!.storeId && p.store_id && p.store_id !== req.user!.storeId) {
+        res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
+      }
+      res.json({ success: true, data: p?.store_id ? await equipmentCapacityRepository.load(p.d, p.store_id, planId) : [] });
+      return;
+    }
+    const date = typeof req.query.date === 'string' ? req.query.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await equipmentCapacityRepository.load(date, storeId, null) });
   },
 
   /** MRP — génère les demandes d'achat pour les matières manquantes. */
