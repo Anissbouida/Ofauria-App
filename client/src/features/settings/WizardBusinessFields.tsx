@@ -99,6 +99,7 @@ export function draftData(step: string, answers: WizardAnswers, catalog: WizardC
   }
   if (step === 'vocabulary') defaults = Object.fromEntries(VOCAB.map(v => [v.key, profiles.find(p => p.code === primary)?.labels?.[v.key] ?? v.fallback]));
   if (step === 'roles') defaults = { selected: proposedRoleTemplates(answers,catalog,company).filter(t => !t.exists).map(t => t.code) };
+  if (step === 'data') defaults = { referentials: true, demo: false };
   return { ...defaults, ...answers[step]?.data };
 }
 
@@ -122,6 +123,8 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
 }) {
   const navigate = useNavigate();
   const stores = useQuery({ queryKey: ['stores'], queryFn: storesApi.list, enabled: step === 'company' });
+  const starterSector = text(answers.sector?.data?.primary) || catalog?.currentSector || '';
+  const starter = useQuery({ queryKey: ['sector-starter', starterSector], queryFn: () => settingsApi.sectorStarter(starterSector), enabled: step === 'data' && !!starterSector });
   const [search, setSearch] = useState('');
   const [showAllTerms, setShowAllTerms] = useState(false);
   const download = async (entity: string) => {
@@ -453,11 +456,12 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => void download(key)}><Download size={13} aria-hidden="true" /> Modèle de fichier</button> <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=data')}><Upload size={13} aria-hidden="true" /> Importer</button></td></tr>)}
     </tbody></table></div>
     <div>
-      <Row title="Référentiels du profil" help="Catégories, unités, types d’étape et ateliers des spécialités choisies. Seuls les éléments absents sont créés."><Tag tone="g">Avec la publication</Tag></Row>
-      <Row title="Données de démonstration" help="Marquées « démonstration », exclues de la comptabilité et des déclarations, effaçables en une action.">
-        <Switch label="Données de démonstration" checked={data.demo === true} disabled={disabled} onChange={v => set('demo', v)} /></Row>
+      <Row title="Référentiels du profil" help={<>Créés à l’activation, seulement s’ils manquent ; rien d’existant n’est modifié.{(starter.data?.preview.items ?? []).filter(i => !i.startsWith('Nomenclature de démonstration')).map(i => <span key={i} style={{ display: 'block', marginTop: 2 }}>· {i}</span>)}</>}>
+        <Switch label="Référentiels du profil" checked={data.referentials === true} disabled={disabled} onChange={v => set('referentials', v)} /></Row>
+      {(() => { const demo = (starter.data?.preview.items ?? []).find(i => i.startsWith('Nomenclature de démonstration'));
+        return <Row title="Nomenclature de démonstration" help={demo ? `${demo.replace('Nomenclature de démonstration : ', '')} : un produit, ses matières et sa fiche, pour essayer la production. Ce sont de vraies fiches, à supprimer à la main si vous n’en voulez plus.` : 'Ce profil ne propose pas de nomenclature de démonstration.'} off={!demo}>
+          <Switch label="Nomenclature de démonstration" checked={!!demo && data.demo === true && data.referentials === true} disabled={disabled || !demo || data.referentials !== true} onChange={v => set('demo', v)} /></Row>; })()}
     </div>
-    {data.demo === true && <Alert tone="warning" icon={<TriangleAlert size={16} />}>Les données de démonstration devront être effacées avant la première écriture comptable réelle.</Alert>}
     <p className="mq-sub" style={{ margin: 0 }}>Chaque import passe par un aperçu et peut être annulé (Paramètres › Données). Importez de préférence après l’activation, pour que les fiches reçoivent les bons modules et libellés.</p>
   </>;
   }

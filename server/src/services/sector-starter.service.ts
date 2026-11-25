@@ -192,7 +192,7 @@ export async function starterPackFor(sectorCode: string): Promise<StarterPack> {
   return { categories: [], units: st.units ?? [], stepTypes: st.stepTypes ?? [], equipmentTypes: st.equipmentTypes ?? [], layers };
 }
 
-export async function loadSectorStarter(sectorCode: string, userId?: string): Promise<StarterResult> {
+export async function loadSectorStarter(sectorCode: string, userId?: string, opts: { demo?: boolean } = {}): Promise<StarterResult> {
   const pack = await starterPackFor(sectorCode);
   const result: StarterResult = { categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0, orderTypes: 0, policies: 0, printTemplates: 0 };
   const client = await db.getClient();
@@ -209,7 +209,7 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
     result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes);
     result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes);
     if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
-    if (pack.demo) result.demo = await loadDemo(client, pack.demo);
+    if (pack.demo && opts.demo !== false) result.demo = await loadDemo(client, pack.demo);
     if (pack.layers) {
       const l = await applyLayers(client, pack.layers, userId);
       result.orderTypes = l.orderTypes; result.policies = l.policies; result.printTemplates = l.printTemplates;

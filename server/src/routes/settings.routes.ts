@@ -62,7 +62,7 @@ const wizardCreate = z.object({ kind: z.enum(['initial','evolution','upgrade']),
 const wizardDataKeys: Record<string, readonly string[]> = {
   company: ['name','legalForm','country','currency','locale','timezone','size','sites'], sector: ['primary','secondary'], specialties: ['selected'], modules: ['selected','features'],
   operations: ['production','rhythm','stock','tracking','sales'], vocabulary: [...new Set([...['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie','warehouse','order','operator','workshop','station'], ...VOCABULARY_KEYS.map(v => v.key)])],
-  rules: ['recipe','materialIssue','quality','transfer'], interfaces: ['workspace','density'], finance: ['year','vat','analytics'], roles: ['selected'], data: ['demo'], review: [],
+  rules: ['recipe','materialIssue','quality','transfer'], interfaces: ['workspace','density'], finance: ['year','vat','analytics'], roles: ['selected'], data: ['demo','referentials'], review: [],
 };
 const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revision: wizardRevision,
   answers: z.record(wizardKey, z.object({ reviewed: z.boolean().optional(), note: z.string().max(4000).optional(),
@@ -81,7 +81,7 @@ const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revisio
     else {
       const value = answer.data![key];
       const array = key === 'selected' || (step === 'sector' && key === 'secondary');
-      const flag = step === 'rules' || (step === 'finance' && key === 'analytics') || (step === 'data' && key === 'demo');
+      const flag = step === 'rules' || (step === 'finance' && key === 'analytics') || (step === 'data' && (key === 'demo' || key === 'referentials'));
       if (array ? !Array.isArray(value) : flag ? typeof value !== 'boolean' : typeof value !== 'string') {
         ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Type de donnée invalide' });
       }
