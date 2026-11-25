@@ -1,19 +1,19 @@
 import * as shared from '@ofauria/shared';
 import { db } from '../config/database.js';
-import { unionRights } from './access-rules.js';
+import { unionRights, applyExceptions } from './access-rules.js';
 
 /**
  * Droits effectifs d'un utilisateur (mig 330 + rôles multiples mig 335) :
  *   - administrateur (l'un de ses rôles a pour base admin) : tout ;
- *   - exceptions de l'utilisateur (user_permissions) si elles existent : elles
- *     remplacent les droits des rôles, comme avant ;
- *   - sinon UNION des droits de tous ses rôles (role_permissions), éditables
- *     dans Utilisateurs › Rôles.
+ *   - UNION des droits de tous ses rôles (role_permissions), éditables
+ *     dans Utilisateurs › Rôles ;
+ *   - puis ses exceptions individuelles en cours (user_permissions, lot 6) :
+ *     chacune remplace les droits des rôles pour son module seulement.
  * Si la table roles n'existe pas encore (migration 330 non appliquée), repli
  * sur DEFAULT_ROLE_MODULES : voir / créer / modifier, jamais supprimer.
  */
 
-export { hasRight, hasVerb, effectiveScope, scopeStoreFilter, hasCapability, evaluateSod, moduleKeys, rightRow, unionRights } from './access-rules.js';
+export { hasRight, hasVerb, effectiveScope, scopeStoreFilter, hasCapability, evaluateSod, moduleKeys, rightRow, unionRights, applyExceptions } from './access-rules.js';
 export type { RightAction, RightRow, EffectiveRights, DataScope, SodRule, SodViolation } from './access-rules.js';
 import type { RightRow, EffectiveRights, DataScope } from './access-rules.js';
 import { effectiveScope } from './access-rules.js';
@@ -144,28 +144,43 @@ export async function effectiveRights(userId: string): Promise<EffectiveRights> 
     return { roleCode, baseRole: 'admin', roles: roleCodes, baseRoles, isAdmin: true, source: 'admin', rows: [] };
   }
 
-  const custom = await db.query(
-    `SELECT module, can_view, can_create, can_edit, can_delete, config FROM user_permissions WHERE user_id = $1`, [userId]);
-  if (custom.rows.length > 0) {
-    return { roleCode, baseRole, roles: roleCodes, baseRoles, isAdmin: false, source: 'user', rows: custom.rows };
-  }
+  const exceptions = await activeModuleExceptions(userId);
+  const rows = applyExceptions(await roleOnlyRights(roleCodes), exceptions);
+  return {
+    roleCode, baseRole, roles: roleCodes, baseRoles, isAdmin: false, source: 'role', rows,
+    exceptionModules: exceptions.map(e => e.module),
+  };
+}
 
+/**
+ * Droits des seuls rôles (union), sans exception individuelle. Repli sur DEFAULT_ROLE_MODULES
+ * (voir / créer / modifier, jamais supprimer) si la migration 330 n'est pas appliquée.
+ */
+export async function roleOnlyRights(roleCodes: string[]): Promise<RightRow[]> {
   const { tablesExist } = await loadRoles();
   if (tablesExist) {
     const r = await db.query(
       `SELECT module, can_view, can_create, can_edit, can_delete, config
          FROM role_permissions WHERE role_code = ANY($1::varchar[])`, [roleCodes]);
-    return { roleCode, baseRole, roles: roleCodes, baseRoles, isAdmin: false, source: 'role', rows: unionRights(r.rows as RightRow[]) };
+    return unionRights(r.rows as RightRow[]);
   }
-
   const defaults = new Set<string>();
   for (const code of roleCodes) {
     for (const m of ((shared.DEFAULT_ROLE_MODULES as Record<string, string[]>)[code] ?? [])) defaults.add(m);
   }
-  return {
-    roleCode, baseRole, roles: roleCodes, baseRoles, isAdmin: false, source: 'role',
-    rows: [...defaults].map(module => ({ module, can_view: true, can_create: true, can_edit: true, can_delete: false, config: {} })),
-  };
+  return [...defaults].map(module => ({ module, can_view: true, can_create: true, can_edit: true, can_delete: false, config: {} }));
+}
+
+/**
+ * Exceptions individuelles sur un module encore en cours (lot 6, mig 706) : sans date de fin, ou
+ * jusqu'à ce jour inclus. ends_on est lu par to_jsonb pour rester valable avant la migration 706.
+ */
+async function activeModuleExceptions(userId: string): Promise<RightRow[]> {
+  const r = await db.query(
+    `SELECT module, can_view, can_create, can_edit, can_delete, config
+       FROM user_permissions p
+      WHERE user_id = $1 AND COALESCE((to_jsonb(p)->>'ends_on')::date >= current_date, true)`, [userId]);
+  return r.rows as RightRow[];
 }
 
 /** Portée effective des données d'un utilisateur pour un module (admin : 'all'). */

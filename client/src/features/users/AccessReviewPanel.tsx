@@ -25,7 +25,7 @@ const flag = (on: boolean) => on
   : <Minus size={13} style={{ color: 'var(--ds-muted)' }} />;
 
 const HISTORY_LABELS: Record<string, string> = {
-  user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Droits propres modifiés',
+  user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Exception individuelle',
   role_INSERT: 'Rôle ajouté', role_DELETE: 'Rôle retiré', role_UPDATE: 'Rôle modifié',
   login_success: 'Connexion', login_failed: 'Échec de connexion', pin_login_success: 'Connexion par PIN', pin_login_failed: 'Échec du PIN',
   logout: 'Déconnexion', account_locked: 'Compte verrouillé', account_unlocked: 'Compte déverrouillé', token_revoked: 'Sessions fermées',
@@ -39,8 +39,7 @@ const HISTORY_LABELS: Record<string, string> = {
 /** Droits résolus d'un compte : rôles, conflits, droits par module et d'où ils viennent, plafonds. */
 export function AccessRightsView({ userId }: { userId: string }) {
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-review', userId], queryFn: () => accessReviewApi.review(userId) });
-  const roleName = (code: string) => code === '__custom__' ? 'Droits propres'
-    : data?.roles.find(r => r.code === code)?.label ?? code;
+  const roleName = (code: string) => data?.roles.find(r => r.code === code)?.label ?? code;
   if (isError) return <ErrorState bare error={error} title="La revue des accès n'a pas pu être chargée" onRetry={() => void refetch()} />;
   if (isLoading || !data) return <LoadingPanel />;
   // Anciennes clés du module Stock (economat, pesage…) : déjà couvertes par « Stock », masquées
@@ -57,7 +56,7 @@ export function AccessRightsView({ userId }: { userId: string }) {
               </span>
             ))}
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ds-muted)' }}>
-              Source : {data.source === 'admin' ? 'administrateur' : data.source === 'user' ? 'droits propres' : 'rôles'}
+              {data.isAdmin ? 'Administrateur' : `Rôles${data.modules.some(m => m.grantedBy.includes('__exception__')) ? ' et exceptions individuelles' : ''}`}
             </span>
           </div>
 
@@ -87,7 +86,11 @@ export function AccessRightsView({ userId }: { userId: string }) {
                         <td style={{ textAlign: 'center' }}>{flag(m.canDelete)}</td>
                         <td>{DATA_SCOPE_LABELS[m.scope as DataScope] ?? m.scope}</td>
                         <td>{m.verbs.length ? m.verbs.map(v => BUSINESS_VERB_LABELS[v as BusinessVerb] ?? CAPABILITY_LABELS[v as Capability] ?? v).join(', ') : '—'}</td>
-                        <td style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{m.grantedBy.map(roleName).join(', ')}</td>
+                        <td style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
+                          {m.grantedBy.includes('__exception__')
+                            ? <span className="kl-tag o">Exception individuelle</span>
+                            : m.grantedBy.map(roleName).join(', ')}
+                        </td>
                       </tr>
                     ))}
                     {!modules.length && <tr><td colSpan={8} style={{ color: 'var(--ds-muted)' }}>Aucun accès.</td></tr>}
@@ -176,6 +179,13 @@ function summarizeDetail(d: Record<string, unknown>): string {
   if (Array.isArray(d.modules)) parts.push(`modules : ${(d.modules as string[]).join(', ')}`);
   if (Array.isArray(d.sodViolations) && (d.sodViolations as string[]).length) parts.push(`conflits SoD : ${(d.sodViolations as string[]).join(', ')}`);
   if (typeof d.role === 'string') parts.push(`rôle : ${d.role}`);
+  // Exception individuelle (lot 6) : module ou permission, effet, motif, date de fin.
+  if (d.kind === 'module' || d.kind === 'action') {
+    const effect = d.action === 'removed' ? 'retirée' : d.effect === 'grant' ? 'accordé' : d.effect === 'revoke' ? 'retiré' : 'modifié';
+    parts.push(`${d.kind === 'module' ? moduleLabel(String(d.ref)) : String(d.ref)} : ${effect}`);
+    if (typeof d.reason === 'string' && d.reason) parts.push(d.reason);
+    if (typeof d.endsOn === 'string' && d.endsOn) parts.push(`jusqu'au ${new Date(d.endsOn).toLocaleDateString('fr-FR')}`);
+  }
   return parts.join(' · ') || '—';
 }
 
@@ -192,13 +202,13 @@ export default function AccessReviewTab() {
     <div style={{ display: 'grid', gap: 16 }}>
       <StatusBanner tone={conflicts ? 'warning' : 'info'} icon={conflicts ? ShieldAlert : ScanSearch}
         title={conflicts ? `${conflicts} compte(s) en conflit de séparation des tâches` : 'Revue des accès de tous les comptes'}>
-        Vérifiez qui a quoi, repérez les droits propres et les conflits. Cliquez « Analyser » pour voir les droits résolus et l'historique d'un compte.
+        Vérifiez qui a quoi, repérez les exceptions individuelles et les conflits. Cliquez « Analyser » pour voir les droits résolus et l'historique d'un compte.
       </StatusBanner>
       {isLoading ? <LoadingPanel /> : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : !overview.length ? <EmptyState icon={ScanSearch} title="Aucun compte à passer en revue" /> : (
         <DataPanel label="Revue des accès" footer={<TableFooter note={`${overview.length} compte${overview.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Utilisateur</th><th>Rôles</th><th>Droits propres</th><th>Conflits de séparation des tâches</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>Utilisateur</th><th>Rôles</th><th className="ds-num">Exceptions</th><th>Conflits de séparation des tâches</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {(overview as AccessOverviewRow[]).map(u => (
                 <tr key={u.userId}>
@@ -208,7 +218,7 @@ export default function AccessReviewTab() {
                       {u.roles.map(c => <span key={c} className="odoo-tag odoo-tag-purple">{roleLabel(c)}</span>)}
                     </div>
                   </td>
-                  <td>{u.hasCustomPerms ? <StatusTag tone="todo" label="Oui" /> : <StatusTag tone="draft" label="Non" />}</td>
+                  <td className="ds-num">{u.exceptionCount > 0 ? <StatusTag tone="todo" label={String(u.exceptionCount)} /> : '—'}</td>
                   <td>{u.conflictCount > 0 ? <StatusTag tone="blocked" label={String(u.conflictCount)} /> : <StatusTag tone="done" label="0" />}</td>
                   <td className="ds-actions">
                     <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setReview({ id: u.userId, name: u.name })}>

@@ -80,3 +80,15 @@ export const delegationSchema = body({
 export const extendDelegationSchema = body({ endsAt: z.string().min(8).max(40) });
 export const documentSodModeSchema = body({ mode: z.enum(['off', 'warn', 'block', 'block_except_admin'], { message: 'Mode invalide' }) });
 export const documentSodRuleSchema = body({ isActive: z.boolean() });
+
+/* Exceptions individuelles (lot 6, mig 706) — user-exceptions.ts vérifie le reste. */
+const exceptionReason = z.string().trim().min(3, 'Motif requis (3 caractères au moins)').max(500);
+const exceptionEndsOn = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide').nullish();
+export const moduleExceptionSchema = z.object({
+  canView: z.boolean(), canCreate: z.boolean(), canEdit: z.boolean(), canDelete: z.boolean(),
+  verbs: z.array(z.string().max(40)).max(30).optional(),
+  scope: z.enum(['own', 'store', 'all']).optional(),
+  sections: z.array(z.string().max(60)).max(100).optional(),
+  reason: exceptionReason, endsOn: exceptionEndsOn,
+}).strict();
+export const actionExceptionSchema = z.object({ granted: z.boolean(), reason: exceptionReason, endsOn: exceptionEndsOn }).strict();

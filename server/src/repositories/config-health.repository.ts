@@ -131,7 +131,8 @@ export const configHealthRepository = {
       `SELECT count(*)::int AS n FROM users u
         WHERE u.is_active
           AND COALESCE(
-                (SELECT o.granted FROM user_action_permissions o WHERE o.user_id = u.id AND o.permission_key = $1),
+                (SELECT o.granted FROM user_action_permissions o WHERE o.user_id = u.id AND o.permission_key = $1
+                    AND (o.ends_on IS NULL OR o.ends_on >= current_date)),
                 EXISTS (SELECT 1 FROM role_action_permissions p
                          WHERE p.permission_key = $1
                            AND p.role_code IN (

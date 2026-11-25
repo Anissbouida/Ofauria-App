@@ -24,6 +24,9 @@ async function loadSodRules(): Promise<SodRule[]> {
 }
 export function invalidateSodCache() { sodCache = null; }
 
+/** Règles de séparation des tâches actives (contrôle d'une exception individuelle avant écriture, lot 6). */
+export function activeSodRules(): Promise<SodRule[]> { return loadSodRules(); }
+
 let sodModeCache: { at: number; mode: 'off' | 'log' | 'enforce' } | null = null;
 export async function sodEnforcementMode(): Promise<'off' | 'log' | 'enforce'> {
   if (sodModeCache && Date.now() - sodModeCache.at < TTL_MS) return sodModeCache.mode;

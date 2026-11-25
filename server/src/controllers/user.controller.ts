@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
-import { permissionRepository } from '../repositories/permission.repository.js';
+import { listExceptions, setModuleException, setActionException, removeException, ExceptionError } from '../services/user-exceptions.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
 import { NEW_PIN_RE, NEW_PIN_MIN_LENGTH } from '../validators/auth.validator.js';
@@ -12,7 +12,7 @@ const pinIsWeak = (u: { pin_code: string | null; pin_length?: number | null }) =
 const NEW_PIN_MESSAGE = 'Le code PIN doit compter 6 à 10 chiffres';
 import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
-import { normalizePermissions, permissionView } from '../services/permission-input.js';
+import { permissionView } from '../services/permission-input.js';
 import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
 import { logger } from '../utils/logger.js';
 import { mfaRepository } from '../repositories/mfa.repository.js';
@@ -74,6 +74,36 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
     return false;
   }
   return true;
+}
+
+/**
+ * Écriture d'une exception individuelle (lot 6) : refus métier rendus tels quels (400, 409 avec
+ * les conflits de séparation des tâches), puis sessions du compte fermées et événement journalisé.
+ */
+async function exceptionWrite(req: AuthRequest, res: Response, kind: 'module' | 'action', ref: string, write: () => Promise<{ effect: string; sodWarnings?: unknown[] }>) {
+  try {
+    const out = await write();
+    await afterExceptionChange(req, {
+      kind, ref, action: 'set', effect: out.effect, reason: req.body?.reason, endsOn: req.body?.endsOn ?? null,
+      ...(kind === 'action' ? { granted: !!req.body?.granted } : {}),
+    });
+    res.json({ success: true, data: out });
+  } catch (e) {
+    if (e instanceof ExceptionError) {
+      res.status(e.status).json({ success: false, error: { message: e.message, violations: e.violations } });
+      return;
+    }
+    throw e;
+  }
+}
+
+async function afterExceptionChange(req: AuthRequest, details: Record<string, unknown>) {
+  // OWASP A07-5 : un changement de droits invalide les jetons actifs du compte.
+  await userRepository.bumpTokenVersion(req.params.id);
+  // OWASP A09-2 : trace du changement.
+  await authEventRepository.recordFromRequest(req, {
+    eventType: 'permission_changed', userId: req.user?.userId, targetUserId: req.params.id, success: true, details,
+  });
 }
 
 export const userController = {
@@ -288,16 +318,8 @@ export const userController = {
       await userRepository.setLinkedEmployee(user.id, req.body.employeeId ? String(req.body.employeeId) : null, req.user?.userId);
     }
 
-    // Si le rôle principal a change, purger les permissions custom pour que les
-    // droits des nouveaux roles s'appliquent (sinon les permissions configurees
-    // sous l'ancien role masquent les modules des nouveaux roles).
-    if (newPrimaryRole !== undefined && oldRole && newPrimaryRole !== oldRole) {
-      try {
-        await permissionRepository.clearByUserId(user.id, req.user?.userId);
-      } catch (err) {
-        logger.error({ err: err }, '[user.update] clearPermissions echec (non-bloquant):');
-      }
-    }
+    // Lot 6 : les exceptions individuelles s'ajoutent aux rôles et sont conservées au changement
+    // de rôle principal.
 
     // OWASP A07-5 : si les privileges ont change, invalider les tokens
     // existants de l'utilisateur cible en bumpant sa token_version.
@@ -475,32 +497,31 @@ export const userController = {
     res.json({ success: true, data: { requiredRoles: roles } });
   },
 
-  async getPermissions(req: AuthRequest, res: Response) {
-    const perms = await permissionRepository.findByUserId(req.params.id);
-    const data = perms.map(p => permissionView(p));
-    res.json({ success: true, data });
+  /** Exceptions individuelles d'un compte (lot 6), avec leur effet et les droits de ses rôles. */
+  async exceptions(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await listExceptions(req.params.id) });
   },
 
-  async setPermissions(req: AuthRequest, res: Response) {
-    const perms = normalizePermissions(req.body?.permissions);
-    if (typeof perms === 'string') {
-      res.status(400).json({ success: false, error: { message: perms } });
+  async setModuleException(req: AuthRequest, res: Response) {
+    await exceptionWrite(req, res, 'module', req.params.module, () =>
+      setModuleException(req.params.id, req.params.module, req.body, req.user?.userId));
+  },
+
+  async setActionException(req: AuthRequest, res: Response) {
+    await exceptionWrite(req, res, 'action', req.params.key, () =>
+      setActionException(req.params.id, req.params.key, req.body, req.user?.userId));
+  },
+
+  async removeException(req: AuthRequest, res: Response) {
+    const kind = req.params.kind === 'actions' ? 'action' : req.params.kind === 'modules' ? 'module' : null;
+    if (!kind) { res.status(404).json({ success: false, error: { message: 'Exception introuvable' } }); return; }
+    const ref = req.params.ref;
+    if (!(await removeException(req.params.id, kind, ref, req.user?.userId))) {
+      res.status(404).json({ success: false, error: { message: 'Exception introuvable' } });
       return;
     }
-    await permissionRepository.setPermissions(req.params.id, perms, req.user?.userId);
-    // OWASP A07-5 : un changement de permissions invalide les tokens actifs.
-    await userRepository.bumpTokenVersion(req.params.id);
-    const saved = await permissionRepository.findByUserId(req.params.id);
-    const data = saved.map(p => permissionView(p));
-    // OWASP A09-2 : audit trail modif permissions.
-    await authEventRepository.recordFromRequest(req, {
-      eventType: 'permission_changed',
-      userId: req.user?.userId,
-      targetUserId: req.params.id,
-      success: true,
-      details: { modules: data.map(d => d.module) },
-    });
-    res.json({ success: true, data });
+    await afterExceptionChange(req, { kind, ref, action: 'removed' });
+    res.json({ success: true });
   },
 
   /** Fiches salariés actives (sélecteur de lien espace employé). Admin. */

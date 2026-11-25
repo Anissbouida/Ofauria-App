@@ -24,9 +24,14 @@ export const usersApi = {
     api.put(`/users/${id}/preferences`, data).then(r => r.data.data),
   mfaPolicy: () => api.get('/users/security/mfa-policy').then(r => r.data.data as { requiredRoles: string[] }),
   setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[] }),
-  getPermissions: (id: string) => api.get(`/users/${id}/permissions`).then(r => r.data.data),
-  setPermissions: (id: string, permissions: Record<string, any>[]) =>
-    api.put(`/users/${id}/permissions`, { permissions }).then(r => r.data.data),
+  /** Exceptions individuelles (lot 6) : s'ajoutent aux rôles, motif et date de fin. */
+  exceptions: (id: string) => api.get(`/users/${id}/exceptions`).then(r => r.data.data as UserExceptions),
+  setModuleException: (id: string, module: string, body: ModuleExceptionBody) =>
+    api.put(`/users/${id}/exceptions/modules/${encodeURIComponent(module)}`, body).then(r => r.data.data as { effect: ExceptionEffect; sodWarnings?: { code: string; label: string }[] }),
+  setActionException: (id: string, key: string, body: { granted: boolean; reason: string; endsOn: string | null }) =>
+    api.put(`/users/${id}/exceptions/actions/${encodeURIComponent(key)}`, body).then(r => r.data.data as { effect: ExceptionEffect }),
+  removeException: (id: string, kind: 'modules' | 'actions', ref: string) =>
+    api.delete(`/users/${id}/exceptions/${kind}/${encodeURIComponent(ref)}`).then(r => r.data),
   /** G6-05 : langue de l'interface de l'utilisateur connecté (null = défaut de la société). */
   setMyLocale: (locale: 'fr' | 'ar' | 'en' | null) => api.put('/users/me/locale', { locale }).then(r => r.data.data),
   myPermissions: () => api.get('/users/me/permissions').then(r => r.data.data),
@@ -167,6 +172,29 @@ export const governanceApi = {
   setDocumentSodRule: (code: string, isActive: boolean) => api.put(`/users/sod/documents/rules/${code}`, { isActive }).then(r => r.data.data),
 };
 
+// ─── Exceptions individuelles (refonte Utilisateurs, lot 6) ─────────────
+export type ExceptionEffect = 'grant' | 'revoke' | 'change' | 'none';
+export interface ModuleRights {
+  canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  verbs: string[]; scope: string; sections: string[];
+}
+export interface ModuleExceptionRow extends ModuleRights {
+  module: string; reason: string | null; endsOn: string | null; active: boolean;
+  updatedAt: string; updatedBy: string | null; effect: ExceptionEffect; role: ModuleRights | null;
+}
+export interface ActionExceptionRow {
+  key: string; module: string | null; known: boolean; granted: boolean; reason: string | null; endsOn: string | null;
+  active: boolean; updatedAt: string; updatedBy: string | null; roleHolds: boolean; effect: ExceptionEffect;
+}
+export interface UserExceptions {
+  isAdmin: boolean;
+  modules: ModuleExceptionRow[];
+  actions: ActionExceptionRow[];
+  roleModules: (ModuleRights & { module: string })[];
+  roleKeys: string[];
+}
+export interface ModuleExceptionBody extends ModuleRights { reason: string; endsOn: string | null; }
+
 // ─── Revue des accès (Phase 3, outils admin) ────────────────────────────
 export interface AccessReviewModuleRow {
   module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
@@ -175,7 +203,7 @@ export interface AccessReviewModuleRow {
 export interface AccessReviewData {
   user: { id: string; name: string; email: string; storeId: string | null; isActive: boolean };
   isAdmin: boolean;
-  source: 'admin' | 'user' | 'role';
+  source: 'admin' | 'role';
   roles: { code: string; label: string; baseRole: string; delegated: boolean }[];
   baseRoles: string[];
   modules: AccessReviewModuleRow[];
@@ -184,7 +212,7 @@ export interface AccessReviewData {
 }
 export interface AccessHistoryEntry { at: string; actor: string | null; kind: string; detail: Record<string, unknown>; }
 export interface AccessOverviewRow {
-  userId: string; name: string; email: string; roles: string[]; hasCustomPerms: boolean; conflictCount: number; isActive: boolean;
+  userId: string; name: string; email: string; roles: string[]; hasCustomPerms: boolean; exceptionCount: number; conflictCount: number; isActive: boolean;
 }
 
 export const accessReviewApi = {

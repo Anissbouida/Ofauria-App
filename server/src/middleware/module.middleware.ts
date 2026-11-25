@@ -11,9 +11,9 @@ export type ModuleAction = 'view' | 'create' | 'edit' | 'delete';
  * Autorise l'acces selon les droits par module (meme regle que PermissionsContext
  * cote client) :
  *   - admin : tout ;
- *   - droits personnalises (user_permissions) : can_view/create/edit/delete ;
- *   - sinon droits du role (role_permissions, mig 330), editables dans
- *     Utilisateurs > Roles.
+ *   - droits des roles (role_permissions, mig 330), editables dans
+ *     Utilisateurs > Roles, puis exceptions individuelles en cours
+ *     (user_permissions, lot 6) qui remplacent le module qu'elles visent.
  * Remplace les listes de roles codees en dur : donner le module « Personnel »
  * a un role suffit, sans toucher au code.
  */

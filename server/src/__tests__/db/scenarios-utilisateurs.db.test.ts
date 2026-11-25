@@ -5,7 +5,7 @@
  *   - effectiveRights(admin)       : isAdmin, portée « all » (effectiveScopeFor) ;
  *   - rôle non-admin + role_permissions : droits et portée (config.scope) lus en base ;
  *   - rôles multiples (mig 335, user_roles) : UNION des droits de tous les rôles ;
- *   - exceptions utilisateur (user_permissions) : remplacent les droits du rôle ;
+ *   - exceptions utilisateur (user_permissions, lot 6) : s'ajoutent aux droits du rôle, module par module ;
  *   - authorizeModule de bout en bout : admin toujours, rôle sans le module -> 403.
  *
  * Chaque test isole ses données avec le suffixe RUN et nettoie en fin de suite.
@@ -81,11 +81,12 @@ describe.skipIf(!hasTestDb)('Scénarios droits — base migrée', () => {
     await pool.query(`INSERT INTO user_roles (user_id, role_code, is_primary) VALUES ($1,$2,true)`, [ids.uCashier, R_CASH]);
     // Multi-rôles : caisse + magasin -> union POS/sales/stock
     await pool.query(`INSERT INTO user_roles (user_id, role_code, is_primary) VALUES ($1,$2,true),($1,$3,false)`, [ids.uMulti, R_CASH, R_MAG]);
-    // uOverride a le rôle caisse MAIS une exception utilisateur qui le remplace
+    // uOverride a le rôle caisse ET une exception utilisateur : accès Personnel, POS retiré
     await pool.query(`INSERT INTO user_roles (user_id, role_code, is_primary) VALUES ($1,$2,true)`, [ids.uOverride, R_CASH]);
     await pool.query(
       `INSERT INTO user_permissions (user_id, module, can_view, can_create, can_edit, can_delete, config)
-       VALUES ($1,'employees',true,false,true,false,'{"scope":"store"}'::jsonb)`,
+       VALUES ($1,'employees',true,false,true,false,'{"scope":"store"}'::jsonb),
+              ($1,'pos',false,false,false,false,'{}'::jsonb)`,
       [ids.uOverride],
     );
 
@@ -138,14 +139,14 @@ describe.skipIf(!hasTestDb)('Scénarios droits — base migrée', () => {
     expect(await accessRights.effectiveScopeFor(ids.uMulti, 'pos')).toBe('own');
   });
 
-  it('exceptions utilisateur (user_permissions) : remplacent les droits du rôle', async () => {
+  it('exceptions utilisateur (user_permissions) : s\'ajoutent aux droits du rôle, module par module', async () => {
     const rights = await accessRights.effectiveRights(ids.uOverride);
-    expect(rights.source).toBe('user');
-    const modules = rights.rows.map((r: any) => r.module);
-    // Les droits du rôle (pos/sales) sont ignorés au profit des exceptions (employees).
-    expect(modules).toEqual(['employees']);
+    expect(rights.source).toBe('role');
+    expect(rights.exceptionModules?.sort()).toEqual(['employees', 'pos']);
+    // Exception accordée (Personnel), exception retirée (POS), module du rôle intact (Ventes).
     expect(accessRights.hasRight(rights, ['employees'], 'edit')).toBe(true);
     expect(accessRights.hasRight(rights, ['pos'], 'view')).toBe(false);
+    expect(accessRights.hasRight(rights, ['sales'], 'view')).toBe(true);
   });
 
   it('authorizeModule de bout en bout : admin passe, rôle sans module -> 403', async () => {

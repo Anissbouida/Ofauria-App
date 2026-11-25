@@ -11,7 +11,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { z } from 'zod';
 import { readInterfacePreferences, setPersonalInterfacePreferences } from '../services/interface-preferences.js';
-import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserSchema, delegationSchema, documentSodModeSchema, documentSodRuleSchema, enforcementModeSchema, extendDelegationSchema, permissionsSchema, updateRoleSchema, updateSodRuleSchema, updateUserSchema } from '../validators/users.validator.js';
+import { actionExceptionSchema, moduleExceptionSchema, approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserSchema, delegationSchema, documentSodModeSchema, documentSodRuleSchema, enforcementModeSchema, extendDelegationSchema, permissionsSchema, updateRoleSchema, updateSodRuleSchema, updateUserSchema } from '../validators/users.validator.js';
 
 /** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
 export const setLocaleSchema = z.object({ locale: z.enum(['fr', 'ar', 'en']).nullable() }).strict();
@@ -109,8 +109,11 @@ router.put('/me/interface-preferences',authenticate,validate(interfacePreference
 
 // Permissions
 router.get('/me/permissions', authenticate, userController.myPermissions);
-router.get('/:id/permissions', authenticate, can('users.view'), userController.getPermissions);
-router.put('/:id/permissions', authenticate, can('users.permissions'), validate(permissionsSchema), userController.setPermissions);
+// Exceptions individuelles (lot 6, mig 706) : s'ajoutent aux rôles, motif et date de fin.
+router.get('/:id/exceptions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.exceptions));
+router.put('/:id/exceptions/modules/:module', authenticate, validateUuidParams('id'), can('users.permissions'), validate(moduleExceptionSchema), asyncHandler(userController.setModuleException));
+router.put('/:id/exceptions/actions/:key', authenticate, validateUuidParams('id'), can('users.permissions'), validate(actionExceptionSchema), asyncHandler(userController.setActionException));
+router.delete('/:id/exceptions/:kind/:ref', authenticate, validateUuidParams('id'), can('users.permissions'), asyncHandler(userController.removeException));
 
 // Lien espace employe : fiches salariees disponibles pour le selecteur.
 router.get('/employees-link', authenticate, can('users.view'), asyncHandler(userController.employeesForLink));

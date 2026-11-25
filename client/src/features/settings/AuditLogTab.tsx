@@ -20,7 +20,7 @@ const TABLE_LABELS: Record<string, string> = {
   company_settings: 'Paramètres société',
   stores: 'Points de vente',
   users: 'Utilisateurs',
-  user_permissions: 'Droits',
+  user_permissions: 'Exceptions individuelles',
   printer_configs: 'Imprimantes',
   sales_channels: 'Canaux de vente',
   payroll_settings: 'Paramètres de paie',

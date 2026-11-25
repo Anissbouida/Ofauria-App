@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { effectiveRights, resolveRole } from './access-rights.js';
 import { evaluateUserSod, approvalLimitFor } from './governance.js';
 import { userRepository } from '../repositories/user.repository.js';
+import { userExceptionRepository } from '../repositories/user-exception.repository.js';
 import { APPROVAL_DOCUMENT_TYPES } from '@ofauria/shared';
 
 /**
@@ -18,7 +19,7 @@ export interface AccessReviewModule {
   module: string;
   canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
   verbs: string[]; scope: string;
-  grantedBy: string[]; // codes de rôle qui accordent ce module, ou '__custom__'
+  grantedBy: string[]; // codes de rôle qui accordent ce module, ou '__exception__' (exception individuelle, lot 6)
 }
 
 export async function accessReview(userId: string) {
@@ -33,7 +34,7 @@ export async function accessReview(userId: string) {
 
   // Provenance par module : les rôles dont les droits couvrent ce module.
   const perRole = new Map<string, Set<string>>(); // module -> roles
-  if (!rights.isAdmin && rights.source === 'role' && rights.roles.length) {
+  if (!rights.isAdmin && rights.roles.length) {
     const rows = (await db.query(
       `SELECT role_code, module FROM role_permissions WHERE role_code = ANY($1::varchar[]) AND can_view`, [rights.roles])).rows;
     for (const r of rows) {
@@ -42,6 +43,7 @@ export async function accessReview(userId: string) {
     }
   }
 
+  const exceptions = new Set(rights.exceptionModules ?? []);
   const modules: AccessReviewModule[] = rights.rows
     .filter(r => r.can_view || r.can_create || r.can_edit || r.can_delete)
     .map(r => {
@@ -51,7 +53,7 @@ export async function accessReview(userId: string) {
         canView: r.can_view, canCreate: r.can_create, canEdit: r.can_edit, canDelete: r.can_delete,
         verbs: Array.isArray(cfg.verbs) ? cfg.verbs as string[] : [],
         scope: typeof cfg.scope === 'string' ? cfg.scope : 'store',
-        grantedBy: rights.source === 'user' ? ['__custom__'] : [...(perRole.get(r.module) ?? [])],
+        grantedBy: exceptions.has(r.module) ? ['__exception__'] : [...(perRole.get(r.module) ?? [])],
       };
     });
 
@@ -125,27 +127,28 @@ export async function accessHistory(userId: string): Promise<AccessHistoryEntry[
 
 export interface AccessOverviewRow {
   userId: string; name: string; email: string; roles: string[];
-  hasCustomPerms: boolean; conflictCount: number; isActive: boolean;
+  hasCustomPerms: boolean; exceptionCount: number; conflictCount: number; isActive: boolean;
 }
 
 export async function accessOverview(): Promise<AccessOverviewRow[]> {
   const users = (await db.query(
     `SELECT u.id, concat_ws(' ', u.first_name, u.last_name) AS name, u.email, u.is_active,
-            COALESCE(array_agg(ur.role_code) FILTER (WHERE ur.role_code IS NOT NULL), ARRAY[]::varchar[]) AS roles,
-            EXISTS (SELECT 1 FROM user_permissions up WHERE up.user_id = u.id) AS has_custom
+            COALESCE(array_agg(ur.role_code) FILTER (WHERE ur.role_code IS NOT NULL), ARRAY[]::varchar[]) AS roles
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
       WHERE u.is_active
       GROUP BY u.id
       ORDER BY name`)).rows;
 
+  const counts = await userExceptionRepository.activeCounts();
   const out: AccessOverviewRow[] = [];
   for (const u of users) {
     const roles = u.roles as string[];
     const violations = await evaluateUserSod(u.id);
     out.push({
       userId: u.id, name: u.name, email: u.email,
-      roles, hasCustomPerms: !!u.has_custom, conflictCount: violations.length, isActive: u.is_active,
+      roles, hasCustomPerms: (counts.get(u.id) ?? 0) > 0, exceptionCount: counts.get(u.id) ?? 0,
+      conflictCount: violations.length, isActive: u.is_active,
     });
   }
   return out;

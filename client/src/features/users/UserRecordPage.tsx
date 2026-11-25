@@ -15,7 +15,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useAuth } from '../../context/AuthContext';
 import { AccessRightsView, AccessHistoryView } from './AccessReviewPanel';
 import { SecuritySection, MfaTag, errorMessage, fullName, formatLastLogin, formatDateTime, generatePassword, type UserRow } from './AccountSecurity';
-import { PermissionsModal } from './UsersPage';
+import { ExceptionsPanel } from './ExceptionsPanel';
 import { fmtDate } from './UsersOverview';
 import { InvitationSentModal } from './NewUserWizard';
 import type { InvitationResult } from '../../api/users.api';
@@ -107,7 +107,7 @@ export default function UserRecordPage() {
           <div style={{ display: 'grid', gap: 'var(--ds-s5)', minWidth: 0 }}>
             {tab === 'profile' && <ProfileTab u={u} />}
             {tab === 'roles' && <RolesTab u={u} limits={review?.approvalLimits ?? []} />}
-            {tab === 'rights' && <RightsTab u={u} roleLabel={roleLabel(u.role)} />}
+            {tab === 'rights' && <RightsTab u={u} />}
             {tab === 'security' && <SecurityTab u={u} selfId={me?.id} onDeleted={back} />}
             {tab === 'history' && <DataPanel label="Historique du compte"><AccessHistoryView userId={u.id} /></DataPanel>}
           </div>
@@ -272,15 +272,12 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
     },
     onError: err => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
-  // Le serveur efface les droits propres quand le rôle principal change et ferme les sessions.
+  // Changement de rôle principal : les sessions sont fermées, les exceptions individuelles conservées (lot 6).
   const submit = async () => {
     if (form.primary !== initial.primary) {
-      const own = await usersApi.getPermissions(u.id).catch(() => []);
-      const hasOwn = Array.isArray(own) && own.length > 0;
       const ok = await confirm(
         `Le rôle principal passe de « ${label(initial.primary)} » à « ${label(form.primary)} ». La page d'accueil et le contrôle des écrans suivront le nouveau rôle.`
-        + (hasOwn ? ' Les droits propres de ce compte seront effacés : ceux de ses rôles s\'appliqueront.' : '')
-        + ' Ses sessions ouvertes seront fermées.',
+        + ' Ses exceptions individuelles sont conservées. Ses sessions ouvertes seront fermées.',
         { title: 'Changer le rôle principal ?', confirmLabel: 'Changer le rôle principal' });
       if (!ok) return;
     }
@@ -373,16 +370,15 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
 
 /* ============ DROITS EFFECTIFS ============ */
 
-function RightsTab({ u, roleLabel }: { u: UserRow; roleLabel: string }) {
-  const [perm, setPerm] = useState(false);
+function RightsTab({ u }: { u: UserRow }) {
   return (
-    <section style={{ display: 'grid', gap: 'var(--ds-s3)' }}>
-      <SectionHeader title="Droits effectifs" note="Ce que le compte peut faire, et pourquoi">
-        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setPerm(true)}>Droits propres</button>
-      </SectionHeader>
-      <AccessRightsView userId={u.id} />
-      {perm && <PermissionsModal user={u} roleLabel={roleLabel} onClose={() => setPerm(false)} />}
-    </section>
+    <>
+      <section style={{ display: 'grid', gap: 'var(--ds-s3)' }}>
+        <SectionHeader title="Droits effectifs" note="Ce que le compte peut faire, et pourquoi" />
+        <AccessRightsView userId={u.id} />
+      </section>
+      <ExceptionsPanel userId={u.id} userName={fullName(u)} />
+    </>
   );
 }
 

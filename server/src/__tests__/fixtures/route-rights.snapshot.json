@@ -327,6 +327,9 @@
  "DELETE /users/:id": [
   "admin"
  ],
+ "DELETE /users/:id/exceptions/:kind/:ref": [
+  "admin"
+ ],
  "DELETE /users/:id/permanent": [
   "admin"
  ],
@@ -2778,7 +2781,7 @@
  "GET /users/:id/action-permissions": [
   "admin"
  ],
- "GET /users/:id/permissions": [
+ "GET /users/:id/exceptions": [
   "admin"
  ],
  "GET /users/:id/profile": [
@@ -5573,13 +5576,16 @@
  "PUT /users/:id": [
   "admin"
  ],
+ "PUT /users/:id/exceptions/actions/:key": [
+  "admin"
+ ],
+ "PUT /users/:id/exceptions/modules/:module": [
+  "admin"
+ ],
  "PUT /users/:id/mfa-required": [
   "admin"
  ],
  "PUT /users/:id/must-change-password": [
-  "admin"
- ],
- "PUT /users/:id/permissions": [
   "admin"
  ],
  "PUT /users/:id/preferences": [

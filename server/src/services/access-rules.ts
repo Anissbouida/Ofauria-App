@@ -37,8 +37,10 @@ export interface EffectiveRights {
   /** Rôles de base de tous les rôles (pour les gardes authorize). */
   baseRoles: string[];
   isAdmin: boolean;
-  source: 'admin' | 'user' | 'role';
+  source: 'admin' | 'role';
   rows: RightRow[];
+  /** Modules dont les droits viennent d'une exception individuelle en cours (lot 6, mig 706). */
+  exceptionModules?: string[];
 }
 
 // Clés historiques d'un module (fusion Stock). Lu par espace de noms : la
@@ -211,4 +213,18 @@ export function unionRights(rows: RightRow[]): RightRow[] {
     cur.config = mergeConfig(cur.config, r.config ?? {});
   }
   return [...byModule.values()];
+}
+
+/**
+ * Exceptions individuelles (lot 6, mig 706) : chacune remplace les droits des rôles pour SON
+ * module (et ses clés historiques), les autres modules suivent les rôles. Une exception sans
+ * aucun droit retire l'accès au module.
+ */
+export function applyExceptions(roleRows: RightRow[], exceptions: RightRow[]): RightRow[] {
+  if (!exceptions.length) return roleRows;
+  const covered = new Set(exceptions.flatMap(e => moduleKeys(e.module)));
+  return [
+    ...roleRows.filter(r => !covered.has(r.module)),
+    ...unionRights(exceptions),
+  ];
 }

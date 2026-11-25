@@ -629,7 +629,7 @@ function RightsTab() {
     <>
       <DataPanel label="Mode du contrôle des droits">
         <div className="usr-row">
-          <div><b>Appels hors droits</b><p>Un écran ou une action utilisés sans le droit nécessaire. Chaque appel est comparé aux droits du rôle, ou aux droits propres du compte s'il en a.</p></div>
+          <div><b>Appels hors droits</b><p>Un écran ou une action utilisés sans le droit nécessaire. Chaque appel est comparé aux droits des rôles du compte et à ses exceptions individuelles.</p></div>
           <ModeSwitch label="Mode du contrôle des droits" value={data.mode} options={ROLE_MODES} disabled={save.isPending} onChange={m => void setMode(m)} />
         </div>
       </DataPanel>

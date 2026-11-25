@@ -32,7 +32,7 @@ export async function exportConfiguration() {
     ['roles', 'roles', `SELECT * FROM roles ORDER BY code`],
     ['droits_des_roles', 'role_permissions', `SELECT * FROM role_permissions ORDER BY role_code, module`],
     ['droits_des_utilisateurs', 'user_permissions',
-      `SELECT u.email, p.module, p.can_view, p.can_create, p.can_edit, p.can_delete, p.config
+      `SELECT u.email, p.module, p.can_view, p.can_create, p.can_edit, p.can_delete, p.config, p.reason, p.ends_on
          FROM user_permissions p JOIN users u ON u.id = p.user_id ORDER BY u.email, p.module`],
     ['utilisateurs', 'users', `SELECT email, first_name, last_name, role, is_active, store_id FROM users ORDER BY email`],
     ['series_de_numeros', 'document_sequences', `SELECT * FROM document_sequences ORDER BY display_order`],

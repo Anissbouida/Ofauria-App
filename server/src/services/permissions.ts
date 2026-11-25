@@ -5,7 +5,7 @@ import { userRoleContext } from './access-rights.js';
 /**
  * Permissions par action (M2-04, mig 547).
  *
- * Décision : l'utilisateur détient la clé si une exception utilisateur l'accorde, ou,
+ * Décision : l'utilisateur détient la clé si une exception utilisateur en cours l'accorde, ou,
  * sans exception, si l'un de ses rôles (rôles propres et délégations en cours) la détient.
  *
  * Amorçage : une clé du référentiel encore absente de permission_seeded_keys est donnée
@@ -65,7 +65,11 @@ async function userContext(userId: string) {
   if (c && Date.now() - c.at < TTL_MS) return c;
   const { roleCodes } = await userRoleContext(userId);
   const overrides = new Map<string, boolean>(
-    (await db.query(`SELECT permission_key, granted FROM user_action_permissions WHERE user_id = $1`, [userId])).rows
+    // Lot 6 (mig 706) : une exception dont la date de fin est passée ne compte plus. ends_on lu par
+    // to_jsonb pour rester valable avant la migration.
+    (await db.query(
+      `SELECT permission_key, granted FROM user_action_permissions o
+        WHERE user_id = $1 AND COALESCE((to_jsonb(o)->>'ends_on')::date >= current_date, true)`, [userId])).rows
       .map(r => [r.permission_key as string, r.granted as boolean]));
   const out = { at: Date.now(), roles: roleCodes, overrides };
   userCache.set(userId, out);
@@ -96,6 +100,14 @@ export async function permissionsOfUser(userId: string): Promise<string[]> {
     const o = ctx.overrides.get(k);
     return o !== undefined ? o : ctx.roles.some(r => byRole.get(r)?.has(k));
   });
+}
+
+/** Clés détenues par au moins un des rôles (sans exception individuelle). */
+export async function permissionsOfRoles(roleCodes: string[]): Promise<Set<string>> {
+  const byRole = await rolePermissions();
+  const out = new Set<string>();
+  for (const r of roleCodes) for (const k of byRole.get(r) ?? []) out.add(k);
+  return out;
 }
 
 /** Clés d'un rôle. */
