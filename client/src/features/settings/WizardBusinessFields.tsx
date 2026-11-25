@@ -400,17 +400,17 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   if (step === 'finance') {
     const mods = new Set(list(draftData('modules', answers, catalog, company).selected));
     return <>
-      <Alert tone="info">Ces réponses préparent la mise en service ; elles ne modifient aucune écriture ni aucun taux légal.</Alert>
+      <Alert tone="info">Les obligations légales viennent du pays ; l’assistant ne modifie aucune écriture ni aucun taux légal.</Alert>
       <div>
         <Row title={<>Plan comptable <Tag tone="o" lock>Réglementaire</Tag></>} help="Plan comptable marocain (CGNC). Vous pouvez ajouter des sous-comptes, pas retirer les comptes du plan." />
         <Row title="Journaux" help={`Achats, ventes, banque, caisse${mods.has('employees') ? ', paie' : ''}, opérations diverses${mods.has('production') ? ', production' : ''}.`}><Tag tone="g">Créés par le profil</Tag></Row>
         <Row title={<>TVA <Tag tone="o" lock>Réglementaire</Tag></>} help="Taux légaux datés. Régime de déclaration : l’écran TVA calcule sur un mois ou sur un trimestre.">
           {(() => { const p = catalog?.parameters?.find(x => x.key === 'accounting.vat_periodicity'); const id = 'accounting.vat_periodicity:mode';
             return p?.value ? <span className="wz-control"><Segmented label="Régime de TVA" value={text(id in data ? data[id] : p.value.mode) || 'monthly'} options={[{ value: 'monthly', label: 'Mensuelle' }, { value: 'quarterly', label: 'Trimestrielle' }]} disabled={disabled} onChange={v => set(id, v)} />{id in data && <Tag tone="o">Modifié</Tag>}</span> : <Tag tone="x">Indisponible</Tag>; })()}</Row>
-        <Row title="Exercice comptable" help="Période de l’exercice envisagée.">
-          <input className="ds-input" style={{ width: 200 }} aria-label="Exercice comptable" placeholder="Janvier – décembre" value={text(data.year)} disabled={disabled} onChange={e => set('year', e.target.value)} /></Row>
-        <Row title="Comptabilité analytique" help="Centres de coûts par établissement et par atelier.">
-          <Switch label="Comptabilité analytique" checked={data.analytics === true} disabled={disabled} onChange={v => set('analytics', v)} /></Row>
+        <Row title="Exercice comptable" help={catalog?.finance?.fiscalYear ? `Exercice ${catalog.finance.fiscalYear.year} en cours : du ${new Date(catalog.finance.fiscalYear.start).toLocaleDateString('fr-FR')} au ${new Date(catalog.finance.fiscalYear.end).toLocaleDateString('fr-FR')}. Les exercices et leur clôture se gèrent en comptabilité.` : 'Aucun exercice ouvert couvrant la date du jour : à ouvrir en comptabilité.'}>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/accounting?tab=cloture')}>Voir les exercices</button></Row>
+        <Row title="Comptabilité analytique" help={catalog?.finance?.analyticAxes ? `${catalog.finance.analyticAxes} axe${catalog.finance.analyticAxes > 1 ? 's' : ''} analytique${catalog.finance.analyticAxes > 1 ? 's' : ''} actif${catalog.finance.analyticAxes > 1 ? 's' : ''} ; centres de coûts par établissement et par atelier.` : 'Aucun axe analytique actif.'}>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/accounting?tab=costcenters')}>Régler l’analytique</button></Row>
         <Row title={<>Clôture <Tag tone="o" lock>Réglementaire</Tag></>} help="Une période fermée n’accepte plus d’écriture ; les contrôles de clôture légaux ne se désactivent pas.">
           <Switch label="Contrôles de clôture" checked disabled onChange={() => undefined} /></Row>
       </div>

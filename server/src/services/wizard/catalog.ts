@@ -15,6 +15,14 @@ import { roleTemplates, activeSodRules, roleTemplateIssues, templateRights, temp
 /** A live read-only catalogue. No starter, profile or module is applied here. */
 export async function wizardCatalog(includeLabels = true) {
   const [templates, sodRules, approvalRules, centralStore, storeNames] = await Promise.all([roleTemplates(), activeSodRules(), wizardApprovalRules(), centralStoreId(), existingStoreNames()]);
+  // État comptable réel (lecture seule) : exercice en cours et axes analytiques actifs.
+  const finance = await (async () => {
+    try {
+      const fy = (await db.query(`SELECT year, start_date::text AS start, end_date::text AS end FROM fiscal_years WHERE closed_at IS NULL AND CURRENT_DATE BETWEEN start_date AND end_date ORDER BY start_date LIMIT 1`)).rows[0] ?? null;
+      const axes = Number((await db.query(`SELECT count(*) AS n FROM analytic_axes WHERE is_active`)).rows[0]?.n ?? 0);
+      return { fiscalYear: fy as { year: number; start: string; end: string } | null, analyticAxes: axes };
+    } catch { return { fiscalYear: null, analyticAxes: 0 }; }
+  })();
   const [packs, specialties, country, currency, activation,company,parameters,interfacePreferences] = await Promise.all([
     sectorRepository.list(), specializationRepository.list(), countryPackRepository.activeCountry(), companyCurrency(), sectorRepository.activation(),
     db.query(`SELECT to_jsonb(c) AS data FROM company_settings c WHERE id=1`), wizardParameters(),readInterfacePreferences(),
@@ -23,7 +31,7 @@ export async function wizardCatalog(includeLabels = true) {
     status: p.status, wizard: p.in_wizard === true, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
     labels: includeLabels ? await (p.code === activation.sector.code ? sectorRepository.labels(p.code) : sectorRepository.sectorLabels(p.code)) : {} })));
   return {
-    profiles, parameters,interfacePreferences, sodRules, approvalRules, centralStoreAvailable: !!centralStore, storeNames,
+    profiles, parameters,interfacePreferences, sodRules, approvalRules, centralStoreAvailable: !!centralStore, storeNames, finance,
     // Personnalisation des modules : capacités du catalogue et capacités actives aujourd'hui.
     capabilities: activation.catalog.map(f => ({ code: f.key, module: f.module_key, label: f.label, description: f.description, kind: f.kind, requires: f.requires ?? [], default_on: f.default_on })),
     activeCapabilities: [...activation.features],
