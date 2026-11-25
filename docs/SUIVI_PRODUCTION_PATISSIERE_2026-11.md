@@ -26,14 +26,16 @@ Trois états sont distingués partout :
 | Duplication d'un format | Perdait emballage, rendement au kilo, poids | C-23 | Copie complète, règle de lot comprise | P2 | Fait, test automatique seulement | Test « C-23 » |
 | Colonne « Recettes » des formats | « Aucune » partout | C-25 | Compte les formats des fiches | P2 | Fait et testé | À l'écran : 7, 1, 2, 2, 1, 4, 4… |
 | Production déclarée sans assez de matière | Sortie bornée à zéro, coût réel sous-évalué (3,44 DH pour 3 kg de biscuit) | C-35 | Décision du 2026-11-24 : laisser passer et valoriser le manque au coût courant, en ligne à part ; alerte sur le plan | P1 | Fait et testé | Test « C-35 » ; à l'écran : coût réel 64,33 DH dont 53,94 DH de « Manques de stock valorisés », alerte sur la fiche du plan |
-| Mutualisation entre plans | Un plan fils par plan parent | C-06 | — | P1 | Proposé | — |
-| Date limite des lots de semi-finis | 0 lot daté sur 1 436 | C-10 | — | P1 | Proposé | — |
-| Besoins matière du MRP | Autre diviseur que le plan confirmé | C-11 | — | P1 | Proposé (non vérifié par exécution) | — |
-| Clôture sans bon de sortie | Bases consommées deux fois | C-13 | — | P1 | Proposé (non vérifié par exécution) | — |
-| Écriture de production | Sans clé unique | C-14 | — | P1 | Proposé | — |
-| Géométrie de découpe, empreintes, capacité | Saisie décorative ou absente | C-15, C-16 | — | P2 | Proposé | — |
-| Composant fixe par fournée | Absent | C-17 | — | P2 | Proposé | — |
-| Capacité des équipements | Absente | C-19 | — | P2 | Proposé | — |
+| Mutualisation entre plans | Un plan fils par plan parent | C-06 | Un besoin rejoint le plan de la même préparation du jour (lot 4, §11) | P1 | Fait, test automatique seulement | `audit-patisserie-lot4.db.test.ts` |
+| Date limite des lots de semi-finis | 0 lot daté sur 1 436 | C-10 | Durée de conservation sur la fiche, date limite par lot, lot périmé écarté (mig 673) | P1 | Fait, test automatique seulement | idem |
+| Besoins matière du MRP | Autre diviseur que le plan confirmé | C-11 | Moteur de besoins de la confirmation (lot 6) | P1 | Fait, non-régression | tests MRP |
+| Clôture sans bon de sortie | Bases consommées deux fois | C-13 | Bases servies exclues de la sortie (lot 6) | P1 | Fait, non-régression | — |
+| Écriture de production | Sans clé unique | C-14 | Verrou + vérification dans la transaction (lot 6) | P1 | Fait, non-régression | — |
+| Géométrie de découpe, empreintes, capacité | Saisie décorative ou absente | C-15, C-16 | Portion, bordure, découpe proposée ; empreintes, contenance (mig 678) | P2 | Fait, non vérifié à l'écran | types, non-régression |
+| Composant fixe par fournée | Absent | C-17 | Bouton « Fixe / Prop. » par matière ; fixe = par fournée commencée (mig 678) | P2 | Fait, test unitaire | `recipe-composition.test.ts` |
+| Capacité des équipements | Absente | C-19 | Capacité par cycle × cycles par jour, charge par fournée sur la fiche, contrôle à la confirmation (mig 679, §13) | P2 | Fait, test automatique seulement | `audit-patisserie-lot7.db.test.ts` |
+| Retour de matière au magasin | Impossible après prélèvement | C-28 | Retour par ligne et lot, sortie du plan diminuée, lot et inventaire remis (mig 679) | P2 | Fait, test automatique seulement | idem |
+| Séparation des tâches | Une personne prépare, remet et accepte | C-32 | Politique « Séparation des tâches » (désactivée par défaut) | P2 | Fait, test automatique seulement | idem |
 | Champs de l'éditeur selon le mode | Mêmes champs pour tout contenant | C-24 | — | P2 | Proposé | — |
 
 ---
@@ -223,3 +225,15 @@ Non faits : C-31 (détection récursive des préparations imbriquées), C-26 (ge
 
 Migration renumérotée 678 : 674 à 677 sont pris par une autre session (configuration), encore non enregistrés dans le checkout principal.
 Restent : lot 7 (capacité des équipements, retour matière, séparation des tâches), C-26 (gel complet), C-31 (détection récursive).
+
+## 13. Lot 7 de l'audit (2026-11-24, mig 679)
+
+| Constat | Fait | Validation |
+|---|---|---|
+| C-19 Capacité des équipements | Sur l'équipement : capacité par cycle (plaques, contenants, kg, pièces) × cycles par jour, saisis dans Production › Postes de travail, où l'on peut désormais aussi créer un équipement (aucun écran ne le permettait). Sur la fiche, onglet Fabrication : « Équipements occupés », charge par fournée, pour tous les formats ou un format. À la confirmation d'un ordre, la charge du jour (Σ fournées × charge, ordres non annulés du même jour et du même établissement) est comparée à la capacité. Politique « Capacité des équipements » : signaler (défaut), bloquer, ne pas contrôler. Plan › Synthèse : « Charge des équipements du jour ». `GET /production/capacity` | `audit-patisserie-lot7.db.test.ts` : four 12 plaques × 2 cycles, fiche 2 plaques par fournée ; 10 fournées passent (20/24), 4 de plus → « Four … saturé : 28 plaque(s) demandés pour une capacité de 24 » ; en « Bloquer », confirmation refusée et plan resté en brouillon |
+| C-28 Retour de matière | Plan › Préparation, après le prélèvement : « Retour de matière au magasin », quantité par lot et motif. La sortie du plan (`production_lot_usage`) diminue d'autant, la part d'un article annulé d'abord ; le lot reprend la quantité en en-cours ouvert (un lot épuisé redevient actif) ; mouvement `production_return` ; historique des retours. Refusé avant le prélèvement et après la clôture de l'ordre (coût et écriture arrêtés). On ne rend pas plus que ce qui reste sorti | même fichier : pain annulé, 2 kg de farine rendus, stock +2, sortie du pain 0, tarte 5 kg, mouvement tracé |
+| C-32 Séparation des tâches | Politique « Séparation des tâches sur les bons de sortie » (désactivée par défaut) : qui a préparé ou remis le bon ne peut ni accepter sa réception ni y enregistrer un retour (403). L'auto-contrôle de mise en route en est exempt | même fichier |
+
+Droits : `stock.bons_sortie.return` (mêmes rôles que l'annulation d'un bon). Les deux politiques se règlent dans Production › Paramétrage › Politiques.
+Non vérifié à l'écran : la base de dev n'a aucun équipement et le navigateur de vérification n'était pas connecté.
+Restent : C-26 (gel complet de la configuration sur l'ordre), C-31 (détection récursive des préparations imbriquées).
