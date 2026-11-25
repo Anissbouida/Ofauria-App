@@ -47,7 +47,7 @@ export default function AcceptInvitationPage() {
   };
 
   return (
-    <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
+    <div className="kl-ds odoo-scope min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
       <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)', display: 'grid', gap: 16 }}>
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--ds-accent)', margin: 0 }}>{settings.companyName || 'Kalum'}</h1>
