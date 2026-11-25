@@ -11,6 +11,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { hasTestDb, testPool, closeTestPool, importRepositories, RUN } from './helpers.js';
 
+/** Comptabilisée : sans règle d'approbation active, aucune de ces saisies ne part en attente (étape 21). */
+type Posted = { id: string; entry_number: string };
+
 describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
   let manual: typeof import('../../repositories/manual-entry.repository.js').manualEntryRepository;
@@ -63,7 +66,7 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
       { accountId: acc['6181'], debit: 95.5, credit: 0 },
       { accountId: acc['5161'], debit: 0, credit: 95.5 },
     ] }), actor);
-    const posted = await manual.post(id, actor);
+    const posted = await manual.post(id, actor) as Posted;
     expect(posted.entry_number).toMatch(new RegExp(`^${JR}-${year}-\\d{5}$`));
     e = (await testPool().query(
       `SELECT status, description, piece_ref, posted_by, (SELECT sum(debit) FROM journal_entry_lines WHERE journal_entry_id = $1) AS total
@@ -97,12 +100,12 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
     const ok = await manual.createAndPost(base({ lines: [
       { accountId: acc['6181'], debit: 50, credit: 0 },
       { accountId: acc['4411'], auxiliaryId: aux4411, debit: 0, credit: 50 },
-    ] }), actor);
+    ] }), actor) as Posted;
     expect(ok.entry_number).toMatch(new RegExp(`^${JR}-`));
   });
 
   it('extourne une écriture manuelle avec motif, refuse celle née d\'une pièce', async () => {
-    const { id, entry_number } = await manual.createAndPost(base(), actor);
+    const { id, entry_number } = await manual.createAndPost(base(), actor) as Posted;
     const r = await manual.reverse(id, { reason: `Erreur d'imputation ${RUN}` }, actor);
     expect(r.reversal_number).toMatch(new RegExp(`^${JR}-`));
     const rows = (await testPool().query(

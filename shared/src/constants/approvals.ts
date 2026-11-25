@@ -89,6 +89,25 @@ export const APPROVAL_DOC_TYPES = {
       },
     },
   },
+  // Plan compta, étape 21 (audit C-09) : une écriture saisie à la main ne se comptabilise plus par
+  // celui qui l'a saisie quand une règle l'exige (montant, journal). Sans règle active : inchangé.
+  journal_entry: {
+    label: 'Écriture comptable manuelle',
+    effect: 'L\'écriture est comptabilisée au nom de l\'approbateur ; le brouillon reste modifiable tant qu\'elle n\'est pas approuvée.',
+    fields: {
+      amount: { label: 'Montant de l\'écriture (total au débit)', kind: 'number', unit: 'DH' },
+      journal: {
+        label: 'Journal', kind: 'enum',
+        options: [
+          { value: 'OD', label: 'Opérations diverses' },
+          { value: 'AC', label: 'Achats' },
+          { value: 'VE', label: 'Ventes' },
+          { value: 'BQ', label: 'Banque' },
+          { value: 'CA', label: 'Caisse' },
+        ],
+      },
+    },
+  },
   payment_run: {
     label: 'Campagne de paiement fournisseurs',
     effect: 'La campagne est approuvée : le fichier de virement peut être édité.',

@@ -7,6 +7,7 @@ import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { creditNoteRepository } from '../repositories/credit-note.repository.js';
 import { openingInventoryCheckRepository } from '../repositories/opening-inventory-check.repository.js';
 import { bomVersionRepository } from '../repositories/bom-version.repository.js';
+import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
 
 /**
  * Effets des approbations par type de pièce (lot 8). Importé une fois par
@@ -57,6 +58,12 @@ registerApprovalHandler('invoice_cancel', {
     }
     await invoiceRepository.updateStatus(request.doc_id, 'cancelled');
   },
+});
+
+// Plan compta, étape 21 : écriture manuelle approuvée → comptabilisée au nom de l'approbateur
+// (jamais celui du demandeur : le moteur interdit l'auto-approbation). Refusée → reste brouillon.
+registerApprovalHandler('journal_entry', {
+  async onApproved(request, actorId) { await manualEntryRepository.postApproved(request.doc_id, actorId); },
 });
 
 registerApprovalHandler('inventory_count', {

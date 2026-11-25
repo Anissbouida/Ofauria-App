@@ -14,6 +14,7 @@ import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { extourneEntryById } from '../services/journal-generator.service.js';
+import { approvalService } from '../services/approval.service.js';
 
 export type ManualLineInput = {
   accountId: string; auxiliaryId?: string | null;
@@ -25,6 +26,10 @@ export type ManualEntryInput = {
   lines: ManualLineInput[];
 };
 type Actor = { userId: string; storeId: string | null };
+/** Comptabilisée (avec son numéro), ou en attente d'approbation (le brouillon est conservé). */
+export type PostOutcome =
+  | { id: string; entry_number: string; pending_approval?: undefined }
+  | { id: string; pending_approval: true; approval_request_id: string };
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const cents = (v: number) => Math.round((Number(v) || 0) * 100);
@@ -154,14 +159,26 @@ export const manualEntryRepository = {
     return withTx(actor.userId, async c => ({ id: await createDraftTx(c, input, actor) }));
   },
 
-  /** Saisie validée d'un coup (bouton « Comptabiliser » de l'éditeur). */
-  createAndPost(input: ManualEntryInput, actor: Actor) {
-    return withTx(actor.userId, async c => postTx(c, await createDraftTx(c, input, actor), actor));
+  /**
+   * Saisie validée d'un coup (bouton « Comptabiliser » de l'éditeur). Le brouillon est écrit d'abord :
+   * une règle d'approbation peut exiger qu'un autre utilisateur comptabilise (plan compta, étape 21).
+   */
+  async createAndPost(input: ManualEntryInput, actor: Actor): Promise<PostOutcome> {
+    const { id } = await this.createDraft(input, actor);
+    try {
+      return await this.post(id, actor);
+    } catch (err) {
+      // La saisie d'un coup ne laisse pas de brouillon derrière elle quand la comptabilisation échoue.
+      await this.deleteDraft(id, actor).catch(() => undefined);
+      throw err;
+    }
   },
 
   updateDraft(id: string, input: ManualEntryInput, actor: Actor) {
     return withTx(actor.userId, async c => {
       await lockDraft(c, id);
+      // Brouillon modifié : la demande d'approbation en cours portait sur l'ancien contenu.
+      await approvalService.cancelPending('journal_entry', id, actor.userId, 'Brouillon modifié');
       const k = await check(c, input);
       await c.query(
         `UPDATE journal_entries SET journal_id = $2, entry_date = $3, fiscal_period_id = $4, description = $5,
@@ -173,13 +190,39 @@ export const manualEntryRepository = {
     });
   },
 
-  post(id: string, actor: Actor) {
+  /**
+   * Comptabilise un brouillon, ou le soumet à approbation si une règle l'exige (montant, journal) :
+   * il reste alors brouillon, et c'est l'approbateur qui le comptabilise (postApproved).
+   */
+  async post(id: string, actor: Actor): Promise<PostOutcome> {
+    const head = (await db.query(
+      `SELECT j.code AS journal, je.description, je.store_id, COALESCE(sum(l.debit), 0)::float8 AS amount
+         FROM journal_entries je JOIN journals j ON j.id = je.journal_id
+         LEFT JOIN journal_entry_lines l ON l.journal_entry_id = je.id
+        WHERE je.id = $1 AND je.status = 'draft' AND je.source_kind = 'manual' AND je.source_detail = 'saisie'
+        GROUP BY j.code, je.description, je.store_id`, [id])).rows[0];
+    if (head) {
+      const sub = await approvalService.submit({
+        docType: 'journal_entry', docId: id, docLabel: `Écriture ${head.journal} : ${head.description}`,
+        amount: head.amount, values: { amount: head.amount, journal: head.journal },
+        storeId: head.store_id, requestedBy: actor.userId,
+      });
+      if (sub.outcome === 'submitted' || sub.outcome === 'already_pending') {
+        return { id, pending_approval: true, approval_request_id: sub.request.id };
+      }
+    }
     return withTx(actor.userId, c => postTx(c, id, actor));
+  },
+
+  /** Effet de l'approbation : comptabilise le brouillon au nom de l'approbateur. */
+  postApproved(id: string, approverId: string) {
+    return withTx(approverId, c => postTx(c, id, { userId: approverId, storeId: null }));
   },
 
   deleteDraft(id: string, actor: Actor) {
     return withTx(actor.userId, async c => {
       await lockDraft(c, id);
+      await approvalService.cancelPending('journal_entry', id, actor.userId, 'Brouillon supprimé');
       await c.query(`DELETE FROM journal_entries WHERE id = $1`, [id]);   // lignes en cascade, trace draft_delete
       return { id };
     });
