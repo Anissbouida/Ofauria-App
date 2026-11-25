@@ -8,6 +8,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import NotificationBell from './NotificationBell';
+import StoreSwitcher from './StoreSwitcher';
 import GlobalSearch from './GlobalSearch';
 import { NAV_ITEM_BY_PATH, NAV_LABEL_BY_PATH, SALES_SHELL_PATHS, navLabel } from '../../config/navigation';
 import { useLocale } from '../../i18n';
@@ -61,6 +62,9 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
       <div className="flex-1 flex justify-center px-4">
         <GlobalSearch />
       </div>
+
+      {/* Établissement actif (lot 7) : seulement si le compte en a plusieurs */}
+      <StoreSwitcher />
 
       {/* Notifications */}
       <NotificationBell />

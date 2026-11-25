@@ -316,4 +316,61 @@ export const userRepository = {
       client.release();
     }
   },
+
+  // ─── Établissements d'un compte (refonte Utilisateurs, lot 7, mig 707) ───
+  /** Établissements accessibles au compte (actifs ou non), le défaut en tête. */
+  async storesOf(id: string): Promise<{ id: string; name: string; code: string | null; is_active: boolean; is_default: boolean }[]> {
+    const r = await db.query(
+      `SELECT s.id, s.name, s.code, COALESCE(s.is_active, true) AS is_active, us.is_default
+         FROM user_stores us JOIN stores s ON s.id = us.store_id
+        WHERE us.user_id = $1
+        ORDER BY us.is_default DESC, s.name`, [id]);
+    return r.rows;
+  },
+
+  /** Identifiants des établissements de chaque compte (liste des comptes). */
+  async storeIdsByUser(): Promise<Map<string, string[]>> {
+    const r = await db.query(
+      `SELECT user_id, array_agg(store_id::text ORDER BY is_default DESC, created_at) AS ids FROM user_stores GROUP BY user_id`);
+    return new Map(r.rows.map(x => [x.user_id as string, x.ids as string[]]));
+  },
+
+  /** Parmi ces identifiants, ceux d'établissements existants et actifs. */
+  async activeStoreIdsAmong(ids: string[]): Promise<string[]> {
+    const valid = ids.filter(id => /^[0-9a-f-]{36}$/i.test(id));
+    if (!valid.length) return [];
+    const r = await db.query(`SELECT id::text FROM stores WHERE id = ANY($1::uuid[]) AND COALESCE(is_active, true)`, [valid]);
+    return r.rows.map(x => x.id as string);
+  },
+
+  /** Vrai si le compte peut travailler dans cet établissement (rattaché et établissement actif). */
+  async canUseStore(id: string, storeId: string): Promise<boolean> {
+    const r = await db.query(
+      `SELECT 1 FROM user_stores us JOIN stores s ON s.id = us.store_id
+        WHERE us.user_id = $1 AND us.store_id = $2 AND COALESCE(s.is_active, true)`, [id, storeId]);
+    return r.rows.length > 0;
+  },
+
+  /**
+   * Remplace les établissements du compte ; `defaultId` (parmi eux) devient users.store_id, le
+   * déclencheur de la mig 707 pose le drapeau par défaut. Liste vide = aucun établissement.
+   */
+  async setStores(id: string, storeIds: string[], defaultId: string | null, actorId?: string): Promise<void> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await setAuditUser(client, actorId);
+      await client.query('UPDATE users SET store_id = $2, updated_at = NOW() WHERE id = $1 AND store_id IS DISTINCT FROM $2', [id, defaultId]);
+      await client.query('DELETE FROM user_stores WHERE user_id = $1 AND NOT (store_id = ANY($2::uuid[]))', [id, storeIds]);
+      await client.query(
+        `INSERT INTO user_stores (user_id, store_id, is_default)
+         SELECT $1, unnest($2::uuid[]), false ON CONFLICT (user_id, store_id) DO NOTHING`, [id, storeIds]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
 };

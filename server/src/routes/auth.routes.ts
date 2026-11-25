@@ -19,6 +19,8 @@ const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(12) });
 const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(2000), rememberDevice: z.boolean().optional() });
 const mfaDisableSchema = mfaCodeSchema.extend({ password: z.string().min(1).max(200) });
 const mfaEmptySchema = z.object({}).passthrough();
+/** Lot 7 : établissement à rendre actif (rattaché au compte, vérifié par le contrôleur). */
+const activeStoreSchema = z.object({ storeId: z.string().uuid('Établissement invalide') }).strict();
 // Passkeys (mig 705) : la réponse de l'appareil est vérifiée par @simplewebauthn, on n'en
 // contrôle ici que la forme générale.
 const webauthnResponse = z.object({ id: z.string().min(1).max(1024), rawId: z.string().max(1024), type: z.literal('public-key'), response: z.object({}).passthrough() }).passthrough();
@@ -96,5 +98,8 @@ router.post('/invitations/:token/accept', loginLimiter, validate(acceptInvitatio
 router.post('/register', authenticate, can('users.auth.register'), validate(registerSchema), authController.register);
 router.post('/logout', authenticate, validate(emptyBody), authController.logout);
 router.get('/me', authenticate, authController.me);
+// Établissements du compte et bascule de l'établissement actif (refonte Utilisateurs, lot 7).
+router.get('/stores', authenticate, asyncHandler(authController.myStores));
+router.post('/active-store', authenticate, validate(activeStoreSchema), asyncHandler(authController.setActiveStore));
 
 export default router;

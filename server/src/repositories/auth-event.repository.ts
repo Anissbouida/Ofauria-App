@@ -53,7 +53,9 @@ export type AuthEventType =
   | 'data_import'
   // Invitation d'un nouveau compte (refonte Utilisateurs, lot 3, mig 700).
   | 'invitation_sent'
-  | 'invitation_accepted';
+  | 'invitation_accepted'
+  // Bascule de l'établissement actif (refonte Utilisateurs, lot 7, mig 707).
+  | 'active_store_changed';
 
 export interface AuthEventInput {
   eventType: AuthEventType;

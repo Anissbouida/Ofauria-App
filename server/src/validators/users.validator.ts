@@ -22,7 +22,7 @@ export const createUserSchema = body({
   password: strongPassword.optional(), invite: z.boolean().optional(),
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
-  pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),
+  pinCode: pin, storeId: z.string().max(60).nullish(), storeIds: z.array(z.string().max(60)).max(100).optional(), employeeId: z.string().max(60).nullish(),
   mustChangePassword: z.boolean().optional(), mfaRequired: z.boolean().optional(),
 });
 /* Modification — user.controller.update (tout est facultatif ; PIN null = retiré). */
@@ -31,7 +31,7 @@ export const updateUserSchema = body({
   password: z.union([z.literal(''), strongPassword]).nullish(),
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
-  isActive: bool, pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),
+  isActive: bool, pinCode: pin, storeId: z.string().max(60).nullish(), storeIds: z.array(z.string().max(60)).max(100).optional(), employeeId: z.string().max(60).nullish(),
 });
 /* Droits d'un utilisateur / d'un rôle — normalizePermissions vérifie la forme. */
 export const permissionsSchema = body({

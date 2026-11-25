@@ -257,6 +257,8 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
   const { roles, label: roleLabel } = useRoleLabel();
   const storeName = (id: unknown) => stores.find(s => s.id === id)?.name as string | undefined;
+  // Lot 7 : établissements du compte (le défaut en tête).
+  const storesOf = (u: UserRow): string[] => (Array.isArray(u.storeIds) ? u.storeIds : (u.storeId ? [u.storeId] : []));
   // Rôles multiples (mig 335) : repli sur le rôle principal si la liste est absente.
   const rolesOf = (u: UserRow): string[] => (Array.isArray(u.roles) && u.roles.length ? u.roles : (u.role ? [u.role] : []));
 
@@ -267,9 +269,9 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
     return users.filter(u =>
       matchSituation(u, situation)
       && (!roleFilter || rolesOf(u).includes(roleFilter))
-      && (!storeFilter || (storeFilter === '-' ? !u.storeId : u.storeId === storeFilter))
+      && (!storeFilter || (storeFilter === '-' ? !storesOf(u).length : storesOf(u).includes(storeFilter)))
       && matchSecurity(u, security)
-      && (!n || normalize(`${u.firstName} ${u.lastName} ${u.email} ${rolesOf(u).map(roleLabel).join(' ')} ${storeName(u.storeId) ?? ''}`).includes(n)));
+      && (!n || normalize(`${u.firstName} ${u.lastName} ${u.email} ${rolesOf(u).map(roleLabel).join(' ')} ${storesOf(u).map(id => storeName(id) ?? '').join(' ')}`).includes(n)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, q, roleFilter, storeFilter, situation, security, roles, stores]);
 
@@ -379,6 +381,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
             <tbody>
               {shown.map(u => {
                 const store = storeName(u.storeId);
+                const others = storesOf(u).filter(id => id !== u.storeId).map(id => storeName(id)).filter(Boolean) as string[];
                 const name = fullName(u) || (u.email as string);
                 return (
                   <tr key={u.id} id={`user-row-${u.id}`} className={`ds-clickable${selected.has(u.id) ? ' ds-selected' : ''}`} onClick={() => onPreview(u)}>
@@ -400,7 +403,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
                           <span key={rc} className={`kl-tag ${rc === u.role ? 'b' : 'x'}`} title={rc === u.role ? 'Rôle principal' : undefined}>{roleLabel(rc)}</span>
                         ))}
                       </div>
-                      <small className="usr-sub">{store ?? (u.role === 'admin' ? 'Tous les établissements' : 'Sans établissement')}</small>
+                      <small className="usr-sub" title={others.length ? [store, ...others].join(', ') : undefined}>{store ? `${store}${others.length ? ` +${others.length}` : ''}` : (u.role === 'admin' ? 'Tous les établissements' : 'Sans établissement')}</small>
                     </td>
                     <td><SecuritySignals u={u} /></td>
                     <td style={{ color: u.lastLoginAt ? undefined : 'var(--ds-muted)' }} title={u.lastLoginAt ? formatDateTime(u.lastLoginAt) : undefined}>

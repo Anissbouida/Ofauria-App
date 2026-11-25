@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, Mail, ShieldCheck, TriangleAlert, Wand2 } from 'lucide-react';
 import { usersApi, rolesApi, type InvitationResult } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
+import { StoresField } from './StoresField';
 import { Modal, FormField, Alert } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { errorMessage, generatePassword, type UserRow } from './AccountSecurity';
@@ -38,7 +39,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
   const [f, setF] = useState({
     firstName: '', lastName: '', email: '', employeeId: '',
     access: 'invite' as 'invite' | 'password', password: generatePassword(),
-    roles: [] as string[], primary: '', storeId: '', mfaRequired: false, pin: '',
+    roles: [] as string[], primary: '', storeId: '', storeIds: [] as string[], mfaRequired: false, pin: '',
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(x => ({ ...x, [k]: v }));
   const [created, setCreated] = useState<Created | null>(null);
@@ -74,7 +75,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
   const create = useMutation({
     mutationFn: () => usersApi.create({
       firstName: f.firstName.trim(), lastName: f.lastName.trim(), email: f.email.trim(),
-      roles: f.roles, primaryRole: f.primary || f.roles[0], storeId: f.storeId || null,
+      roles: f.roles, primaryRole: f.primary || f.roles[0], storeId: f.storeId || null, storeIds: f.storeIds,
       employeeId: f.employeeId || null, mfaRequired: f.mfaRequired,
       ...(f.access === 'invite' ? { invite: true } : { password: f.password, mustChangePassword: true }),
       ...(f.pin ? { pinCode: f.pin } : {}),
@@ -218,11 +219,9 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
 
       {step === 'scope' && (
         <div className="ds-form-grid">
-          <FormField label="Établissement" htmlFor="nu-store" hint="Laissez vide pour un compte qui travaille sur tous les établissements (direction).">
-            <select id="nu-store" className="ds-input" value={f.storeId} onChange={e => set('storeId', e.target.value)}>
-              <option value="">Aucun</option>
-              {stores.map(s => <option key={s.id as string} value={s.id as string}>{s.name as string}</option>)}
-            </select>
+          <FormField label="Établissements" hint="Celui par défaut est ouvert à la connexion ; la personne passe aux autres depuis la barre du haut. Aucun coché : compte qui travaille sur tous les établissements (direction).">
+            <StoresField idPrefix="nu-store" stores={stores.map(s => ({ id: s.id as string, name: s.name as string }))}
+              ids={f.storeIds} defaultId={f.storeId} onChange={(ids, def) => setF(x => ({ ...x, storeIds: ids, storeId: def }))} />
           </FormField>
         </div>
       )}
@@ -254,7 +253,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
             <dt>Compte</dt><dd>{f.firstName} {f.lastName} · {f.email}</dd>
             <dt>Premier accès</dt><dd>{f.access === 'invite' ? 'Invitation par e-mail, valable 72 h' : 'Mot de passe provisoire, à changer à la première connexion'}</dd>
             <dt>Rôles</dt><dd>{f.roles.map(c => `${label(c)}${c === f.primary ? ' (principal)' : ''}`).join(', ')}</dd>
-            <dt>Établissement</dt><dd>{(stores.find(s => s.id === f.storeId)?.name as string) ?? 'Aucun'}</dd>
+            <dt>Établissements</dt><dd>{f.storeIds.length ? f.storeIds.map(id => `${stores.find(s => s.id === id)?.name as string ?? id}${id === f.storeId && f.storeIds.length > 1 ? ' (par défaut)' : ''}`).join(', ') : 'Aucun'}</dd>
             <dt>Sécurité</dt><dd>{f.mfaRequired || requiredByRole ? '2FA exigée' : '2FA non exigée'} · {f.pin ? 'code PIN défini' : 'sans code PIN'}</dd>
             <dt>Fiche salarié</dt><dd>{employees.find(e => e.id === f.employeeId)?.name ?? 'Aucune'}</dd>
           </dl>

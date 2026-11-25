@@ -372,6 +372,7 @@
  "GET /auth/oidc/providers": null,
  "GET /auth/passkeys": null,
  "GET /auth/pin-users": null,
+ "GET /auth/stores": null,
  "GET /auth/users-list": [
   "admin",
   "manager"
@@ -2916,6 +2917,7 @@
  "POST /approvals/delegations": null,
  "POST /attendance": null,
  "POST /attendance/bulk": null,
+ "POST /auth/active-store": null,
  "POST /auth/change-password": null,
  "POST /auth/invitations/:token/accept": null,
  "POST /auth/login": null,

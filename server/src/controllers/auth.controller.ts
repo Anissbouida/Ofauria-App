@@ -440,6 +440,48 @@ export const authController = {
     res.json({ success: true });
   },
 
+  /** Établissements du compte connecté et établissement actif (lot 7, mig 707). */
+  async myStores(req: AuthRequest, res: Response) {
+    const stores = await userRepository.storesOf(req.user!.userId);
+    res.json({
+      success: true,
+      data: {
+        activeStoreId: req.user!.storeId ?? null,
+        stores: stores.filter(s => s.is_active).map(s => ({ id: s.id, name: s.name, code: s.code, isDefault: s.is_default })),
+      },
+    });
+  },
+
+  /**
+   * Bascule l'établissement actif (lot 7) : seulement vers un établissement rattaché au compte et
+   * actif. Un nouveau jeton porte l'établissement choisi ; l'ancien est révoqué.
+   */
+  async setActiveStore(req: AuthRequest, res: Response) {
+    const storeId = String(req.body?.storeId ?? '');
+    const userId = req.user!.userId;
+    if (!(await userRepository.canUseStore(userId, storeId))) {
+      res.status(403).json({ success: false, error: { message: "Cet établissement n'est pas rattaché à votre compte" } });
+      return;
+    }
+    const user = await userRepository.findById(userId);
+    if (!user || !user.is_active) {
+      res.status(401).json({ success: false, error: { message: 'Compte inactif' } });
+      return;
+    }
+    const roleCtx = await loginRoleContext(userId);
+    const token = generateToken({
+      userId, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId,
+      tokenVersion: (user as { token_version?: number | null }).token_version ?? 0,
+    });
+    const { jti, exp } = req.user!;
+    if (jti && exp) await revokedTokenRepository.revoke(jti, userId, exp);
+    setAuthCookie(res, token);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'active_store_changed', userId, success: true, details: { from: req.user!.storeId ?? null, to: storeId },
+    });
+    res.json({ success: true, data: { token, storeId } });
+  },
+
   async me(req: AuthRequest, res: Response) {
     const user = await userRepository.findById(req.user!.userId);
     if (!user) {
@@ -461,7 +503,8 @@ export const authController = {
         homeRoute: roleCtx.homeRoute,
         roles: roleCtx.roles,
         isActive: user.is_active,
-        storeId: user.store_id || null,
+        // Lot 7 : établissement actif = celui du jeton (bascule depuis la barre du haut).
+        storeId: req.user!.storeId || user.store_id || null,
         locale: user.locale ?? null,
         mustChangePassword: !!user.must_change_password,
         // G6-01 : rôle soumis à la double authentification, pas encore activée → configuration imposée.

@@ -28,6 +28,10 @@ export const authApi = {
   logout: () => api.post('/auth/logout').then(r => r.data),
   usersList: () => api.get('/auth/users-list').then(r => r.data.data) as Promise<{ id: string; firstName: string; lastName: string; role: string }[]>,
   me: () => api.get('/auth/me').then(r => r.data.data),
+  /** Établissements du compte connecté et établissement actif (refonte Utilisateurs, lot 7). */
+  myStores: () => api.get('/auth/stores').then(r => r.data.data) as Promise<{ activeStoreId: string | null; stores: { id: string; name: string; code: string | null; isDefault: boolean }[] }>,
+  /** Bascule l'établissement actif : un nouveau jeton porte l'établissement choisi. */
+  setActiveStore: (storeId: string) => api.post('/auth/active-store', { storeId }).then(r => r.data.data as { token: string; storeId: string }),
   /** Invitation d'un nouveau compte (refonte Utilisateurs, lot 3) : routes publiques. */
   invitation: (token: string) => api.get(`/auth/invitations/${encodeURIComponent(token)}`).then(r => r.data.data) as Promise<{ status: 'valid' | 'expired' | 'used' | 'revoked' | 'unknown'; email?: string; firstName?: string; expiresAt?: string; message?: string }>,
   acceptInvitation: (token: string, password: string) => api.post(`/auth/invitations/${encodeURIComponent(token)}/accept`, { password }).then(r => r.data.data as { email: string }),

@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { AccessRightsView, AccessHistoryView } from './AccessReviewPanel';
 import { SecuritySection, MfaTag, errorMessage, fullName, formatLastLogin, formatDateTime, generatePassword, type UserRow } from './AccountSecurity';
 import { ExceptionsPanel } from './ExceptionsPanel';
+import { StoresField } from './StoresField';
 import { fmtDate } from './UsersOverview';
 import { InvitationSentModal } from './NewUserWizard';
 import type { InvitationResult } from '../../api/users.api';
@@ -65,6 +66,7 @@ export default function UserRecordPage() {
   const roleLabel = (c: string) => roles.find(r => r.code === c)?.label ?? c;
   const roleCodes: string[] = Array.isArray(u.roles) && u.roles.length ? u.roles : (u.role ? [u.role] : []);
   const store = stores.find(s => s.id === u.storeId)?.name as string | undefined;
+  const otherStores = (Array.isArray(u.storeIds) ? (u.storeIds as string[]) : []).filter(id => id !== u.storeId).length;
   const employee = employees.find(e => e.user_id === u.id);
   const conflicts = review?.sodViolations ?? [];
   const self = u.id === me?.id;
@@ -116,7 +118,7 @@ export default function UserRecordPage() {
             <dl className="usr-kv">
               <dt>Rôle principal</dt><dd>{roleLabel(u.role)}</dd>
               {roleCodes.length > 1 && <><dt>Autres rôles</dt><dd>{roleCodes.filter(c => c !== u.role).map(roleLabel).join(', ')}</dd></>}
-              <dt>Établissement</dt><dd>{store ?? (u.role === 'admin' ? 'Tous' : 'Aucun')}</dd>
+              <dt>Établissement</dt><dd>{store ? `${store}${otherStores ? ` +${otherStores}` : ''}` : (u.role === 'admin' ? 'Tous' : 'Aucun')}</dd>
               <dt>Connexion</dt><dd title={u.lastLoginAt ? formatDateTime(u.lastLoginAt) : undefined}>{u.lastLoginAt ? formatLastLogin(u.lastLoginAt) : 'Jamais connecté'}</dd>
               <dt>2FA</dt><dd><MfaTag u={u} /></dd>
             </dl>
@@ -256,6 +258,7 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
     roles: (Array.isArray(u.roles) && u.roles.length ? u.roles : (u.role ? [u.role] : [])) as string[],
     primary: (u.role as string) ?? '',
     storeId: (u.storeId as string) ?? '',
+    storeIds: (Array.isArray(u.storeIds) ? u.storeIds : (u.storeId ? [u.storeId] : [])) as string[],
   }), [u]);
   const [form, setForm] = useState(initial);
   const [adding, setAdding] = useState('');
@@ -265,7 +268,7 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
   const addable = roles.filter(r => r.is_active && r.available !== false && !form.roles.includes(r.code));
 
   const save = useMutation({
-    mutationFn: () => usersApi.update(u.id, { roles: form.roles, primaryRole: form.primary, storeId: form.storeId || null }),
+    mutationFn: () => usersApi.update(u.id, { roles: form.roles, primaryRole: form.primary, storeId: form.storeId || null, storeIds: form.storeIds }),
     onSuccess: () => {
       notify.success('Rôles et périmètre enregistrés');
       ['users', 'roles', 'access-review', 'user-profile', 'sod-violations'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
@@ -325,11 +328,9 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
         <div className="usr-pad">
           <fieldset className="ds-fieldset"><legend>Périmètre</legend>
             <div className="ds-form-grid">
-              <FormField label="Établissement" htmlFor="u-store" hint="La portée « Son établissement » des rôles se lit sur cet établissement.">
-                <select id="u-store" className="ds-input" value={form.storeId} onChange={e => setForm(f => ({ ...f, storeId: e.target.value }))}>
-                  <option value="">Aucun</option>
-                  {stores.map(s => <option key={s.id as string} value={s.id as string}>{s.name as string}</option>)}
-                </select>
+              <FormField label="Établissements" hint="La portée « Son établissement » se lit sur l'établissement actif : celui par défaut à la connexion, puis celui choisi dans la barre du haut.">
+                <StoresField idPrefix="u-store" stores={stores.map(s => ({ id: s.id as string, name: s.name as string }))}
+                  ids={form.storeIds} defaultId={form.storeId} onChange={(ids, def) => setForm(f => ({ ...f, storeIds: ids, storeId: def }))} />
               </FormField>
               <FormField label="Plafonds d'approbation" hint="Viennent des rôles ; ils se règlent dans Contrôles internes.">
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', paddingTop: 6 }}>

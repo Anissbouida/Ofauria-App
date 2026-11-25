@@ -77,6 +77,23 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
 }
 
 /**
+ * Établissements choisis pour un compte (lot 7). `raw` absent : rien à changer (null). Sinon liste
+ * dédoublonnée d'établissements existants et actifs ; le défaut est `wanted` s'il en fait partie,
+ * puis l'actuel, puis le premier ; liste vide = aucun établissement.
+ */
+async function storeSelection(raw: unknown, wanted: unknown, current: string | null): Promise<{ ids: string[]; defaultId: string | null } | null | string> {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return 'Liste d\'établissements attendue';
+  const ids = [...new Set(raw.map(String))];
+  const known = await userRepository.activeStoreIdsAmong(ids);
+  const unknown = ids.filter(id => !known.includes(id));
+  if (unknown.length) return 'Établissement inconnu ou désactivé';
+  const w = typeof wanted === 'string' && wanted ? wanted : null;
+  const defaultId = (w && ids.includes(w)) ? w : (current && ids.includes(current)) ? current : ids[0] ?? null;
+  return { ids, defaultId };
+}
+
+/**
  * Écriture d'une exception individuelle (lot 6) : refus métier rendus tels quels (400, 409 avec
  * les conflits de séparation des tâches), puis sessions du compte fermées et événement journalisé.
  */
@@ -108,9 +125,10 @@ async function afterExceptionChange(req: AuthRequest, details: Record<string, un
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const [users, allRoles, lastLogins, mfaRoles, invitations, trustedDevices, passkeys] = await Promise.all([
+    const [users, allRoles, lastLogins, mfaRoles, invitations, trustedDevices, passkeys, storeIds] = await Promise.all([
       userRepository.findAll(), userRepository.allUserRoles(), userRepository.lastLogins(), mfaRepository.requiredRoles(),
       invitationRepository.openByUser(), mfaRepository.trustedDeviceCounts(), passkeyRepository.countsByUser(),
+      userRepository.storeIdsByUser(),
     ]);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
@@ -129,6 +147,8 @@ export const userController = {
         role: u.role, roles,
         isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
         storeId: u.store_id, createdAt: u.created_at,
+        // Établissements du compte, le défaut en tête (lot 7).
+        storeIds: storeIds.get(u.id) ?? (u.store_id ? [u.store_id] : []),
         // Sécurité du compte (double authentification, verrouillage, dernière connexion).
         // Activée = application d'authentification OU au moins une passkey (mig 705).
         mfaEnabled: !!u.totp_enabled || (passkeys.get(u.id) ?? 0) > 0, mfaApp: !!u.totp_enabled, mfaPasskeys: passkeys.get(u.id) ?? 0,
@@ -188,7 +208,11 @@ export const userController = {
       return;
     }
     const passwordHash = await hashPassword(invite ? crypto.randomBytes(32).toString('base64url') : password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId }, req.user?.userId);
+    // Lot 7 : plusieurs établissements ; `storeId` = établissement par défaut (sinon le premier).
+    const stores = await storeSelection(req.body.storeIds, storeId ?? null, null);
+    if (typeof stores === 'string') { res.status(400).json({ success: false, error: { message: stores } }); return; }
+    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId: stores ? stores.defaultId : storeId }, req.user?.userId);
+    if (stores) await userRepository.setStores(user.id, stores.ids, stores.defaultId, req.user?.userId);
     if (pinCode) {
       const pinHash = await hashPin(String(pinCode));
       await userRepository.update(user.id, { pinCode: pinHash, pinLength: String(pinCode).length }, req.user?.userId);
@@ -235,7 +259,8 @@ export const userController = {
     // Defense en profondeur : seul un admin peut modifier role(s)/storeId.
     // La route doit egalement etre protegee par authorize('admin'),
     // mais on re-verifie ici contre le token pour eviter toute escalade.
-    if (req.user?.role !== 'admin' && (role !== undefined || rolesInput !== undefined || storeId !== undefined)) {
+    const storeIdsInput: unknown = req.body.storeIds;
+    if (req.user?.role !== 'admin' && (role !== undefined || rolesInput !== undefined || storeId !== undefined || storeIdsInput !== undefined)) {
       res.status(403).json({
         success: false,
         error: { message: 'Modification de rôle ou magasin réservée aux administrateurs' },
@@ -270,7 +295,14 @@ export const userController = {
       newPrimaryRole = String(role);
     }
     if (isActive !== undefined) updateData.isActive = isActive;
-    if (storeId !== undefined) updateData.storeId = storeId;
+    // Lot 7 : établissements du compte ; `storeId` = établissement par défaut.
+    let stores: { ids: string[]; defaultId: string | null } | null = null;
+    if (storeIdsInput !== undefined) {
+      const current = (await userRepository.findById(req.params.id))?.store_id ?? null;
+      const sel = await storeSelection(storeIdsInput, storeId, current);
+      if (typeof sel === 'string') { res.status(400).json({ success: false, error: { message: sel } }); return; }
+      stores = sel;
+    } else if (storeId !== undefined) updateData.storeId = storeId;
     if (password) updateData.passwordHash = await hashPassword(password);
     if (pinCode !== undefined) {
       if (pinCode) {
@@ -323,7 +355,8 @@ export const userController = {
 
     // OWASP A07-5 : si les privileges ont change, invalider les tokens
     // existants de l'utilisateur cible en bumpant sa token_version.
-    const privilegeChange = role !== undefined || rolesInput !== undefined || storeId !== undefined || isActive === false || !!password;
+    if (stores) await userRepository.setStores(user.id, stores.ids, stores.defaultId, req.user?.userId);
+    const privilegeChange = role !== undefined || rolesInput !== undefined || storeId !== undefined || stores !== null || isActive === false || !!password;
     if (privilegeChange) {
       await userRepository.bumpTokenVersion(user.id);
     }
@@ -338,7 +371,7 @@ export const userController = {
       email: user.email,
       success: true,
       details: {
-        changed: [...Object.keys(updateData), ...(rolesInput !== undefined ? ['roles'] : [])],
+        changed: [...Object.keys(updateData), ...(rolesInput !== undefined ? ['roles'] : []), ...(stores ? ['stores'] : [])],
         privilegeChange,
         ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}),
       },
