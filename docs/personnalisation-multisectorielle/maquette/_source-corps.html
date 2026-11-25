@@ -1,0 +1,789 @@
+<style>
+  /* Habillage propre à la maquette (hors application) : bandeau de planches et notes. */
+  html, body { height: auto; margin: 0; }
+  .mq-bar { position: sticky; top: 0; z-index: 50; background: #1f2937; color: #fff; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font: 13px/1.3 -apple-system, "Segoe UI", sans-serif; }
+  .mq-bar b { margin-right: 8px; }
+  .mq-bar button { background: #374151; color: #fff; border: 0; padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; }
+  .mq-bar button[aria-pressed=true] { background: #fff; color: #1f2937; font-weight: 600; }
+  .mq-note { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; border: 1.5px dashed var(--ds-line); background: var(--ds-card); font-size: 14px; color: var(--ds-body); display: grid; gap: 6px; }
+  .mq-note strong { color: var(--ds-ink); }
+  .mq-note dl { margin: 0; display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; }
+  .mq-note dt { color: var(--ds-muted); } .mq-note dd { margin: 0; }
+  .mq-new { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--ds-accent); color: #fff; vertical-align: middle; line-height: 16px; }
+  .mq-plate { display: none; } .mq-plate.on { display: block; }
+  .mq-sub { font-weight: 400; color: var(--ds-muted); font-size: 13px; }
+  .mq-stack { display: grid; gap: 16px; }
+  .mq-pad { padding: 16px 20px; display: grid; gap: 12px; font-size: 14px; }
+
+  /* Composants à ajouter au Design System (Stepper, ChoiceCard) : uniquement des jetons --ds-*. */
+  .wz-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 16px; font-size: 13px; color: var(--ds-muted); }
+  .wz-top .odoo-setup-bar { flex: 1 1 240px; height: 6px; border-radius: 999px; overflow: hidden; }
+  .wz-top strong { color: var(--ds-ink); font-size: 14px; }
+  .wz { display: grid; grid-template-columns: 236px minmax(0, 1fr) 276px; gap: 16px; align-items: start; }
+  .wz-steps { padding: 8px; display: grid; gap: 2px; position: sticky; top: 56px; }
+  .wz-phase { font-size: 12px; font-weight: 600; color: var(--ds-muted); padding: 10px 10px 4px; }
+  .wz-step { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 10px; border-radius: 8px; font-size: 14px; color: var(--ds-body); text-align: left; width: 100%; border: 0; background: none; cursor: pointer; }
+  .wz-step:hover { background: var(--ds-hair); }
+  .wz-step svg { flex: none; color: var(--ds-line); }
+  .wz-step.done svg { color: var(--ds-success); }
+  .wz-step.active { background: var(--ds-tint); color: var(--ds-ink); font-weight: 600; }
+  .wz-step.active svg { color: var(--ds-accent); }
+  .wz-step.warn svg { color: var(--ds-warning); }
+  .wz-head { padding: 20px 24px 4px; }
+  .wz-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-ink); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .wz-head p { margin: 4px 0 0; font-size: 14px; color: var(--ds-muted); }
+  .wz-body { padding: 16px 24px 24px; display: grid; gap: 20px; animation: wz-in .18s ease-out; }
+  @keyframes wz-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .wz-body { animation: none; } }
+  .wz-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  .wz-card { text-align: left; border: 0; border-radius: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); padding: 14px 16px; display: grid; gap: 6px; align-content: start; cursor: pointer; font: inherit; color: var(--ds-body); position: relative; transition: box-shadow .12s, background-color .12s; }
+  .wz-card:hover { box-shadow: inset 0 0 0 1px var(--ds-line), var(--ds-shadow); }
+  .wz-card.on { background: var(--ds-tint); box-shadow: inset 0 0 0 2px var(--ds-accent); }
+  .wz-card.second { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ds-accent) 45%, var(--ds-card)); }
+  .wz-card.dashed { box-shadow: none; border: 1.5px dashed var(--ds-line); }
+  .wz-ico { width: 36px; height: 36px; border-radius: 10px; background: var(--ds-tint); color: var(--ds-accent-ink); display: inline-flex; align-items: center; justify-content: center; }
+  .wz-card.on .wz-ico { background: var(--ds-accent); color: #fff; }
+  .wz-card b { font-size: 14px; font-weight: 600; color: var(--ds-ink); }
+  .wz-card small { font-size: 13px; color: var(--ds-muted); line-height: 1.35; }
+  .wz-card .wz-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+  .wz-card .wz-check { position: absolute; top: 12px; right: 12px; color: var(--ds-accent); }
+  .wz-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--ds-hair); flex-wrap: wrap; }
+  .wz-row:last-child { border-bottom: 0; }
+  .wz-row > div:first-child { flex: 1 1 260px; min-width: 0; }
+  .wz-row b { font-size: 14px; font-weight: 600; color: var(--ds-ink); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .wz-row p { margin: 2px 0 0; font-size: 13px; color: var(--ds-muted); }
+  .wz-row.off b, .wz-row.off p { opacity: .55; }
+  .wz-q { color: var(--ds-muted); cursor: help; display: inline-flex; }
+  .wz-side { padding: 16px; display: grid; gap: 14px; font-size: 13px; color: var(--ds-body); position: sticky; top: 56px; }
+  .wz-side h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ds-ink); }
+  .wz-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .wz-menu li { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 6px; background: var(--ds-bg); color: var(--ds-ink); font-size: 13px; }
+  .wz-menu li svg { color: var(--ds-muted); }
+  .wz-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; }
+  .wz-kv dt { color: var(--ds-muted); } .wz-kv dd { margin: 0; color: var(--ds-ink); font-weight: 600; text-align: right; }
+  .wz-flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+  .wz-flow button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; background: var(--ds-bg); color: var(--ds-muted); box-shadow: inset 0 0 0 1px var(--ds-sep); cursor: pointer; display: grid; gap: 2px; text-align: left; min-width: 128px; }
+  .wz-flow button.on { background: var(--ds-tint); color: var(--ds-ink); box-shadow: inset 0 0 0 1.5px var(--ds-accent); font-weight: 600; }
+  .wz-flow button small { font-weight: 400; font-size: 12px; color: var(--ds-muted); }
+  .wz-flow button:disabled { cursor: not-allowed; }
+  .wz-flow .arrow { align-self: center; color: var(--ds-line); }
+  .wz-chain { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .wz-chain span.lvl { padding: 6px 12px; border-radius: 999px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); color: var(--ds-ink); font-weight: 600; }
+  .wz-chain span.lvl.lock { background: var(--ds-bg); }
+  .wz-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .ds-form-foot.wz-foot { padding: 12px 24px; }
+  @media (max-width: 1180px) { .wz { grid-template-columns: 220px minmax(0, 1fr); } .wz-side { grid-column: 1 / -1; position: static; } }
+  @media (max-width: 820px) { .wz { grid-template-columns: minmax(0, 1fr); } .wz-steps { position: static; display: flex; overflow-x: auto; } .wz-phase { display: none; } .wz-step { width: auto; white-space: nowrap; } }
+
+  /* Mise en page reprise de la maquette retenue : progression, étapes numérotées, cartes à coche, pied fixe. */
+  body { padding-bottom: 72px; }
+  .wz { grid-template-columns: 256px minmax(0, 1fr) 288px; }
+  .wz-steps { padding: 16px 12px; display: block; }
+  .wz-prog { display: grid; gap: 6px; padding: 0 4px 6px; font-size: 13px; color: var(--ds-muted); }
+  .wz-prog strong { color: var(--ds-ink); font-size: 14px; } .wz-prog b { color: var(--ds-accent); }
+  .wz-prog .odoo-setup-bar { height: 6px; border-radius: 999px; overflow: hidden; }
+  #wz-steps { display: grid; gap: 2px; }
+  .wz-step { gap: 10px; min-height: 40px; }
+  .wz-num { width: 24px; height: 24px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ds-muted); box-shadow: inset 0 0 0 1px var(--ds-sep); background: var(--ds-card); }
+  .wz-step .wz-num svg { color: inherit; }
+  .wz-step.active { color: var(--ds-accent-ink); }
+  .wz-step.active .wz-num { background: var(--ds-accent); color: #fff; box-shadow: none; }
+  .wz-step.done { color: var(--ds-ink); }
+  .wz-step.done .wz-num { background: var(--ds-success-bg); color: var(--ds-success); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-success) 30%, var(--ds-card)); }
+  .wz-step.warn .wz-num { background: var(--ds-warning-bg); color: var(--ds-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-warning) 35%, var(--ds-card)); }
+  .wz-head { padding: 24px 24px 4px; }
+  .wz-body { min-height: 420px; align-content: start; }
+  .wz-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wz-cards .wz-card { display: flex; gap: 12px; align-items: flex-start; min-height: 96px; padding: 14px; }
+  .wz-card[hidden] { display: none; }
+  .wz-txt { display: grid; gap: 4px; flex: 1; min-width: 0; padding-right: 22px; }
+  .wz-tick { position: absolute; top: 12px; right: 12px; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--ds-sep); display: grid; place-items: center; color: #fff; }
+  .wz-card.on .wz-tick { background: var(--ds-accent); box-shadow: none; }
+  .wz-ico { background: var(--ds-hair); color: var(--ds-muted); }
+  .wz-card.on .wz-ico { background: color-mix(in srgb, var(--ds-accent) 16%, var(--ds-card)); color: var(--ds-accent-ink); }
+  .wz-tiles .wz-ico { background: var(--ds-tint); color: var(--ds-accent-ink); }
+  .wz-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
+  .wz-checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ds-ink); padding: 6px 0; }
+  .wz-rec { padding: 12px 14px; border-radius: 10px; background: var(--ds-tint); display: grid; gap: 4px; }
+  .wz-rec b { color: var(--ds-ink); font-size: 14px; } .wz-rec p { margin: 0; }
+  .wz-hr { border: 0; border-top: 1px solid var(--ds-hair); margin: 0; width: 100%; }
+  .wz-sum { margin: 0; display: grid; gap: 10px; }
+  .wz-sum dt { font-weight: 600; color: var(--ds-ink); } .wz-sum dd { margin: 0; }
+  /* Interrupteur à la couleur du thème (l'application le rend en vert dans les Paramètres). */
+  .kl-apple .odoo-toggle.on, .odoo-toggle.on { background: var(--ds-accent) !important; }
+  .wz-fixed { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--ds-card); border-top: 1px solid var(--ds-sep); padding: 12px 28px; display: flex; align-items: center; gap: 12px; }
+  .wz-saved { color: var(--ds-success); font-size: 13px; font-weight: 600; }
+  #wz-foot { flex: 1; display: flex; align-items: center; gap: 8px; }
+  #wz-foot .ds-grow { text-align: right; font-size: 13px; color: var(--ds-muted); }
+  .wz-prev { border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--ds-sep); }
+  .wz-prev-top { background: var(--ds-accent); color: #fff; padding: 9px 14px; font-weight: 700; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  .wz-prev-body { display: grid; grid-template-columns: 170px minmax(0, 1fr); min-height: 170px; }
+  .wz-prev-body nav { background: var(--ds-bg); padding: 12px; display: grid; gap: 7px; align-content: start; font-size: 12px; color: var(--ds-ink); }
+  .wz-prev-body > div { padding: 16px; display: grid; gap: 10px; align-content: start; }
+  .wz-prev-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .wz-prev-kpis div { background: var(--ds-bg); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--ds-muted); display: grid; }
+  .wz-prev-kpis strong { font-size: 22px; color: var(--ds-ink); }
+  @media (max-width: 1180px) { .wz { grid-template-columns: 232px minmax(0, 1fr); } }
+  @media (max-width: 820px) { .wz { grid-template-columns: minmax(0, 1fr); } #wz-steps { display: flex; overflow-x: auto; } .wz-cards, .wz-checks { grid-template-columns: minmax(0, 1fr); } .wz-saved { display: none; } .wz-fixed { padding: 10px 12px; } }
+</style>
+</head>
+<body class="bg-gray-100 kl-tw">
+
+<div class="mq-bar" role="group" aria-label="Planches de la maquette">
+  <b>Maquette — données d'exemple</b>
+  <button type="button" data-p="assistant" aria-pressed="true">Assistant de configuration</button>
+  <button type="button" data-p="reprise" aria-pressed="false">Reprise et évolution</button>
+  <button type="button" data-p="profils" aria-pressed="false">Profils industriels</button>
+  <button type="button" data-p="impact" aria-pressed="false">Analyse d'impact</button>
+</div>
+
+<header class="h-12 flex items-center px-4 shrink-0 z-40" style="background-color: var(--ds-accent); color: var(--theme-cta-text);">
+  <div class="flex items-center gap-2"><button class="p-1.5 rounded" type="button" aria-label="Applications"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></button><span class="text-base font-bold tracking-wide px-1" id="hd-name">KALUM</span><span class="text-white/30 text-sm">/</span><span class="text-sm font-medium text-white/80">Paramètres</span></div>
+  <div class="flex-1 flex justify-center px-4"><div class="relative" style="width: min(420px, 38vw);"><div class="flex items-center gap-2 px-2.5 h-8 rounded-md" style="background: rgba(255, 255, 255, 0.18); color: var(--theme-cta-text);"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span class="text-sm" style="opacity:.8">Rechercher…</span></div></div></div>
+  <span class="text-sm font-medium" style="margin-left:12px">Administrateur</span>
+</header>
+
+<main class="kl-apple kl-ds">
+<div class="odoo-scope odoo-settings-shell" style="background: transparent;">
+<div class="odoo-settings" id="shell">
+  <aside class="odoo-settings-nav" id="snav" aria-label="Pages des paramètres" hidden>
+    <div class="odoo-settings-nav-body">
+      <div class="odoo-settings-nav-group" style="border-top:none;padding-top:0"><button type="button" class="odoo-settings-nav-item" data-p="reprise" data-nav="reprise"><span data-i="grid" data-s="15"></span> Vue d'ensemble</button></div>
+      <nav class="odoo-settings-nav-group"><button type="button" class="odoo-settings-nav-group-title">Mon entreprise</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="building" data-s="15"></span> Société</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="store" data-s="15"></span> Établissements</button></nav>
+      <nav class="odoo-settings-nav-group"><button type="button" class="odoo-settings-nav-group-title">Activité et modules</button>
+        <button type="button" class="odoo-settings-nav-item" data-p="assistant"><span data-i="wand" data-s="15"></span> Assistant de configuration <span class="mq-new">nouveau</span></button>
+        <button type="button" class="odoo-settings-nav-item" data-p="impact" data-nav="impact"><span data-i="layers" data-s="15"></span> Secteur et modules</button>
+        <button type="button" class="odoo-settings-nav-item" data-p="profils" data-nav="profils"><span data-i="copy" data-s="15"></span> Profils industriels <span class="mq-new">nouveau</span></button></nav>
+      <nav class="odoo-settings-nav-group"><button type="button" class="odoo-settings-nav-group-title">Finance</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="globe" data-s="15"></span> Pays et législation</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="hash" data-s="15"></span> Numérotation</button></nav>
+      <nav class="odoo-settings-nav-group"><button type="button" class="odoo-settings-nav-group-title">Utilisateurs et sécurité</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="check" data-s="15"></span> Circuits d'approbation</button>
+        <button type="button" class="odoo-settings-nav-item"><span data-i="shield" data-s="15"></span> Journal</button></nav>
+    </div>
+  </aside>
+
+  <div class="odoo-settings-main">
+    <div class="odoo-control-bar odoo-settings-bar">
+      <div class="odoo-breadcrumb" aria-label="Fil d'Ariane"><span>Paramètres</span><span class="odoo-breadcrumb-separator">›</span><span>Activité et modules</span><span class="odoo-breadcrumb-separator">›</span><span class="odoo-breadcrumb-current" id="crumb">Assistant de configuration</span></div>
+      <div style="flex:1"></div>
+      <div id="hd-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
+    </div>
+    <div class="odoo-settings-body kl-page">
+
+<!-- ═══════════ Planche 1 : assistant ═══════════ -->
+<section class="mq-plate on" id="p-assistant" data-page="Assistant de configuration">
+  <header class="kl-largetitle" style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="flex:1 1 320px"><h1>Assistant de configuration</h1><p>Adaptez Kalum à votre activité, étape par étape.</p></div>
+    <div class="prj-views" role="group" aria-label="Mode de configuration" id="wz-mode"></div>
+  </header>
+  <div class="wz">
+    <nav class="ds-panel wz-steps" aria-label="Étapes de l'assistant">
+      <div class="wz-prog">
+        <div style="display:flex;justify-content:space-between;align-items:center"><strong>Votre progression</strong><b id="wz-pct"></b></div>
+        <div class="odoo-setup-bar" role="progressbar" aria-label="Avancement" aria-valuemin="0" aria-valuemax="100"><span id="wz-bar" style="width:0"></span></div>
+        <span id="wz-count"></span>
+      </div>
+      <div id="wz-steps"></div>
+    </nav>
+    <section class="ds-panel" aria-live="polite">
+      <div class="wz-head" id="wz-head"></div>
+      <div class="wz-body" id="wz-body"></div>
+    </section>
+    <aside class="ds-panel wz-side" id="wz-side" aria-label="Assistance et configuration actuelle"></aside>
+  </div>
+</section>
+
+<!-- ═══════════ Planche 2 : reprise et évolution ═══════════ -->
+<section class="mq-plate" id="p-reprise" data-page="Vue d'ensemble">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>La vue d'ensemble affiche un pourcentage et une liste de contrôle recalculés depuis les données. Aucune progression n'est gardée.</dd>
+      <dt>Demain</dt><dd>La configuration interrompue se reprend où elle s'est arrêtée. Après la mise en service, six entrées rouvrent l'assistant sur la seule étape concernée, avec analyse d'impact avant d'appliquer.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Vue d'ensemble</h1><p>Où en est la configuration de votre société, et comment la faire évoluer.</p></header>
+  <div class="mq-stack">
+    <section class="ds-panel"><div class="mq-pad">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1 1 320px;display:grid;gap:4px">
+          <h2 class="ds-subhead" style="font-size:17px">Configuration en cours <span class="mq-new">nouveau</span></h2>
+          <span class="mq-sub">Boulangerie, pâtisserie et métiers de bouche · arrêtée à « Modèle opérationnel » · enregistrée hier à 17 h 42 par Administrateur</span>
+          <div class="odoo-setup-bar" style="height:6px;border-radius:999px;overflow:hidden;margin-top:6px"><span style="width:33%"></span></div>
+          <span class="mq-sub">4 étapes sur 12 terminées</span>
+        </div>
+        <button type="button" class="odoo-btn-secondary">Abandonner le brouillon</button>
+        <button type="button" class="odoo-btn-primary" data-p="assistant">Reprendre</button>
+      </div>
+    </div></section>
+    <div class="ds-section-head"><h2>Faire évoluer la configuration</h2><small>Chaque entrée ouvre l'étape concernée, puis l'analyse d'impact</small><span class="mq-new">nouveau</span></div>
+    <div class="wz-tiles">
+      <button type="button" class="wz-card" data-p="assistant"><span class="wz-ico" data-i="briefcase"></span><b>Ajouter une activité</b><small>Un secteur secondaire, avec ses modules et ses mots.</small></button>
+      <button type="button" class="wz-card" data-p="assistant"><span class="wz-ico" data-i="chef"></span><b>Ajouter une spécialité</b><small>Atelier, étapes et rôles de la spécialité.</small></button>
+      <button type="button" class="wz-card" data-p="impact"><span class="wz-ico" data-i="layers"></span><b>Activer ou retirer un module</b><small>Les dépendances et les conséquences sont montrées avant.</small></button>
+      <button type="button" class="wz-card" data-p="assistant"><span class="wz-ico" data-i="store"></span><b>Ouvrir un établissement</b><small>Reprend les réglages de la société, ajustables sur place.</small></button>
+      <button type="button" class="wz-card" data-p="assistant"><span class="wz-ico" data-i="type"></span><b>Modifier le vocabulaire</b><small>Les mots de vos menus, documents et rapports.</small></button>
+      <button type="button" class="wz-card" data-p="assistant"><span class="wz-ico" data-i="check"></span><b>Mettre à jour les règles</b><small>Approbations, étapes obligatoires, seuils.</small></button>
+    </div>
+    <div class="ds-section-head"><h2>Versions de la configuration</h2><small>Une version par activation ; la restauration ne supprime aucune donnée</small></div>
+    <section class="ds-panel"><div class="ds-scroll"><table class="odoo-table">
+      <thead><tr><th>Version</th><th>Date</th><th>Auteur</th><th>Changement</th><th style="width:140px">État</th><th class="ds-actions" style="width:220px">Action</th></tr></thead>
+      <tbody>
+        <tr><td class="ds-ref">v7</td><td>21 nov. 2026</td><td>Administrateur</td><td class="ds-strong">Spécialité « Chocolaterie » ajoutée<div class="mq-sub">1 atelier, 3 types d'étape, 1 rôle proposé</div></td><td><span class="kl-tag g">En service</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="profils">Comparer</button></td></tr>
+        <tr><td class="ds-ref">v6</td><td>3 nov. 2026</td><td>Gérant</td><td class="ds-strong">Module « Maintenance » activé<div class="mq-sub">Approuvé par Administrateur</div></td><td><span class="kl-tag x">Remplacée</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="profils">Comparer</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Restaurer</button></td></tr>
+        <tr><td class="ds-ref">v5</td><td>12 oct. 2026</td><td>Administrateur</td><td class="ds-strong">Seuil d'approbation des achats porté à 20 000 DH</td><td><span class="kl-tag x">Remplacée</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="profils">Comparer</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Restaurer</button></td></tr>
+      </tbody></table></div><div class="ds-foot"><span>3 versions sur 7</span></div></section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche 3 : profils industriels ═══════════ -->
+<section class="mq-plate" id="p-profils" data-page="Profils industriels">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>9 profils en base avec héritage parent → enfant. On peut enregistrer la configuration courante comme profil et l'exporter, mais pas modifier un profil, le versionner ni comparer deux profils. Trois résolutions séparées (profil, politiques de production, écrans), sans niveau pays ni utilisateur.</dd>
+      <dt>Demain</dt><dd>Un catalogue de profils modifiables et versionnés, et une seule chaîne de résolution à sept niveaux. Un paramètre réglementaire est verrouillé au niveau qui le pose : les niveaux en dessous ne peuvent pas le changer.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Profils industriels</h1><p>Les modèles de configuration que l'assistant propose. Un profil hérite d'un autre et n'enregistre que ses différences.</p></header>
+  <div class="mq-stack">
+    <section class="ds-panel"><div class="ds-scroll"><table class="odoo-table">
+      <thead><tr><th>Profil</th><th>Hérite de</th><th>Spécialités</th><th>Version</th><th style="width:130px">État</th><th class="ds-num">Sociétés</th><th class="ds-actions" style="width:230px">Action</th></tr></thead>
+      <tbody>
+        <tr><td class="ds-strong">Agroalimentaire</td><td>Socle Kalum</td><td>2</td><td class="ds-ref">3.1</td><td><span class="kl-tag o">À valider</span></td><td class="ds-num">0</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Dupliquer</button></td></tr>
+        <tr><td class="ds-strong"><span style="padding-left:20px">Boulangerie, pâtisserie et métiers de bouche</span></td><td>Agroalimentaire</td><td>12 <span class="mq-new">5 nouvelles</span></td><td class="ds-ref">4.0</td><td><span class="kl-tag g">Disponible</span></td><td class="ds-num">1</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Dupliquer</button></td></tr>
+        <tr><td class="ds-strong">Industrie manufacturière</td><td>Socle Kalum</td><td>3</td><td class="ds-ref">2.2</td><td><span class="kl-tag o">À valider</span></td><td class="ds-num">0</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Dupliquer</button></td></tr>
+        <tr><td class="ds-strong">Commerce de gros et distribution</td><td>Socle Kalum</td><td>4 <span class="mq-new">nouvelles</span></td><td class="ds-ref">1.4</td><td><span class="kl-tag g">Disponible</span></td><td class="ds-num">0</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Dupliquer</button></td></tr>
+        <tr><td class="ds-strong">Services professionnels <span class="mq-new">nouveau</span></td><td>Socle Kalum</td><td>4</td><td class="ds-ref">1.0</td><td><span class="kl-tag x">Brouillon</span></td><td class="ds-num">0</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Publier</button></td></tr>
+        <tr><td class="ds-strong">Traiteur événementiel (personnalisé)</td><td>Boulangerie, pâtisserie…</td><td>2</td><td class="ds-ref">1.1</td><td><span class="kl-tag g">Disponible</span></td><td class="ds-num">0</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">Exporter</button></td></tr>
+      </tbody></table></div>
+      <div class="ds-foot"><span>6 profils sur 14</span><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Importer un profil</button><button type="button" class="odoo-btn-primary">Nouveau profil</button></div></section>
+
+    <div class="ds-section-head"><h2>Chaîne d'héritage</h2><small>Le niveau le plus à droite l'emporte, sauf paramètre verrouillé</small><span class="mq-new">nouveau</span></div>
+    <section class="ds-panel"><div class="mq-pad">
+      <div class="wz-chain"><span class="lvl lock">Socle Kalum</span>›<span class="lvl lock">Pays et réglementation</span>›<span class="lvl">Secteur</span>›<span class="lvl">Spécialités</span>›<span class="lvl">Entreprise</span>›<span class="lvl">Établissement</span>›<span class="lvl">Utilisateur</span></div>
+    </div><div class="ds-scroll"><table class="odoo-table ds-dense">
+      <thead><tr><th>Paramètre</th><th>Socle</th><th>Pays (Maroc)</th><th>Secteur</th><th>Spécialité</th><th>Entreprise</th><th>Établissement</th><th>Valeur retenue</th></tr></thead>
+      <tbody>
+        <tr><td class="ds-strong">Seuil d'approbation des achats (DH)</td><td>10 000</td><td>—</td><td>—</td><td>—</td><td>20 000</td><td>5 000 <span class="mq-sub">(Boutique Anfa)</span></td><td class="ds-strong">5 000 à Anfa, 20 000 ailleurs</td></tr>
+        <tr><td class="ds-strong">Traçabilité par lot</td><td>non</td><td>—</td><td>oui <span class="kl-tag o">Réglementaire</span></td><td>—</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="ds-strong">oui</td></tr>
+        <tr><td class="ds-strong">Modification d'une écriture validée</td><td>interdite <span class="kl-tag o">Sécurité</span></td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="ds-strong">interdite</td></tr>
+        <tr><td class="ds-strong">Taux normal de TVA</td><td>—</td><td>20 % <span class="kl-tag o">Réglementaire</span></td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="mq-sub">verrouillé</td><td class="ds-strong">20 %</td></tr>
+        <tr><td class="ds-strong">Contrôle qualité avant transfert</td><td>non</td><td>—</td><td>non</td><td>oui <span class="mq-sub">(Chocolaterie)</span></td><td>—</td><td>—</td><td class="ds-strong">oui pour la chocolaterie</td></tr>
+        <tr><td class="ds-strong">Mot pour « entrepôt »</td><td>Entrepôt</td><td>—</td><td>Économat</td><td>—</td><td>Réserve</td><td>—</td><td class="ds-strong">Réserve</td></tr>
+        <tr><td class="ds-strong">Densité des tableaux</td><td>normale</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="ds-strong">dense <span class="mq-sub">(préférence de l'utilisateur)</span></td></tr>
+      </tbody></table></div></section>
+
+    <div class="ds-section-head"><h2>Comparer deux versions</h2><small>Boulangerie, pâtisserie et métiers de bouche — 3.2 et 4.0</small><span class="mq-new">nouveau pour les profils</span></div>
+    <section class="ds-panel"><div class="ds-scroll"><table class="odoo-table ds-dense">
+      <thead><tr><th>Élément</th><th>Version 3.2</th><th>Version 4.0</th><th style="width:130px">Changement</th></tr></thead>
+      <tbody>
+        <tr><td class="ds-strong">Spécialités</td><td>7</td><td>12 (glacerie, café et salon de thé, restauration rapide, artisanal, industriel)</td><td><span class="kl-tag g">Ajout</span></td></tr>
+        <tr><td class="ds-strong">Rôles proposés</td><td>—</td><td>13 rôles, dont chef boulanger, chef pâtissier, responsable économat</td><td><span class="kl-tag g">Ajout</span></td></tr>
+        <tr><td class="ds-strong">Contrôle à réception</td><td>facultatif</td><td>obligatoire pour les produits frais</td><td><span class="kl-tag b">Modifié</span></td></tr>
+        <tr><td class="ds-strong">Option « saisie par fournée »</td><td>activée</td><td>activée</td><td><span class="kl-tag x">Identique</span></td></tr>
+      </tbody></table></div>
+      <div class="ds-foot"><span>Une société déjà en service garde la 3.2 tant qu'elle n'accepte pas la mise à niveau.</span><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary" data-p="impact">Voir l'impact de la mise à niveau</button></div></section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche 4 : analyse d'impact ═══════════ -->
+<section class="mq-plate" id="p-impact" data-page="Secteur et modules">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>L'aperçu d'impact existe pour les modules et les options, avec des compteurs par module. La restauration ne remet que modules, options, diffusion, politiques, vocabulaire et spécialités.</dd>
+      <dt>Demain</dt><dd>La même analyse pour tout changement de configuration (activité, spécialité, règle, vocabulaire, établissement), avec approbation pour les changements sensibles, application en une transaction et retour arrière sur toutes les couches.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1>Retirer le module « Maintenance »</h1><span class="kl-tag o">Analyse d'impact</span></div>
+    <p>Ce que le changement fait, avant de l'appliquer. Aucune donnée n'est supprimée.</p>
+  </header>
+  <section class="ds-kpis" aria-label="Indicateurs">
+    <div class="ds-kpi"><span class="ds-kpi-label"><span>Données conservées</span></span><span class="ds-kpi-value">214</span><span class="ds-kpi-sub green">interventions, équipements, pièces</span></div>
+    <div class="ds-kpi"><span class="ds-kpi-label"><span>Écrans masqués</span></span><span class="ds-kpi-value">9</span><span class="ds-kpi-sub">menu, rapports, tuiles d'accueil</span></div>
+    <div class="ds-kpi"><span class="ds-kpi-label"><span>Utilisateurs touchés</span></span><span class="ds-kpi-value">3</span><span class="ds-kpi-sub">1 rôle n'a plus d'autre module</span></div>
+    <div class="ds-kpi"><span class="ds-kpi-label"><span>Points à régler</span></span><span class="ds-kpi-value">2</span><span class="ds-kpi-sub orange">1 bloquant</span></div>
+  </section>
+  <div class="mq-stack" style="margin-top:16px">
+    <div class="ds-alert info"><span data-i="info" data-s="16"></span><span style="flex:1">Les interventions, équipements et écritures liées restent en base et réapparaissent si le module est réactivé.</span></div>
+    <section class="ds-panel"><div class="ds-scroll"><table class="odoo-table">
+      <thead><tr><th>Conséquence</th><th style="width:140px">Gravité</th><th class="ds-num" style="width:100px">Nombre</th><th class="ds-actions" style="width:240px">Action</th></tr></thead>
+      <tbody>
+        <tr><td class="ds-strong">Interventions encore ouvertes<div class="mq-sub">À clôturer ou à annuler avant le retrait.</div></td><td><span class="kl-tag r">Bloquant</span></td><td class="ds-num">4</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Voir les interventions</button></td></tr>
+        <tr><td class="ds-strong">Type d'ordre « Lot avec contrôle machine » exige une étape de maintenance<div class="mq-sub">L'étape sera ignorée ; le parcours reste valide.</div></td><td><span class="kl-tag o">Avertissement</span></td><td class="ds-num">1</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir le parcours</button></td></tr>
+        <tr><td class="ds-strong">Rôle « Technicien de maintenance » sans module<div class="mq-sub">Les 2 utilisateurs gardent leur compte ; le rôle est mis en sommeil.</div></td><td><span class="kl-tag b">Information</span></td><td class="ds-num">2</td><td class="ds-actions"></td></tr>
+        <tr><td class="ds-strong">Notifications et tâches planifiées du module<div class="mq-sub">Suspendues, non supprimées.</div></td><td><span class="kl-tag b">Information</span></td><td class="ds-num">5</td><td class="ds-actions"></td></tr>
+        <tr><td class="ds-strong">Coût machine dans le coût de revient<div class="mq-sub">Les taux saisis sont conservés ; aucun module ne dépend de la maintenance.</div></td><td><span class="kl-tag g">Sans effet</span></td><td class="ds-num">—</td><td class="ds-actions"></td></tr>
+      </tbody></table></div>
+      <div class="ds-foot"><span>Changement sensible : l'approbation d'un second administrateur est demandée. Une version v8 sera créée, restaurable.</span><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary" data-p="reprise">Annuler</button><button type="button" class="odoo-btn-secondary">Simuler</button><button type="button" class="odoo-btn-primary" disabled>Demander l'approbation</button></div></section>
+  </div>
+</section>
+
+    </div>
+  </div>
+</div>
+</div>
+</main>
+<div class="wz-fixed" id="wz-fixed"><div class="odoo-scope kl-apple kl-ds" style="display:contents">
+  <span class="wz-saved" id="wz-saved"></span>
+  <button type="button" class="odoo-btn-secondary" data-p="reprise">Enregistrer et quitter</button>
+  <div id="wz-foot"></div>
+</div></div>
+
+<script>
+/* Maquette : état en mémoire (et localStorage quand il est disponible, pour montrer la reprise). */
+var I = {
+  spark: '<path d="m12 3 1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>', left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  dot: '<circle cx="12" cy="12" r="10"/>', cur: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  done: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  chef: '<path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/><path d="M6 17h12"/>',
+  factory: '<path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>',
+  store: '<path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/>',
+  truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+  box: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 8.7 5 8.7-5"/>',
+  briefcase: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
+  hammer: '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/>',
+  sprout: '<path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/>',
+  shirt: '<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>',
+  cross: '<path d="M4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h4a1 1 0 0 1 1 1v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-4a1 1 0 0 1 1-1h4a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-4a1 1 0 0 1-1-1V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4a1 1 0 0 1-1 1z"/>',
+  cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  warn: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  layers: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>',
+  grid: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+  building: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+  wand: '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  hash: '<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  type: '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+};
+function ico(n, s) { s = s || 18; return '<svg xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (I[n] || I.dot) + '</svg>'; }
+document.querySelectorAll('[data-i]').forEach(function (e) { e.innerHTML = ico(e.dataset.i, +e.dataset.s || 18); });
+function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function tag(c, l, lock) { return '<span class="kl-tag ' + c + '">' + (lock ? ico('lock', 11) : '') + l + '</span>'; }
+function tog(on, act, dis, label) { return '<button type="button" role="switch" aria-checked="' + !!on + '" aria-label="' + esc(label || '') + '" class="odoo-toggle' + (on ? ' on' : '') + '" data-act="' + act + '"' + (dis ? ' disabled' : '') + '><span class="odoo-toggle-knob"></span></button>'; }
+function seg(key, opts, cur) { return '<div class="prj-views" role="group">' + opts.map(function (o) { return '<button type="button" class="' + (cur === o[0] ? 'active' : '') + '" aria-pressed="' + (cur === o[0]) + '" data-act="op:' + key + ':' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
+function q(t) { return '<span class="wz-q" tabindex="0" title="' + esc(t) + '" aria-label="' + esc(t) + '">' + ico('help', 14) + '</span>'; }
+function alertBox(tone, icon, html, action) { return '<div class="ds-alert ' + tone + '">' + ico(icon, 16) + '<span style="flex:1">' + html + '</span>' + (action || '') + '</div>'; }
+function row(title, help, control, off) { return '<div class="wz-row' + (off ? ' off' : '') + '"><div><b>' + title + '</b>' + (help ? '<p>' + help + '</p>' : '') + '</div>' + control + '</div>'; }
+
+/* ── Catalogue (dans l'application : tables de profils, pas du code) ── */
+var MODS = [
+  ['compta', 'Comptabilité et finance', 'Finance'], ['immo', 'Immobilisations', 'Finance'],
+  ['achats', 'Achats et approvisionnement', 'Achats et stock'], ['stock', 'Stocks et inventaires', 'Achats et stock'], ['logistique', 'Logistique', 'Achats et stock'],
+  ['ventes', 'Ventes et facturation', 'Ventes'], ['pos', 'Point de vente', 'Ventes'], ['crm', 'CRM et gestion commerciale', 'Ventes'],
+  ['production', 'Production', 'Fabrication'], ['recettes', 'Recettes et nomenclatures', 'Fabrication'], ['qualite', 'Qualité', 'Fabrication'], ['tracabilite', 'Traçabilité', 'Fabrication'], ['maintenance', 'Maintenance', 'Fabrication'],
+  ['rh', 'Ressources humaines', 'Personnel'], ['paie', 'Paie', 'Personnel'],
+  ['ged', 'Gestion documentaire', 'Pilotage'], ['bi', 'Tableaux de bord', 'Pilotage'], ['projets', 'Projets et temps passés', 'Pilotage']
+];
+var DEPS = { production: ['stock', 'recettes'], recettes: ['stock'], tracabilite: ['stock'], pos: ['ventes', 'stock'], logistique: ['stock', 'ventes'], paie: ['rh'], immo: ['compta'], crm: ['ventes'], achats: ['stock'] };
+var SUBS = {
+  production: [['Saisie par fournée', 'bake'], ['Planification à la commande', 'mto'], ['Sous-traitance', 'st']],
+  stock: [['Emplacements dans l\'entrepôt', 'loc'], ['Transferts entre établissements', 'tr'], ['Dates de péremption', 'dlc']],
+  ventes: [['Tarifs par client', 'tarif'], ['Bons de livraison', 'bl'], ['Vente au poids', 'poids']],
+  qualite: [['Contrôle à réception', 'cr'], ['Points critiques (HACCP)', 'haccp']]
+};
+function L(m) { return MODS.filter(function (x) { return x[0] === m; })[0][1]; }
+var SECTORS = [
+  { k: 'boul', n: 'Boulangerie, pâtisserie et métiers de bouche', d: 'Fabrication quotidienne, vente en boutique et à la commande.', i: 'chef', st: ['g', 'Disponible'] },
+  { k: 'agro', n: 'Agroalimentaire', d: 'Transformation par lots, traçabilité et dates de péremption.', i: 'box', st: ['o', 'À valider'] },
+  { k: 'fab', n: 'Industrie manufacturière', d: 'Fabrication en série ou à la commande, nomenclatures et gammes.', i: 'factory', st: ['o', 'À valider'] },
+  { k: 'detail', n: 'Commerce de détail', d: 'Magasins, caisse, réassort.', i: 'store', st: ['b', 'Nouveau profil'] },
+  { k: 'gros', n: 'Commerce de gros et distribution', d: 'Achat, stockage et revente, tournées de livraison.', i: 'truck', st: ['g', 'Disponible'] },
+  { k: 'resto', n: 'Restauration et hôtellerie', d: 'Service à table, cuisine, réservations.', i: 'utensils', st: ['b', 'Nouveau profil'] },
+  { k: 'btp', n: 'Bâtiment et travaux publics', d: 'Chantiers, situations de travaux, sous-traitants.', i: 'hammer', st: ['b', 'Nouveau profil'] },
+  { k: 'agri', n: 'Agriculture', d: 'Parcelles, campagnes, récoltes.', i: 'sprout', st: ['b', 'Nouveau profil'] },
+  { k: 'textile', n: 'Textile et habillement', d: 'Tailles et coloris, façonniers, collections.', i: 'shirt', st: ['b', 'Nouveau profil'] },
+  { k: 'transport', n: 'Transport et logistique', d: 'Flotte, tournées, entreposage pour compte de tiers.', i: 'truck', st: ['b', 'Nouveau profil'] },
+  { k: 'services', n: 'Services professionnels', d: 'Missions, temps passés, facturation à l\'avancement.', i: 'briefcase', st: ['b', 'Nouveau profil'] },
+  { k: 'sante', n: 'Santé et pharmacie', d: 'Lots, péremption, ordonnances.', i: 'cross', st: ['b', 'Nouveau profil'] },
+  { k: 'ecom', n: 'Commerce électronique', d: 'Boutique en ligne, expéditions, retours.', i: 'cart', st: ['b', 'Nouveau profil'] }
+];
+/* r = recommandé, o = facultatif, n = non pertinent ; la comptabilité est toujours obligatoire. */
+var P = {
+  boul: { specs: [['Boulangerie', 'Atelier pains, pétrissage et cuisson'], ['Viennoiserie', 'Tourage, pousse contrôlée'], ['Pâtisserie moderne', 'Entremets, montage, froid'], ['Pâtisserie traditionnelle et marocaine', 'Atelier beldi, vente au poids'], ['Chocolaterie', 'Tempérage, contrôle avant transfert'], ['Biscuiterie', 'Longue conservation, lots'], ['Traiteur et produits salés', 'Commandes, événements'], ['Restauration rapide', 'Vente sur place et à emporter'], ['Glacerie', 'Chaîne du froid, turbinage'], ['Café et salon de thé', 'Service en salle'], ['Production artisanale', 'Petites séries, plan du jour'], ['Production industrielle', 'Lignes, ordonnancement']],
+    def: [0, 1, 2], m: { achats: 'r', stock: 'r', ventes: 'r', pos: 'r', production: 'r', recettes: 'r', qualite: 'r', tracabilite: 'r', rh: 'r', paie: 'r', bi: 'r', crm: 'o', logistique: 'o', maintenance: 'o', immo: 'o', ged: 'o', projets: 'n' },
+    v: ['Économat', 'Fiche technique', 'Bon de production', 'Employé de production', 'Laboratoire', 'Poste de production'],
+    roles: ['Direction générale', 'Responsable de production', 'Chef boulanger', 'Chef pâtissier', 'Chef viennoisier', 'Chef beldi', 'Chef salé', 'Responsable économat', 'Responsable achats', 'Responsable commercial', 'Caissier', 'Comptable', 'Responsable des ressources humaines'],
+    op: { prod: 'stock', rythme: 'art', vente: 'detail', trace: 'dlc', cout: 'poids' }, flow: [1, 1, 1, 0, 1] },
+  agro: { specs: [['Produits conditionnés', 'Lignes de conditionnement, étiquetage'], ['Produits frais', 'Chaîne du froid, péremption courte'], ['Conserves et produits secs', 'Longue conservation'], ['Boissons', 'Cuves, embouteillage']],
+    def: [0], m: { achats: 'r', stock: 'r', ventes: 'r', production: 'r', recettes: 'r', qualite: 'r', tracabilite: 'r', maintenance: 'r', logistique: 'r', rh: 'r', paie: 'r', bi: 'r', immo: 'r', crm: 'o', ged: 'o', pos: 'n', projets: 'n' },
+    v: ['Magasin matières', 'Formule', 'Ordre de lot', 'Opérateur', 'Atelier', 'Ligne'],
+    roles: ['Direction générale', 'Directeur d\'usine', 'Responsable de production', 'Chef de ligne', 'Responsable qualité', 'Magasinier', 'Responsable achats', 'Responsable commercial', 'Responsable maintenance', 'Comptable', 'Responsable des ressources humaines'],
+    op: { prod: 'stock', rythme: 'ind', vente: 'gros', trace: 'dlc', cout: 'poids' }, flow: [1, 1, 1, 1, 1], lockTrace: true },
+  fab: { specs: [['Fabrication en série', 'Ordres de série, déclaration en fin de poste'], ['Fabrication à la commande', 'Ordre par affaire, devis technique'], ['Assemblage', 'Sous-ensembles, numéros de série']],
+    def: [0], m: { achats: 'r', stock: 'r', ventes: 'r', production: 'r', recettes: 'r', qualite: 'r', maintenance: 'r', immo: 'r', rh: 'r', paie: 'r', bi: 'r', tracabilite: 'o', logistique: 'o', crm: 'o', ged: 'o', projets: 'o', pos: 'n' },
+    v: ['Magasin industriel', 'Nomenclature', 'Ordre de fabrication', 'Opérateur industriel', 'Unité de fabrication', 'Centre de charge'],
+    roles: ['Direction générale', 'Directeur industriel', 'Responsable méthodes', 'Chef d\'atelier', 'Opérateur', 'Responsable qualité', 'Magasinier', 'Acheteur', 'Commercial', 'Responsable maintenance', 'Comptable'],
+    op: { prod: 'cmd', rythme: 'ind', vente: 'gros', trace: 'serie', cout: 'qte' }, flow: [1, 1, 1, 1, 0] },
+  gros: { specs: [['Alimentaire', 'Lots et péremption'], ['Matériaux et quincaillerie', 'Vente au mètre, au poids'], ['Importation', 'Frais d\'approche, devises'], ['Tournées de livraison', 'Vendeurs-livreurs']],
+    def: [0], m: { achats: 'r', stock: 'r', ventes: 'r', crm: 'r', logistique: 'r', rh: 'r', bi: 'r', tracabilite: 'o', paie: 'o', immo: 'o', ged: 'o', pos: 'o', qualite: 'o', production: 'n', recettes: 'n', maintenance: 'n', projets: 'n' },
+    v: ['Dépôt', 'Kit', 'Ordre d\'assemblage', 'Préparateur', 'Zone de préparation', 'Poste'],
+    roles: ['Direction générale', 'Responsable commercial', 'Vendeur', 'Responsable achats', 'Chef de dépôt', 'Préparateur de commandes', 'Livreur', 'Comptable'],
+    op: { vente: 'gros', trace: 'lot' }, flow: [] },
+  services: { specs: [['Conseil et études', 'Missions au forfait ou au temps passé'], ['Formation', 'Sessions, participants'], ['Maintenance et interventions', 'Contrats, bons d\'intervention'], ['Agence et création', 'Projets, jalons']],
+    def: [0], m: { ventes: 'r', crm: 'r', projets: 'r', rh: 'r', bi: 'r', ged: 'r', achats: 'o', paie: 'o', immo: 'o', maintenance: 'o', stock: 'n', production: 'n', recettes: 'n', qualite: 'n', tracabilite: 'n', pos: 'n', logistique: 'n' },
+    v: ['—', 'Offre de service', 'Mission', 'Consultant', 'Équipe', 'Poste'],
+    roles: ['Direction générale', 'Directeur de mission', 'Consultant', 'Responsable commercial', 'Assistant de gestion', 'Comptable'],
+    op: { vente: 'direct' }, flow: [] }
+};
+P.detail = Object.assign({}, P.gros, { specs: [['Alimentation générale', 'Caisse rapide, péremption'], ['Habillement', 'Tailles et coloris'], ['Équipement de la maison', 'Livraison, garanties']], m: Object.assign({}, P.gros.m, { pos: 'r', logistique: 'o', crm: 'o' }), roles: ['Direction générale', 'Responsable de magasin', 'Caissier', 'Vendeur', 'Responsable achats', 'Comptable'], op: { vente: 'detail', trace: 'lot' } });
+function prof() { return P[S.sector] || Object.assign({}, P.services, { specs: [['Profil à construire', 'Les spécialités de ce secteur seront livrées avec son profil']], todo: true }); }
+function sect(k) { return SECTORS.filter(function (x) { return x.k === (k || S.sector); })[0]; }
+
+var STEPS = [
+  { k: 'soc', t: 'Entreprise', ph: 'Votre entreprise', h: 'Informations générales', p: 'L\'identité qui figure sur vos documents, et les lieux où vous travaillez.' },
+  { k: 'sec', t: 'Secteur d\'activité', ph: 'Votre métier', h: 'Quel est votre secteur d\'activité ?', p: 'Choisissez le secteur principal. Kalum adapte les étapes suivantes à votre métier.' },
+  { k: 'spe', t: 'Spécialités', ph: 'Votre métier', h: 'Quelles spécialités exercez-vous ?', p: 'Vous pouvez en combiner plusieurs. Chacune apporte ses ateliers, ses étapes et ses rôles.' },
+  { k: 'mod', t: 'Modules', ph: 'Votre métier', h: 'Modules et fonctionnalités', p: 'Le préréglage vient du secteur et des spécialités ; vous l\'ajustez.' },
+  { k: 'op', t: 'Modèle opérationnel', ph: 'Votre fonctionnement', h: 'Modèle opérationnel', p: 'Comment votre entreprise produit, stocke et vend réellement.', adv: true },
+  { k: 'voc', t: 'Vocabulaire', ph: 'Votre fonctionnement', h: 'Vocabulaire métier', p: 'Les mots affichés dans les menus, les documents et les rapports. Les identifiants techniques ne changent pas.' },
+  { k: 'reg', t: 'Processus et règles', ph: 'Votre fonctionnement', h: 'Processus et règles de gestion', p: 'Les étapes obligatoires, les approbations et la numérotation.', adv: true },
+  { k: 'ui', t: 'Interfaces', ph: 'Votre fonctionnement', h: 'Interfaces par métier', p: 'L\'accueil, les raccourcis et les indicateurs de chaque rôle.', adv: true },
+  { k: 'fin', t: 'Comptabilité et fiscalité', ph: 'Mise en service', h: 'Comptabilité et fiscalité', p: 'Posées par le pays et le secteur ; les obligations légales ne se désactivent pas.' },
+  { k: 'rol', t: 'Rôles et accès', ph: 'Mise en service', h: 'Utilisateurs, rôles et autorisations', p: 'Les rôles proposés pour vos activités, chacun avec le moins de droits nécessaire.' },
+  { k: 'dat', t: 'Données de départ', ph: 'Mise en service', h: 'Initialisation des données', p: 'Importez vos fichiers ou partez des modèles du profil.' },
+  { k: 'rev', t: 'Révision et activation', ph: 'Mise en service', h: 'Révision, simulation et activation', p: 'Vérifiez l\'ensemble avant d\'appliquer. Rien n\'a encore été modifié.' }
+];
+
+var S = { step: 0, mode: 'avance', name: 'Les Délices de l\'Atlas', sector: 'boul', second: [], specs: [], mods: {}, subs: {}, op: {}, voc: [], flow: [], roles: {}, demo: false, sim: false, seen: {}, tip: true };
+function applyProfile() {
+  var p = prof(); S.specs = (p.def || [0]).slice(); S.mods = { compta: true }; S.subs = {};
+  MODS.forEach(function (m) { if (p.m[m[0]] === 'r') S.mods[m[0]] = true; });
+  S.op = Object.assign({ sites: 'multi', stockOrg: 'central', valid: 'un' }, p.op); S.voc = p.v.slice(); S.flow = (p.flow || []).slice(); S.roles = {}; p.roles.forEach(function (r) { S.roles[r] = true; }); S.sim = false;
+}
+applyProfile();
+try { var saved = JSON.parse(localStorage.getItem('kalum.maquette.assistant') || 'null'); if (saved && saved.sector) S = Object.assign(S, saved); } catch (e) { /* aperçu sans stockage */ }
+function save() { try { localStorage.setItem('kalum.maquette.assistant', JSON.stringify(S)); } catch (e) { /* idem */ } }
+function on(m) { return !!S.mods[m]; }
+function steps() { return STEPS.filter(function (s) { return S.mode === 'avance' || !s.adv; }); }
+function cls(m) { return m === 'compta' ? 's' : (prof().m[m] || 'o'); }
+function dependents(m) { return Object.keys(DEPS).filter(function (k) { return on(k) && DEPS[k].indexOf(m) >= 0; }); }
+
+/* ── Contrôles de cohérence (dans l'application : règles déterministes côté serveur) ── */
+function issues() {
+  var out = [], p = prof();
+  if (!S.name.trim()) out.push(['r', 'soc', 'La raison sociale est obligatoire.']);
+  if (p.lockTrace && !on('tracabilite')) out.push(['r', 'mod', 'La traçabilité par lot est une obligation du secteur agroalimentaire.']);
+  if (on('production') && !S.specs.length) out.push(['o', 'spe', 'Aucune spécialité choisie : aucun atelier ne sera créé.']);
+  if (on('pos') && !S.roles['Caissier']) out.push(['o', 'rol', 'Le point de vente est actif mais aucun rôle de caisse n\'est retenu.']);
+  if (!S.roles['Comptable']) out.push(['o', 'rol', 'Aucun rôle comptable : la même personne saisira et validera les écritures.']);
+  if (on('paie') && S.op.sites === 'multi' && S.mode === 'rapide') out.push(['b', 'op', 'Plusieurs établissements : les réglages de la société s\'appliquent à tous (mode rapide).']);
+  S.second.forEach(function (k) { if (!P[k]) out.push(['o', 'sec', 'L\'activité secondaire « ' + sect(k).n + ' » n\'a pas encore de profil : ses modules restent à choisir à la main.']); });
+  return out;
+}
+
+/* ── Étapes ── */
+var R = {};
+R.soc = function () {
+  function f(l, c, hint, req) { return '<div class="ds-field"><label>' + l + (req ? '<span class="ds-req" aria-hidden="true" style="color:var(--ds-danger)"> *</span>' : '') + '</label>' + c + (hint ? '<span class="ds-field-hint">' + hint + '</span>' : '') + '</div>'; }
+  function sel(o) { return '<select class="ds-input">' + o.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>'; }
+  var h = '<fieldset class="ds-fieldset"><legend class="ds-subhead">Identité</legend><div class="ds-form-grid">'
+    + f('Raison sociale', '<input class="ds-input" data-in="name" value="' + esc(S.name) + '"' + (S.name.trim() ? '' : ' aria-invalid="true"') + '>', S.name.trim() ? '' : 'Saisissez la raison sociale.', true)
+    + f('Forme juridique', sel(['SARL', 'SARL à associé unique', 'SA', 'SAS', 'Entreprise individuelle', 'Coopérative']))
+    + f('Pays et juridiction fiscale', sel(['Maroc']), 'Pose le plan comptable, la TVA et la paie. Référentiel Maroc 2026.1.', true)
+    + f('Régime fiscal', sel(['Impôt sur les sociétés — régime du résultat net réel', 'Résultat net simplifié', 'Contribution professionnelle unique']))
+    + f('Devise principale', sel(['Dirham marocain (DH)']), 'Ne se change plus après la première écriture.', true)
+    + f('Devises secondaires', sel(['Aucune', 'Euro', 'Dollar américain', 'Euro et dollar américain']))
+    + f('Langues', sel(['Français', 'Français et arabe', 'Français, arabe et anglais']))
+    + f('Fuseau horaire', sel(['Casablanca (UTC+1)']))
+    + f('Taille de l\'entreprise', sel(['1 à 9 salariés', '10 à 49 salariés', '50 à 249 salariés', '250 salariés et plus']), 'Sert aux recommandations de modules et de rôles.')
+    + f('Logo', '<button type="button" class="odoo-btn-secondary" style="justify-self:start;align-self:flex-start">' + ico('upload', 14) + ' Choisir un fichier</button>', 'PNG ou SVG, repris sur les documents et l\'écran de connexion.')
+    + '</div></fieldset>';
+  h += '<div><div class="ds-section-head" style="margin-bottom:8px"><h2 style="font-size:14px">Établissements</h2><small>Magasins, sites de production, dépôts</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm">' + ico('plus', 13) + ' Ajouter</button></div>'
+    + '<table class="odoo-table ds-dense" style="width:100%"><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Entité juridique</th></tr></thead><tbody>'
+    + '<tr><td class="ds-strong">Siège et laboratoire</td><td>Site de production</td><td>Casablanca</td><td>' + esc(S.name || '—') + '</td></tr>'
+    + '<tr><td class="ds-strong">Boutique Maârif</td><td>Magasin</td><td>Casablanca</td><td>' + esc(S.name || '—') + '</td></tr>'
+    + '<tr><td class="ds-strong">Boutique Anfa</td><td>Magasin</td><td>Casablanca</td><td>' + esc(S.name || '—') + '</td></tr></tbody></table></div>';
+  return h;
+};
+R.sec = function () {
+  var h = '';
+  if (S.tip) h += alertBox('info', 'bulb', 'Vous hésitez ? Décrivez votre activité en quelques phrases : l\'assistant propose un secteur, que vous validez.', '<button type="button" class="odoo-btn-secondary ds-btn-sm" data-act="tip">Décrire mon activité</button>');
+  h += '<div style="display:flex;gap:12px;align-items:center"><input type="search" class="ds-input" data-in="search" placeholder="Rechercher un secteur…" aria-label="Rechercher un secteur" style="flex:1">' + tag('b', SECTORS.length + ' secteurs') + '</div>';
+  h += '<div class="wz-cards" id="wz-sectors">' + SECTORS.map(function (s) {
+    var main = S.sector === s.k, sec = S.second.indexOf(s.k) >= 0;
+    return '<button type="button" class="wz-card' + (main ? ' on' : sec ? ' second' : '') + '" aria-pressed="' + main + '" data-act="sector:' + s.k + '">'
+      + '<span class="wz-ico">' + ico(s.i, 20) + '</span><span class="wz-txt"><b>' + s.n + '</b><small>' + s.d + '</small>'
+      + '<span class="wz-tags">' + tag(s.st[0], s.st[1]) + (sec ? tag('x', 'Complémentaire') : '') + '</span></span>'
+      + '<span class="wz-tick">' + (main ? ico('check', 11) : '') + '</span></button>';
+  }).join('') + '<button type="button" class="wz-card dashed"><span class="wz-ico">' + ico('plus', 20) + '</span><span class="wz-txt"><b>Profil personnalisé</b><small>Créé à partir d\'un profil existant, sans développement.</small></span></button></div>';
+  h += '<div><h3 class="ds-subhead" style="margin-bottom:6px">Activités complémentaires</h3><div class="wz-checks">' + SECTORS.filter(function (s) { return s.k !== S.sector; }).map(function (s) {
+    return '<label><input type="checkbox" data-act="second:' + s.k + '"' + (S.second.indexOf(s.k) >= 0 ? ' checked' : '') + '> ' + s.n + '</label>';
+  }).join('') + '</div></div>';
+  return h;
+};
+R.spe = function () {
+  var p = prof(), h = '';
+  if (p.todo) h += alertBox('warning', 'warn', 'Le profil « ' + sect().n + ' » reste à construire. L\'assistant applique le socle commun ; vous pourrez enregistrer votre configuration comme profil.');
+  h += '<div style="display:flex;align-items:center;gap:8px"><h3 class="ds-subhead">' + sect().n + '</h3><span class="ds-grow"></span>' + tag('b', S.specs.length + ' sélectionnée' + (S.specs.length > 1 ? 's' : '')) + '</div><div class="wz-cards">' + p.specs.map(function (s, i) {
+    var o = S.specs.indexOf(i) >= 0;
+    return '<button type="button" class="wz-card' + (o ? ' on' : '') + '" aria-pressed="' + o + '" data-act="spec:' + i + '"><span class="wz-ico">' + ico('layers', 20) + '</span><span class="wz-txt"><b>' + s[0] + '</b><small>' + s[1] + '</small></span><span class="wz-tick">' + (o ? ico('check', 11) : '') + '</span></button>';
+  }).join('') + '</div>';
+  S.second.filter(function (k) { return P[k]; }).forEach(function (k) {
+    h += '<div><h3 class="ds-subhead" style="margin-bottom:8px">Activité secondaire — ' + sect(k).n + '</h3><div class="wz-cards">' + P[k].specs.slice(0, 4).map(function (s) { return '<button type="button" class="wz-card"><span class="wz-ico">' + ico('layers', 20) + '</span><span class="wz-txt"><b>' + s[0] + '</b><small>' + s[1] + '</small></span><span class="wz-tick"></span></button>'; }).join('') + '</div></div>';
+  });
+  if (S.sector === 'boul' && S.specs.indexOf(4) >= 0) h += alertBox('info', 'bulb', 'Chocolaterie : un contrôle qualité avant transfert vers le magasin est recommandé. Il sera proposé à l\'étape « Processus et règles ».');
+  return h;
+};
+R.mod = function () {
+  var h = '', groups = [], miss = [];
+  MODS.forEach(function (m) { if (groups.indexOf(m[2]) < 0) groups.push(m[2]); if (cls(m[0]) === 'r' && !on(m[0])) miss.push(m[0]); });
+  if (S.note) { h += alertBox(S.note[0], S.note[0] === 'danger' ? 'warn' : 'info', S.note[1]); }
+  if (miss.length) h += alertBox('info', 'bulb', miss.length + ' module' + (miss.length > 1 ? 's recommandés ne sont pas activés' : ' recommandé n\'est pas activé') + ' : ' + miss.map(L).join(', ') + '.', '<button type="button" class="odoo-btn-secondary ds-btn-sm" data-act="reco">Activer</button>');
+  groups.forEach(function (g) {
+    h += '<div><h3 class="ds-subhead" style="margin-bottom:2px">' + g + '</h3>' + MODS.filter(function (m) { return m[2] === g; }).map(function (m) {
+      var k = m[0], c = cls(k), o = on(k), dep = DEPS[k] || [], lockT = k === 'tracabilite' && prof().lockTrace;
+      var t = c === 's' ? tag('x', 'Obligatoire', 1) : lockT ? tag('o', 'Réglementaire', 1) : c === 'r' ? tag('b', 'Recommandé') : c === 'n' ? tag('x', 'Non pertinent') : tag('x', 'Facultatif');
+      var help = (dep.length ? 'A besoin de : ' + dep.map(L).join(', ') + '. ' : '') + (c === 'n' ? 'Sans objet pour ' + sect().n.toLowerCase() + '.' : '');
+      var subs = (o && SUBS[k] && S.mode === 'avance') ? '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px">' + SUBS[k].map(function (s) { var so = S.subs[k + s[1]] !== false; return '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px">' + tog(so, 'sub:' + k + s[1], false, s[0]) + s[0] + '</label>'; }).join('') + '</div>' : '';
+      return '<div class="wz-row' + (c === 'n' && !o ? ' off' : '') + '"><div><b>' + m[1] + ' ' + t + '</b>' + (help ? '<p>' + help + '</p>' : '') + subs + '</div>' + tog(o, 'mod:' + k, c === 's' || (lockT && o), m[1]) + '</div>';
+    }).join('') + '</div>';
+  });
+  return h;
+};
+R.op = function () {
+  var h = '', o = S.op;
+  if (on('production')) h += '<div><h3 class="ds-subhead">Production</h3>'
+    + row('Déclenchement ' + q('Sur stock : vous fabriquez d\'après une prévision. À la commande : chaque commande client crée son ordre.'), 'Fixe le type d\'ordre par défaut.', seg('prod', [['stock', 'Sur stock'], ['cmd', 'À la commande'], ['hyb', 'Hybride']], o.prod))
+    + row('Rythme', 'Artisanal : plan du jour. Industriel : ordonnancement par ligne.', seg('rythme', [['art', 'Artisanal'], ['ind', 'Industriel'], ['cont', 'En continu']], o.rythme))
+    + row('Répartition des coûts de production', 'Clé de partage des charges entre les produits d\'un même ordre.', seg('cout', [['poids', 'Au poids'], ['qte', 'À la quantité'], ['temps', 'Au temps passé']], o.cout))
+    + row('Pertes, déchets et rendements', 'Rendement cible par fiche, écart signalé à la clôture de l\'ordre.', tog(o.pertes !== false, 'opb:pertes', false, 'Pertes et rendements')) + '</div>';
+  h += '<div><h3 class="ds-subhead">Vente</h3>' + row('Canal principal', 'Les autres canaux restent disponibles.', seg('vente', [['direct', 'Directe'], ['detail', 'Au détail'], ['gros', 'En gros'], ['multi', 'Multicanale']], o.vente)) + '</div>';
+  if (on('stock')) h += '<div><h3 class="ds-subhead">Stocks</h3>'
+    + row('Organisation', 'Centralisée : un stock commun réapprovisionne les établissements.', seg('stockOrg', [['central', 'Centralisée'], ['decent', 'Par établissement']], o.stockOrg))
+    + row('Suivi des articles ' + (prof().lockTrace ? tag('o', 'Réglementaire', 1) : ''), prof().lockTrace ? 'Le secteur impose au moins le suivi par lot.' : 'S\'applique par défaut ; chaque article peut déroger.', seg('trace', [['aucun', 'Sans suivi'], ['lot', 'Lots'], ['dlc', 'Lots et péremption'], ['serie', 'Numéros de série']].filter(function (x) { return !(prof().lockTrace && x[0] === 'aucun'); }), o.trace))
+    + row('Entrepôts et emplacements', 'Adressage des articles dans chaque entrepôt.', tog(!!o.empl, 'opb:empl', false, 'Emplacements'))
+    + row('Unités et conversions', 'Achat au sac, stock au kilo, vente à la pièce.', tog(o.unites !== false, 'opb:unites', false, 'Conversions d\'unités')) + '</div>';
+  h += '<div><h3 class="ds-subhead">Organisation</h3>'
+    + row('Sites', '3 établissements déclarés à l\'étape « Entreprise ».', seg('sites', [['mono', 'Un seul site'], ['multi', 'Plusieurs sites']], o.sites))
+    + (o.sites === 'multi' && on('stock') ? row('Transferts entre établissements', 'Bon de transfert avec réception par le destinataire.', tog(o.transf !== false, 'opb:transf', false, 'Transferts internes')) : '')
+    + row('Circuits de validation', 'Détail à l\'étape « Processus et règles ».', seg('valid', [['aucun', 'Aucun'], ['un', 'Un niveau'], ['deux', 'Deux niveaux']], o.valid)) + '</div>';
+  if (o.prod === 'cmd' && o.rythme === 'cont') h += alertBox('warning', 'warn', 'Une production en continu se pilote sur stock. Vérifiez le déclenchement.');
+  return h;
+};
+var VOC = [['Entrepôt', 'Entrepôts'], ['Nomenclature', 'Nomenclatures'], ['Ordre de fabrication', 'Ordres de fabrication'], ['Opérateur', 'Opérateurs'], ['Atelier', 'Ateliers'], ['Poste de travail', 'Postes de travail']];
+function plural(t) { var stop = false; return t.split(' ').map(function (w) { if (/^(de|du|des|à|en|et|—)$/i.test(w) || /^d['’]/i.test(w)) stop = true; return stop || /[sxz]$/.test(w) || !w ? w : w + 's'; }).join(' '); }
+R.voc = function () {
+  var p = prof();
+  var h = '<table class="odoo-table" style="width:100%"><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th>Votre terme, au singulier</th><th>Au pluriel</th></tr></thead><tbody>'
+    + VOC.map(function (v, i) {
+      var hide = (i > 0 && !on('production') && !on('recettes')) || (i === 0 && !on('stock'));
+      if (hide) return '';
+      var ch = S.voc[i] !== p.v[i];
+      return '<tr><td class="ds-strong">' + v[0] + '</td><td>' + p.v[i] + '</td><td><input class="ds-input sm" data-in="voc:' + i + '" value="' + esc(S.voc[i]) + '" aria-label="Terme pour ' + v[0] + '"></td><td><span id="pl' + i + '">' + esc(plural(S.voc[i])) + '</span> ' + (ch ? tag('o', 'Modifié') : '') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+  if (!on('production') && !on('stock')) h = alertBox('info', 'info', 'Les termes de fabrication et de stock sont masqués : ces modules ne sont pas activés.') + h;
+  h += '<p class="mq-sub" style="margin:0">Traductions arabe et anglaise, synonymes pour la recherche et 180 autres termes : bouton « Tous les termes ». En mode avancé, chaque terme se règle par langue.</p>';
+  return h;
+};
+var FLOW = [['Fiche technique', 'obligatoire pour lancer'], ['Bon de sortie des matières', 'sortie de stock pesée'], ['Ordre de fabrication', 'toujours présent'], ['Contrôle qualité', 'avant transfert'], ['Validation du transfert', 'réception par le magasin']];
+R.reg = function () {
+  var h = '', v = S.voc;
+  if (on('production')) {
+    var names = [v[1], 'Bon de sortie des matières', v[2], 'Contrôle qualité', 'Validation du transfert'];
+    h += '<div><h3 class="ds-subhead" style="margin-bottom:8px">Parcours d\'une production ' + q('Cliquez une étape pour la rendre obligatoire ou facultative. L\'ordre lui-même est toujours présent.') + '</h3><div class="wz-flow">'
+      + FLOW.map(function (f, i) { var o = !!S.flow[i] || i === 2; return (i ? '<span class="arrow">' + ico('right', 16) + '</span>' : '') + '<button type="button" class="' + (o ? 'on' : '') + '" aria-pressed="' + o + '" data-act="flow:' + i + '"' + (i === 2 || (i === 3 && !on('qualite')) ? ' disabled' : '') + '>' + names[i] + '<small>' + (i === 3 && !on('qualite') ? 'module Qualité inactif' : o ? 'obligatoire' : 'facultative') + '</small></button>'; }).join('') + '</div></div>';
+    if (prof().lockTrace) h += alertBox('info', 'lock', 'Agroalimentaire : le contrôle qualité avant transfert ne peut pas être retiré pour les produits frais.');
+  }
+  h += '<div><h3 class="ds-subhead" style="margin-bottom:8px">Approbations</h3><table class="odoo-table ds-dense" style="width:100%"><thead><tr><th>Pièce</th><th>Condition</th><th>Approbateur</th><th style="width:60px"></th></tr></thead><tbody>'
+    + (on('achats') ? '<tr><td class="ds-strong">Bon de commande fournisseur</td><td style="white-space:nowrap">au-delà de <input class="ds-input sm" style="width:90px;display:inline-block" value="10 000"> DH</td><td>Direction générale</td><td>' + tog(S.op.valid !== 'aucun', 'x', false, 'Approbation des achats') + '</td></tr>' : '')
+    + (on('ventes') ? '<tr><td class="ds-strong">Remise sur vente</td><td style="white-space:nowrap">au-delà de <input class="ds-input sm" style="width:60px;display:inline-block" value="15"> %</td><td>Responsable commercial</td><td>' + tog(true, 'x', false, 'Approbation des remises') + '</td></tr>' : '')
+    + (on('stock') ? '<tr><td class="ds-strong">Écart d\'inventaire</td><td style="white-space:nowrap">au-delà de <input class="ds-input sm" style="width:90px;display:inline-block" value="2 000"> DH</td><td>Direction générale</td><td>' + tog(true, 'x', false, 'Approbation des écarts') + '</td></tr>' : '')
+    + '<tr><td class="ds-strong">Écriture comptable manuelle ' + tag('o', 'Séparation des tâches', 1) + '</td><td>toujours</td><td>Une autre personne que le saisisseur</td><td>' + tog(true, 'x', true, 'Validation des écritures') + '</td></tr></tbody></table></div>';
+  h += '<div><h3 class="ds-subhead">Automatismes</h3>'
+    + row('Numérotation des documents', 'Préfixe, année et compteur par type de pièce et par établissement. Sans rupture pour les factures ' + tag('o', 'Réglementaire', 1), '<button type="button" class="odoo-btn-secondary ds-btn-sm">Régler</button>')
+    + (on('stock') ? row('Alerte de stock bas', 'Notification au ' + (S.roles['Responsable économat'] ? 'responsable économat' : 'responsable des achats') + ', proposition de commande.', tog(true, 'x', false, 'Alerte de stock')) : '')
+    + row('Comptabilisation automatique', 'Chaque pièce validée passe son écriture.', tog(true, 'x', true, 'Comptabilisation automatique')) + '</div>';
+  return h;
+};
+R.ui = function () {
+  var rs = Object.keys(S.roles).filter(function (r) { return S.roles[r]; }).slice(0, 7);
+  var home = function (r) { return /caiss/i.test(r) ? ['Caisse', 'Ventes du jour, fond de caisse'] : /chef|production|usine|atelier|ligne/i.test(r) ? ['Poste de production', S.voc[2] + ' du jour, matières à sortir'] : /achat/i.test(r) ? ['Poste de travail achats', 'À commander, réceptions attendues'] : /compta/i.test(r) ? ['Tableau de bord comptable', 'À comptabiliser, échéances'] : /économat|magasin|dépôt/i.test(r) ? ['Stock', 'Ruptures, péremptions proches'] : /commercial|vendeur/i.test(r) ? ['Tableau de bord des ventes', 'Devis à relancer, encours'] : /mission|consult/i.test(r) ? ['Mes missions', 'Temps à saisir, jalons'] : ['Tableau de bord général', 'Chiffre d\'affaires, marge, trésorerie']; };
+  return previewBox() + '<table class="odoo-table" style="width:100%"><thead><tr><th>Rôle</th><th>Écran d\'accueil</th><th>Indicateurs et raccourcis</th><th class="ds-actions" style="width:110px">Action</th></tr></thead><tbody>'
+    + rs.map(function (r) { var x = home(r); return '<tr><td class="ds-strong">' + r + '</td><td>' + x[0] + '</td><td>' + x[1] + '</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ajuster</button></td></tr>'; }).join('')
+    + '</tbody></table><p class="mq-sub" style="margin:0">Colonnes, champs obligatoires et documents imprimables se règlent écran par écran dans « Ajuster ». Tous les écrans gardent le même gabarit.</p>';
+};
+R.fin = function () {
+  return row('Plan comptable ' + tag('o', 'Réglementaire', 1), 'Plan comptable marocain (CGNC), référentiel Maroc 2026.1. Vous pouvez ajouter des sous-comptes, pas retirer les comptes du plan.', '<button type="button" class="odoo-btn-secondary ds-btn-sm">Voir le plan</button>')
+    + row('Journaux', 'Achats, ventes, banque, caisse' + (on('paie') ? ', paie' : '') + ', opérations diverses' + (on('production') ? ', production' : '') + '.', tag('g', 'Créés par le profil'))
+    + row('TVA ' + tag('o', 'Réglementaire', 1), 'Taux 20 %, 14 %, 10 %, 7 % et exonéré, datés. Régime de déclaration :', seg('tva', [['m', 'Mensuelle'], ['t', 'Trimestrielle']], S.op.tva || 'm'))
+    + row('Exercice comptable', 'Du 1er janvier au 31 décembre 2026 ; périodes mensuelles.', '<button type="button" class="odoo-btn-secondary ds-btn-sm">Modifier</button>')
+    + (on('stock') ? row('Valorisation des stocks ' + q('Le coût moyen pondéré lisse les prix d\'achat. Premier entré, premier sorti suit le prix de chaque lot.'), 'Ne se change qu\'à l\'ouverture d\'un exercice.', seg('valo', [['cmp', 'Coût moyen pondéré'], ['fifo', 'Premier entré, premier sorti']], S.op.valo || (on('tracabilite') ? 'fifo' : 'cmp'))) : '')
+    + (on('immo') ? row('Amortissements', 'Linéaire par défaut ; durées proposées par famille d\'immobilisation.', tag('g', 'Préréglé')) : '')
+    + row('Comptabilité analytique', 'Centres de coûts proposés : ' + (on('production') ? prof().specs.filter(function (s, i) { return S.specs.indexOf(i) >= 0; }).map(function (s) { return s[0]; }).slice(0, 3).join(', ') + ', ' : '') + 'établissements, administration.', tog(S.op.ana !== false, 'opb:ana', false, 'Comptabilité analytique'))
+    + row('Schémas de comptabilisation', 'Ventes, achats, stock' + (on('paie') ? ', paie' : '') + (on('production') ? ', production' : '') + ' : comptes posés par le profil, modifiables par famille.', '<button type="button" class="odoo-btn-secondary ds-btn-sm">Voir les schémas</button>')
+    + row('Clôture ' + tag('o', 'Réglementaire', 1), 'Une période fermée n\'accepte plus d\'écriture ; les contrôles de clôture légaux ne se désactivent pas.', tog(true, 'x', true, 'Contrôles de clôture'));
+};
+R.rol = function () {
+  var p = prof(), h = '';
+  h += '<table class="odoo-table ds-dense" style="width:100%"><thead><tr><th style="width:36px"></th><th>Rôle proposé</th><th>Accès principaux</th><th>Périmètre</th></tr></thead><tbody>'
+    + p.roles.map(function (r) {
+      var acc = /direction/i.test(r) ? 'Tous les modules, en lecture ; approbations' : /compta/i.test(r) ? 'Comptabilité, factures, banque' : /caiss/i.test(r) ? 'Caisse, clôture de caisse' : /achat|achet/i.test(r) ? 'Achats, fournisseurs, réceptions' : /commercial|vendeur/i.test(r) ? 'Ventes, clients, devis' : /humaines/i.test(r) ? 'Personnel, paie' : /qualité/i.test(r) ? 'Contrôles, libération des lots' : /économat|magasin|dépôt|prépar|livreur/i.test(r) ? 'Stock, sorties, inventaires' : /maintenance/i.test(r) ? 'Équipements, interventions' : /mission|consult|assistant/i.test(r) ? 'Projets, temps passés' : S.voc[2] + ', ' + S.voc[1].toLowerCase() + ', matières';
+      var per = /chef|caiss|vendeur|opérateur|prépar|livreur|consult/i.test(r) ? 'Son établissement' : 'Toute la société';
+      return '<tr><td><input type="checkbox" data-act="role:' + esc(r) + '"' + (S.roles[r] ? ' checked' : '') + ' aria-label="' + esc(r) + '"></td><td class="ds-strong">' + r + '</td><td>' + acc + '</td><td>' + per + '</td></tr>';
+    }).join('') + '</tbody></table>';
+  if (!S.roles['Comptable']) h += alertBox('warning', 'warn', 'Séparation des tâches : sans rôle comptable, la personne qui saisit une facture pourra aussi la payer.', '<button type="button" class="odoo-btn-secondary ds-btn-sm" data-act="role:Comptable">Ajouter le rôle</button>');
+  h += '<p class="mq-sub" style="margin:0">Les utilisateurs se créent ensuite et reçoivent un de ces rôles. Délégations et droits détaillés : Utilisateurs et droits.</p>';
+  return h;
+};
+R.dat = function () {
+  var items = [['Articles', on('stock') || on('ventes'), 'Matières, produits, services'], ['Clients et fournisseurs', true, 'Doublons détectés sur l\'identifiant fiscal, le nom, le téléphone'], ['Employés', on('rh'), 'Contrats, salaires de base'], [S.voc[1] + ' (pluriel : ' + plural(S.voc[1]).toLowerCase() + ')', on('recettes'), 'Composants, quantités, rendement'], ['Stocks initiaux', on('stock'), 'Quantités et valeur par établissement'], ['Soldes comptables d\'ouverture', true, 'Balance à la date de démarrage, équilibre contrôlé']];
+  var h = '<table class="odoo-table" style="width:100%"><thead><tr><th>Donnée</th><th style="width:150px">État</th><th class="ds-actions" style="width:250px">Action</th></tr></thead><tbody>'
+    + items.filter(function (x) { return x[1]; }).map(function (x, i) { return '<tr><td class="ds-strong">' + x[0] + '<div class="mq-sub">' + x[2] + '</div></td><td>' + (i === 1 ? tag('g', '148 lignes prêtes') : i === 0 ? tag('o', '3 doublons à trancher') : tag('x', 'À faire')) + '</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Modèle de fichier</button> <button type="button" class="odoo-btn-secondary ds-btn-sm">' + ico('upload', 13) + ' Importer</button></td></tr>'; }).join('') + '</tbody></table>';
+  h += '<div>' + row('Référentiels du profil', 'Catégories, unités, types d\'étape, ateliers des spécialités choisies. Seuls les éléments absents sont créés.', tag('g', 'Seront créés'))
+    + row('Données de démonstration', 'Marquées « démonstration », exclues de la comptabilité et des déclarations, effaçables en une action.', tog(S.demo, 'demo', false, 'Données de démonstration')) + '</div>';
+  if (S.demo) h += alertBox('warning', 'warn', 'Les données de démonstration devront être effacées avant la première écriture comptable réelle.');
+  return h;
+};
+R.rev = function () {
+  var is = issues(), nb = MODS.filter(function (m) { return on(m[0]); }).length, block = is.filter(function (x) { return x[0] === 'r'; }).length;
+  var h = '<section class="ds-kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">'
+    + '<div class="ds-kpi"><span class="ds-kpi-label"><span>Modules</span></span><span class="ds-kpi-value">' + nb + ' / ' + MODS.length + '</span><span class="ds-kpi-sub">dépendances vérifiées</span></div>'
+    + '<div class="ds-kpi"><span class="ds-kpi-label"><span>Spécialités</span></span><span class="ds-kpi-value">' + S.specs.length + '</span><span class="ds-kpi-sub">' + (1 + S.second.length) + ' activité' + (S.second.length ? 's' : '') + '</span></div>'
+    + '<div class="ds-kpi"><span class="ds-kpi-label"><span>Rôles</span></span><span class="ds-kpi-value">' + Object.keys(S.roles).filter(function (r) { return S.roles[r]; }).length + '</span><span class="ds-kpi-sub">moindre privilège</span></div>'
+    + '<div class="ds-kpi"><span class="ds-kpi-label"><span>Points à régler</span></span><span class="ds-kpi-value">' + is.length + '</span><span class="ds-kpi-sub ' + (block ? 'red' : is.length ? 'orange' : 'green') + '">' + (block ? block + ' bloquant' + (block > 1 ? 's' : '') : is.length ? 'aucun bloquant' : 'tout est cohérent') + '</span></div></section>';
+  h += '<div><h3 class="ds-subhead" style="margin-bottom:8px">Aperçu de l\'espace de travail</h3>' + previewBox() + '</div>';
+  if (is.length) h += '<table class="odoo-table ds-dense" style="width:100%"><thead><tr><th>Point</th><th style="width:130px">Gravité</th><th class="ds-actions" style="width:120px">Action</th></tr></thead><tbody>' + is.map(function (x) { return '<tr><td class="ds-strong">' + x[2] + '</td><td>' + tag(x[0], x[0] === 'r' ? 'Bloquant' : x[0] === 'o' ? 'Avertissement' : 'Information') + '</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-act="goto:' + x[1] + '">Corriger</button></td></tr>'; }).join('') + '</tbody></table>';
+  var o = S.op, lab = { stock: 'sur stock', cmd: 'à la commande', hyb: 'hybride', art: 'artisanale', ind: 'industrielle', cont: 'en continu' };
+  h += '<table class="odoo-table ds-dense" style="width:100%"><thead><tr><th style="width:220px">Rubrique</th><th>Configuration retenue</th><th class="ds-actions" style="width:110px"></th></tr></thead><tbody>'
+    + [['Entreprise', esc(S.name) + ' · Maroc · dirham · 3 établissements', 'soc'], ['Secteur', sect().n + (S.second.length ? ' ; secondaire : ' + S.second.map(function (k) { return sect(k).n; }).join(', ') : ''), 'sec'], ['Spécialités', S.specs.map(function (i) { return prof().specs[i][0]; }).join(', ') || '—', 'spe'], ['Modules', MODS.filter(function (m) { return on(m[0]); }).map(function (m) { return m[1]; }).join(', '), 'mod'], ['Modèle opérationnel', (on('production') ? 'Production ' + lab[o.prod] + ', ' + lab[o.rythme] + ' ; ' : '') + (o.sites === 'multi' ? 'plusieurs sites' : 'un site') + (on('stock') ? ' ; stock ' + (o.stockOrg === 'central' ? 'centralisé' : 'par établissement') : ''), 'op'], ['Vocabulaire', VOC.map(function (v, i) { return S.voc[i]; }).filter(function (x) { return x !== '—'; }).slice(0, 4).join(', ') + '…', 'voc'], ['Règles', (on('production') ? FLOW.filter(function (f, i) { return S.flow[i] || i === 2; }).length + ' étapes obligatoires en production ; ' : '') + 'approbations à ' + (o.valid === 'deux' ? 'deux niveaux' : o.valid === 'un' ? 'un niveau' : 'aucun niveau'), 'reg'], ['Comptabilité', 'Plan comptable marocain, TVA ' + ((o.tva || 'm') === 'm' ? 'mensuelle' : 'trimestrielle') + ', exercice 2026', 'fin'], ['Données', 'Référentiels du profil' + (S.demo ? ' + démonstration' : '') + ' ; 2 imports prêts', 'dat']]
+      .filter(function (r) { return steps().some(function (s) { return s.k === r[2]; }); })
+      .map(function (r) { return '<tr><td class="ds-strong">' + r[0] + '</td><td>' + r[1] + '</td><td class="ds-actions"><button type="button" class="odoo-btn-link" data-act="goto:' + r[2] + '">Modifier</button></td></tr>'; }).join('') + '</tbody></table>';
+  if (S.sim) h += alertBox('success', 'done', 'Simulation réussie : 1 vente, 1 achat' + (on('production') ? ', 1 ' + S.voc[2].toLowerCase() : '') + ' et leurs écritures ont été déroulés puis annulés. Aucune donnée n\'a été écrite.');
+  return h;
+};
+
+/* ── Rendu ── */
+function menuName(m) { return m[0] === 'stock' && S.voc[0] !== '—' ? 'Stock — ' + S.voc[0].toLowerCase() : m[0] === 'recettes' ? plural(S.voc[1]) : m[0] === 'production' ? 'Production — ' + plural(S.voc[2]).toLowerCase() : m[1]; }
+function previewBox() {
+  var prod = on('production');
+  return '<div class="wz-prev"><div class="wz-prev-top">' + ico('grid', 14) + esc((S.name || 'Kalum').toUpperCase()) + ' / ' + (prod ? 'Production' : 'Accueil') + '</div><div class="wz-prev-body"><nav>'
+    + MODS.filter(function (m) { return on(m[0]); }).slice(0, 8).map(function (m) { return '<span>' + esc(menuName(m)) + '</span>'; }).join('')
+    + '</nav><div><b class="ds-subhead">' + (prod ? esc(plural(S.voc[2])) + ' du jour — ' + esc(S.voc[4].toLowerCase()) : 'Vue d\'ensemble') + '</b><div class="wz-prev-kpis"><div>À traiter<strong>12</strong></div><div>Terminés<strong>24</strong></div></div><span class="mq-sub">Aperçu illustratif, données fictives</span></div></div></div>';
+}
+function side() {
+  var st = steps()[S.step], why = { soc: 'Le pays pose les règles comptables et fiscales, verrouillées pour la suite.', sec: 'Le secteur principal détermine le profil de référence. Les activités complémentaires ajoutent leurs modules.', spe: 'Une spécialité ajoute sans rien retirer ; la désactiver plus tard ne supprime aucune donnée.', mod: 'Activer un module ajoute ses menus. Le retirer les masque, sans supprimer de données.', op: 'Ces choix fixent les valeurs par défaut des pièces ; chaque établissement peut y déroger.', voc: 'Les mots changent à l\'écran, sur les documents et les rapports. Les identifiants techniques ne changent pas.', reg: 'Une étape obligatoire bloque la suivante tant qu\'elle n\'est pas faite.', ui: 'Chaque rôle arrive sur l\'écran de son métier, avec le même gabarit Kalum.', fin: 'Les paramètres marqués « Réglementaire » viennent du pays et ne se désactivent pas.', rol: 'Un rôle non retenu peut être ajouté plus tard.', dat: 'Chaque import passe par un aperçu et peut être annulé.', rev: 'L\'activation crée la version 1 de la configuration, restaurable.' }[st.k];
+  var miss = MODS.filter(function (m) { return cls(m[0]) === 'r' && !on(m[0]); }).map(function (m) { return m[1]; });
+  var rec = { boul: 'Pour les métiers de bouche, associez production, fiches techniques, économat, point de vente et traçabilité par lots.', agro: 'En agroalimentaire, la traçabilité par lot et le contrôle qualité avant transfert sont imposés par le profil.', fab: 'Associez nomenclatures, production, stocks, qualité et maintenance.', gros: 'Sans fabrication : achats, stocks, ventes et logistique suffisent.', detail: 'Associez point de vente, stocks et ventes ; la logistique reste facultative.', services: 'Ni stock ni production : projets, temps passés, ventes et relation client.' }[S.sector] || 'Ce secteur n\'a pas encore de profil : partez du socle commun et activez seulement les modules utiles.';
+  if (miss.length) rec = miss.length + ' module' + (miss.length > 1 ? 's recommandés ne sont pas activés' : ' recommandé n\'est pas activé') + ' : ' + miss.slice(0, 3).join(', ') + (miss.length > 3 ? '…' : '') + '.';
+  var nRoles = Object.keys(S.roles).filter(function (r) { return S.roles[r]; }).length;
+  document.getElementById('wz-side').innerHTML = '<div><h3 style="display:flex;gap:8px;align-items:center;font-size:17px">' + ico('spark', 18) + ' Assistance Kalum</h3><p style="margin:8px 0 0">' + why + '</p></div>'
+    + '<div class="wz-rec"><b>Recommandation</b><p>' + rec + '</p></div><hr class="wz-hr">'
+    + '<h3 style="font-size:17px">Configuration actuelle</h3><dl class="wz-sum"><div><dt>Entreprise</dt><dd>' + esc(S.name || 'À renseigner') + '</dd></div><div><dt>Secteur principal</dt><dd>' + sect().n + '</dd></div>'
+    + (S.second.length ? '<div><dt>Activités complémentaires</dt><dd>' + S.second.map(function (k) { return sect(k).n; }).join(', ') + '</dd></div>' : '')
+    + '<div><dt>Spécialités</dt><dd>' + S.specs.length + ' métier' + (S.specs.length > 1 ? 's' : '') + '</dd></div><div><dt>Modules actifs</dt><dd>' + MODS.filter(function (m) { return on(m[0]); }).length + ' / ' + MODS.length + '</dd></div><div><dt>Rôles proposés</dt><dd>' + nRoles + '</dd></div><div><dt>Profil</dt><dd>' + tag('b', 'Hérité du secteur') + '</dd></div></dl><hr class="wz-hr">'
+    + '<p class="mq-sub" style="margin:0">Socle Kalum › Pays › Secteur › Spécialité › Entreprise › Établissement › Utilisateur</p>'
+    + '<button type="button" class="odoo-btn-secondary ds-btn-sm" style="justify-self:start" data-p="profils">' + ico('info', 13) + ' Chaîne d\'héritage</button>';
+}
+function render() {
+  var list = steps(); if (S.step >= list.length) S.step = list.length - 1;
+  var st = list[S.step], is = issues(), ph = '', last = S.step === list.length - 1;
+  S.seen[st.k] = 1;
+  document.getElementById('wz-steps').innerHTML = list.map(function (s, i) {
+    var w = is.some(function (x) { return x[1] === s.k && x[0] !== 'b'; }), d = i < S.step || (S.seen[s.k] && i !== S.step);
+    var head = s.ph !== ph ? '<div class="wz-phase">' + s.ph + '</div>' : ''; ph = s.ph;
+    return head + '<button type="button" class="wz-step' + (i === S.step ? ' active' : w && S.seen[s.k] ? ' warn' : d ? ' done' : '') + '"' + (i === S.step ? ' aria-current="step"' : '') + ' data-act="step:' + i + '"><span class="wz-num">' + (i === S.step ? i + 1 : w && S.seen[s.k] ? '!' : d ? ico('check', 12) : i + 1) + '</span>' + s.t + '</button>';
+  }).join('');
+  var nd = S.step + (last && S.sim ? 1 : 0);
+  document.getElementById('wz-count').textContent = nd + ' sur ' + list.length + ' étapes complétées';
+  document.getElementById('wz-pct').textContent = Math.round(100 * nd / list.length) + ' %';
+  document.getElementById('wz-bar').style.width = Math.round(100 * (S.step + (last && S.sim ? 1 : 0)) / list.length) + '%';
+  document.getElementById('wz-mode').innerHTML = [['rapide', 'Rapide'], ['avance', 'Avancé']].map(function (m) { return '<button type="button" class="' + (S.mode === m[0] ? 'active' : '') + '" aria-pressed="' + (S.mode === m[0]) + '" data-act="mode:' + m[0] + '">' + m[1] + '</button>'; }).join('');
+  document.getElementById('wz-head').innerHTML = '<h2>' + st.h + '</h2><p>' + st.p + '</p>';
+  document.getElementById('wz-body').outerHTML = '<div class="wz-body" id="wz-body">' + R[st.k]() + '</div>';
+  var block = is.filter(function (x) { return x[0] === 'r' && (last || x[1] === st.k); });
+  document.getElementById('wz-foot').innerHTML = '<span class="ds-grow" style="' + (block.length ? 'color:var(--ds-danger);font-weight:600' : '') + '">' + (block.length ? block[0][2] : S.mode === 'rapide' ? 'Mode rapide : les réglages du profil s\'appliquent aux étapes masquées.' : '') + '</span>'
+    + (S.step ? '<button type="button" class="odoo-btn-secondary" data-act="prev">' + ico('left', 14) + ' Précédent</button>' : '')
+    + (last ? '<button type="button" class="odoo-btn-secondary" data-act="sim"' + (block.length ? ' disabled' : '') + '>' + ico('play', 13) + ' Simuler</button><button type="button" class="odoo-btn-primary" data-act="finish"' + (block.length || !S.sim ? ' disabled title="Simulez la configuration avant de l\'activer"' : '') + '>Terminer et activer</button>'
+      : '<button type="button" class="odoo-btn-primary" data-act="next"' + (block.length ? ' disabled' : '') + '>Suivant ' + ico('right', 14) + '</button>');
+  document.getElementById('hd-name').textContent = (S.name || 'Kalum').toUpperCase();
+  side(); save();
+  document.getElementById('wz-saved').textContent = '✓ Brouillon enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+function act(a, el) {
+  var p = a.split(':'), k = p[1];
+  S.note = null;
+  if (p[0] === 'step') S.step = +k;
+  else if (p[0] === 'goto') S.step = Math.max(0, steps().map(function (s) { return s.k; }).indexOf(k));
+  else if (p[0] === 'next') S.step++;
+  else if (p[0] === 'prev') S.step--;
+  else if (p[0] === 'mode') { var cur = steps()[S.step].k; S.mode = k; S.step = Math.max(0, steps().map(function (s) { return s.k; }).indexOf(cur)); }
+  else if (p[0] === 'sector') { if (S.sector !== k) { S.sector = k; S.second = S.second.filter(function (x) { return x !== k; }); S.seen = { soc: 1, sec: 1 }; applyProfile(); } }
+  else if (p[0] === 'second') { var i = S.second.indexOf(k); if (i >= 0) S.second.splice(i, 1); else S.second.push(k); if (i < 0 && P[k]) Object.keys(P[k].m).forEach(function (m) { if (P[k].m[m] === 'r') S.mods[m] = true; }); }
+  else if (p[0] === 'spec') { var j = S.specs.indexOf(+k); if (j >= 0) S.specs.splice(j, 1); else S.specs.push(+k); if (S.sector === 'boul' && +k === 4 && j < 0 && on('qualite')) S.flow[3] = 1; }
+  else if (p[0] === 'mod') {
+    if (on(k)) { var d = dependents(k); if (d.length) S.note = ['danger', '« ' + L(k) + ' » ne peut pas être retiré : ' + d.map(L).join(', ') + ' en ' + (d.length > 1 ? 'ont' : 'a') + ' besoin. Retirez d\'abord ' + (d.length > 1 ? 'ces modules' : 'ce module') + '.']; else { S.mods[k] = false; if (k === 'qualite') S.flow[3] = 0; } }
+    else { var add = []; (function need(m) { (DEPS[m] || []).forEach(function (x) { if (!on(x)) { S.mods[x] = true; add.push(x); need(x); } }); })(k); S.mods[k] = true; if (add.length) S.note = ['info', '« ' + L(k) + ' » a besoin de ' + add.map(L).join(', ') + ' : activé' + (add.length > 1 ? 's' : '') + ' en même temps.']; }
+  }
+  else if (p[0] === 'reco') MODS.forEach(function (m) { if (cls(m[0]) === 'r') { S.mods[m[0]] = true; (DEPS[m[0]] || []).forEach(function (x) { S.mods[x] = true; }); } });
+  else if (p[0] === 'sub') S.subs[k] = S.subs[k] === false;
+  else if (p[0] === 'op') S.op[k] = p[2];
+  else if (p[0] === 'opb') S.op[k] = !(S.op[k] !== false && (S.op[k] || ['pertes', 'unites', 'transf', 'ana'].indexOf(k) >= 0));
+  else if (p[0] === 'flow') S.flow[+k] = S.flow[+k] ? 0 : 1;
+  else if (p[0] === 'role') S.roles[k] = !S.roles[k];
+  else if (p[0] === 'demo') S.demo = !S.demo;
+  else if (p[0] === 'tip') S.tip = false;
+  else if (p[0] === 'sim') S.sim = true;
+  else if (p[0] === 'finish') { show('reprise'); return; }
+  else if (p[0] === 'x') { el.classList.toggle('on'); return; }
+  if (p[0] !== 'sim' && p[0] !== 'step' && p[0] !== 'goto' && p[0] !== 'next' && p[0] !== 'prev') S.sim = false;
+  render();
+  if (['step', 'goto', 'next', 'prev'].indexOf(p[0]) >= 0) window.scrollTo(0, 0);
+}
+function act0(a) { var r = render; render = function () {}; act(a); render = r; }
+function show(key) {
+  document.querySelectorAll('.mq-plate').forEach(function (p) { p.classList.toggle('on', p.id === 'p-' + key); });
+  document.querySelectorAll('.mq-bar button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.p === key)); });
+  document.querySelectorAll('.odoo-settings-nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.nav === key); });
+  document.getElementById('snav').hidden = key === 'assistant';
+  document.getElementById('shell').style.gridTemplateColumns = key === 'assistant' ? 'minmax(0, 1fr)' : '';
+  document.getElementById('shell').style.background = key === 'assistant' ? 'var(--ds-bg)' : '';
+  document.getElementById('crumb').textContent = document.getElementById('p-' + key).dataset.page;
+  var cr = document.getElementById('crumb').parentNode.children; cr[2].hidden = cr[3].hidden = key === 'reprise';
+  document.getElementById('hd-actions').innerHTML = key === 'assistant' ? '<span class="kl-tag x">Brouillon · v1</span>' : '';
+  document.getElementById('wz-fixed').style.display = key === 'assistant' ? '' : 'none';
+  window.scrollTo(0, 0);
+}
+document.addEventListener('click', function (e) {
+  if (e.target.closest('[data-stop]') && !e.target.closest('input')) { e.stopPropagation(); return; }
+  var a = e.target.closest('[data-act]');
+  if (a && !a.disabled) { if (a.tagName !== 'INPUT') e.preventDefault(); act(a.dataset.act, a); return; }
+  var b = e.target.closest('[data-p]'); if (b) show(b.dataset.p);
+});
+document.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.wz-card[role=button]')) { e.preventDefault(); act(e.target.dataset.act, e.target); } });
+document.addEventListener('input', function (e) {
+  var k = e.target.dataset.in; if (!k) return;
+  if (k === 'search') { var v = e.target.value.toLowerCase(); document.querySelectorAll('#wz-sectors .wz-card').forEach(function (c) { c.hidden = c.textContent.toLowerCase().indexOf(v) < 0; }); return; }
+  if (k === 'name') { S.name = e.target.value; document.getElementById('hd-name').textContent = (S.name || 'Kalum').toUpperCase(); }
+  else { var i = +k.split(':')[1]; S.voc[i] = e.target.value; var pl = document.getElementById('pl' + i); if (pl) pl.textContent = plural(S.voc[i]); }
+  side(); save();
+});
+document.addEventListener('change', function (e) { if (e.target.dataset.in === 'name') render(); });
+/* Lien direct vers une planche ou une étape : #p=profils, #step=4&sector=fab&mode=rapide. */
+var H = {}; location.hash.slice(1).split('&').forEach(function (x) { var y = x.split('='); if (y[0]) H[y[0]] = decodeURIComponent(y[1] || ''); });
+if (H.sector && sect(H.sector)) { S.sector = H.sector; S.second = []; applyProfile(); }
+if (H.second) H.second.split(',').forEach(function (k) { act0('second:' + k); });
+if (H.mode) S.mode = H.mode;
+if (H.step) { S.step = +H.step - 1; for (var hi = 0; hi < S.step; hi++) S.seen[steps()[hi].k] = 1; }
+if (H.sim) S.sim = true;
+show(H.p || 'assistant'); render();
+</script>
+</body>
+</html>
