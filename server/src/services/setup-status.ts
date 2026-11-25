@@ -42,10 +42,14 @@ const filled = (v: unknown) => typeof v === 'string' ? v.trim() !== '' : v !== n
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
 
 /** Résumé seulement ; les réponses du brouillon restent dans l'API de l'assistant. */
-export async function wizardSetupSummary(): Promise<{ count: number } | null> {
+export async function wizardSetupSummary(): Promise<{ count: number; firstRun: boolean } | null> {
   if (!(await exists('config_wizard_sessions'))) return null;
   const { rows } = await db.query(`SELECT count(*)::int AS count FROM config_wizard_sessions WHERE status IN ('draft','simulated')`);
-  return { count: rows[0].count };
+  // Premier démarrage : aucune configuration activée par l'assistant et aucun article saisi.
+  const applied = (await exists('config_change_sets'))
+    ? (await db.query(`SELECT 1 FROM config_change_sets WHERE status = 'applied' LIMIT 1`)).rows.length > 0 : false;
+  const products = (await db.query(`SELECT 1 FROM products LIMIT 1`)).rows.length > 0;
+  return { count: rows[0].count, firstRun: !applied && !products };
 }
 
 export async function setupStatus(): Promise<SetupCheck[]> {

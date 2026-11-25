@@ -190,7 +190,7 @@ export interface SetupCheck {
 }
 export interface SetupOverview {
   checks: SetupCheck[];
-  wizard?: { count: number } | null;
+  wizard?: { count: number; firstRun?: boolean } | null;
   recent: { id: string; table_name: string; operation: string; record_label: string | null; changed_at: string; changed_by_name: string | null }[] | null;
 }
 

@@ -14,7 +14,10 @@ import './home.css';
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { hasModule, sectorLabel } = usePermissions();
+  const { hasModule, sectorLabel, canEdit } = usePermissions();
+  // Premier démarrage : l'assistant de configuration est proposé à qui peut configurer.
+  const setup = useQuery({ queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, enabled: canEdit('settings'), staleTime: 60_000 });
+  const firstRun = !!setup.data?.wizard?.firstRun;
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -61,6 +64,8 @@ export default function HomePage() {
 
       <div className="sal-page" style={{ display: 'flex', flexDirection: 'column' }}>
         <PageHeader title={`Bienvenue, ${user?.firstName ?? ''}`} description="Que souhaitez-vous faire aujourd'hui ?" />
+        {firstRun && <div className="ds-alert info" style={{ alignItems: 'center' }}><span style={{ flex: 1 }}><strong>Configurez Kalum pour votre activité.</strong> L’assistant vous guide en quelques étapes : secteur, modules, vocabulaire, règles et rôles. Rien n’est modifié avant l’activation finale.</span>
+          <button type="button" className="odoo-btn-primary" onClick={() => navigate('/settings/assistant')}>{setup.data?.wizard?.count ? 'Reprendre la configuration' : 'Démarrer l’assistant'}</button></div>}
 
         {/* ══════ MODULE NAVIGATION ══════ */}
         <div className="home-groups">
