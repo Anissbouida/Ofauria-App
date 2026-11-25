@@ -51,7 +51,7 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 3 — création en étapes, invitation 72 h (mig 700), page publique `/invitation/:token`, contrôle des conflits avant création
 - [x] Lot 4 — contrôlé à l'écran le 2026-11-25 avec le lot 3 (assistant de création parcouru sans créer de compte) ; fiche rôle `/users/roles/:code` (niveaux Aucun → Complet qui règlent aussi les permissions détaillées, écarts au niveau, membres et attribution, 2FA du rôle, plafonds, séparation des tâches, rattachements, identité avec page d'accueil), comparaison de 2 à 4 rôles, nouveau rôle depuis un modèle / une copie / vide (mig 703 ; 701-702 pris par d'autres chantiers). Libellés des permissions encore en partie en anglais (référentiel `shared/src/constants/permissions.ts`), « modifier ce rôle demande une approbation » renvoyé au lot 10
 - [x] Lot 5 — Contrôles internes à quatre onglets, un vocabulaire de mode partout ; séparation des tâches sur les pièces réglée ici (mode Désactivé, mig 704) ; plafonds reliés aux circuits (seul le bon de commande applique un plafond : les autres types sont signalés « sans effet » et refusés à la création) ; délégations réunies (rôle complet / approbations, début futur, prolongation, historique, motif) ; cumul interdit refusé en mode Bloquer à la délégation. Contrôlé à l'écran le 2026-11-25 (page blanche du contrôle des droits sur les refus d'action métier corrigée)
-- [x] Lot 6 — exceptions individuelles (mig 706)
+- [x] Lot 6 — exceptions individuelles (mig 706), contrôlé à l'écran
 - [ ] Lot 7
 - [ ] Lot 8
 - [ ] Lot 9
