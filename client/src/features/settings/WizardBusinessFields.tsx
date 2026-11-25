@@ -288,7 +288,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   if (step === 'vocabulary') {
     const proposed = (key: string, fallback: string) => main?.labels?.[key] ?? fallback;
     return <>
-      <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th>Votre terme</th><th style={{ width: 110 }}></th></tr></thead><tbody>
+      <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th style={{ width: '38%' }}>Votre terme</th><th style={{ width: 90 }}></th></tr></thead><tbody>
         {VOCAB.map(v => { const val = text(data[v.key]), changed = val !== proposed(v.key, v.fallback);
           return <tr key={v.key}><td className="ds-strong">{v.designates}</td><td>{proposed(v.key, v.fallback)}</td>
             <td><input className="ds-input sm" style={{ width: '100%' }} aria-label={`Terme pour ${v.designates}`} value={val} disabled={disabled} onChange={e => set(v.key, e.target.value)} /></td>
