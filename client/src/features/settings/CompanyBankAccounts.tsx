@@ -8,7 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { settingAnchor } from './SettingsPrimitives';
 import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
-import { ribKeyValid } from '../../utils/rib';
+import { ribDigitsOf, ribHint, ribLiveError } from '../../utils/rib';
 
 /**
  * Comptes bancaires de la société (audit Paramètres, lot 5, mig 331). Le RIB
@@ -38,7 +38,7 @@ export default function CompanyBankAccounts() {
     mutationFn: () => {
       const d = editing!.draft;
       return settingsApi.saveBankAccount(editing!.id, {
-        ...d, rib: d.rib.replace(/\s/g, ''), swift: d.swift || null, ledgerAccount: d.ledgerAccount || null, storeId: d.storeId || null,
+        ...d, rib: ribDigitsOf(d.rib), swift: d.swift || null, ledgerAccount: d.ledgerAccount || null, storeId: d.storeId || null,
       });
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company-bank-accounts'] }); notify.success('Compte bancaire enregistré'); setEditing(null); },
@@ -49,14 +49,8 @@ export default function CompanyBankAccounts() {
     ? { id: a.id, draft: { label: a.label, bankName: a.bank_name, rib: a.rib, swift: a.swift ?? '', ledgerAccount: a.ledger_account ?? '', storeId: a.store_id ?? '', isDefault: a.is_default, showOnInvoices: a.show_on_invoices, isActive: a.is_active } }
     : { id: null, draft: { ...EMPTY, isDefault: accounts.length === 0 } });
 
-  const ribDigits = editing?.draft.rib.replace(/\s/g, '') ?? '';
-  // Clé vérifiée dès le 24e chiffre ; on n'affiche pas la clé attendue pour ne
-  // pas inciter à corriger la clé au lieu du chiffre mal recopié.
-  const ribError = !ribDigits ? undefined
-    : !/^\d+$/.test(ribDigits) ? 'Le RIB ne doit contenir que des chiffres'
-    : ribDigits.length !== 24 ? `${ribDigits.length}/24 chiffres : le RIB doit compter 24 chiffres`
-    : !ribKeyValid(ribDigits) ? 'Clé de contrôle incorrecte : un chiffre est probablement mal recopié, vérifiez avec l\'attestation de RIB'
-    : undefined;
+  const ribDigits = ribDigitsOf(editing?.draft.rib);
+  const ribError = ribLiveError(editing?.draft.rib);
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
@@ -104,7 +98,7 @@ export default function CompanyBankAccounts() {
               <input id="bank-name" className="ds-input" value={editing.draft.bankName} onChange={e => set('bankName', e.target.value)} placeholder="Attijariwafa bank" maxLength={80} />
             </FormField>
             <FormField label="RIB (24 chiffres)" htmlFor="bank-rib" required
-              hint={ribDigits.length === 24 ? '24/24 chiffres · clé de contrôle correcte' : `${ribDigits.length}/24 chiffres`}
+              hint={ribHint(editing.draft.rib)}
               error={ribError}>
               <input id="bank-rib" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={editing.draft.rib} inputMode="numeric"
                 onChange={e => set('rib', e.target.value)} placeholder="000 000 0000000000000000 00" />

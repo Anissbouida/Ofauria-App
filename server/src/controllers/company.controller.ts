@@ -28,7 +28,7 @@ function readBank(body: Record<string, unknown>, creating: boolean): BankAccount
     }
   }
   if (body.rib !== undefined || creating) {
-    const rib = String(body.rib ?? '').replace(/\s/g, '');
+    const rib = String(body.rib ?? '').replace(/[\s-]/g, '');
     if (!/^\d{24}$/.test(rib)) return 'RIB : 24 chiffres';
     if (!ribKeyValid(rib)) return 'RIB : clé de contrôle incorrecte (vérifiez la saisie)';
     out.rib = rib;

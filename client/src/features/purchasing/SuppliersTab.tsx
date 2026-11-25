@@ -30,6 +30,7 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 import { PurHeaderActions } from './PurHeaderActions';
+import { ribHint, ribLiveError } from '../../utils/rib';
 import { money, currencySymbol } from '../../utils/money';
 
 /**
@@ -610,6 +611,8 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
             e.preventDefault(); if (saveMutation.isPending) return; setFieldErrors({});
             const missing = cf.missing();
             if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
+            const ribErr = ribLiveError(form.rib);
+            if (ribErr) { setFieldErrors({ rib: ribErr }); notify.error(`RIB : ${ribErr}`); return; }
             saveMutation.mutate();
           }} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {duplicates.length > 0 && (
@@ -738,9 +741,10 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                     <input id="supplier-bank" value={form.bankName} onChange={e => set('bankName', e.target.value)} className="ds-input" maxLength={100} />
                   </FormField>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <FormField label="RIB (24 chiffres)" htmlFor="supplier-rib" error={fieldErrors.rib} hint="Pour les virements groupés">
+                    <FormField label="RIB (24 chiffres)" htmlFor="supplier-rib" error={fieldErrors.rib ?? ribLiveError(form.rib)}
+                      hint={form.rib.trim() ? `${ribHint(form.rib)} · pour les virements groupés` : 'Pour les virements groupés'}>
                       <input id="supplier-rib" value={form.rib} onChange={e => set('rib', e.target.value)} className="ds-input" maxLength={40} inputMode="numeric"
-                        aria-invalid={!!fieldErrors.rib || undefined} style={{ fontFamily: 'ui-monospace, monospace' }} />
+                        aria-invalid={!!(fieldErrors.rib ?? ribLiveError(form.rib)) || undefined} style={{ fontFamily: 'ui-monospace, monospace' }} />
                     </FormField>
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>

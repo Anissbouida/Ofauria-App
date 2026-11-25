@@ -11,6 +11,7 @@ import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
 import { HrModal, SubmitButton, Field, SectionTitle, LoadingPanel, inputCls } from '../ui';
 import { DataPanel, FormSection } from '../../../components/ds';
+import { ribDigitsOf, ribHint, ribLiveError } from '../../../utils/rib';
 
 type Bracket = { upTo: number | null; rate: number; deduction: number };
 
@@ -70,7 +71,7 @@ export default function PayrollSettingsView() {
   const saveSettings = useMutation({
     mutationFn: () => payrollConfigApi.updateSettings({
       employerCnssNumber: cnss || null, monthlyBaseDays: parseInt(baseDays, 10),
-      employerRib: bank.employerRib.replace(/\s/g, '') || null, employerBankName: bank.employerBankName || null,
+      employerRib: ribDigitsOf(bank.employerRib) || null, employerBankName: bank.employerBankName || null,
       leaveRestWeekday: parseInt(rules.leaveRestWeekday, 10), leaveDaysPerMonth: parseFloat(rules.leaveDaysPerMonth),
       leaveCarryoverYears: parseInt(rules.leaveCarryoverYears, 10),
       otRateDay: pctOut(rules.otRateDay), otRateNight: pctOut(rules.otRateNight),
@@ -183,7 +184,8 @@ export default function PayrollSettingsView() {
           <Field label="Base journalière (jours / mois)">
             <input className={inputCls} type="number" min={20} max={31} value={baseDays} disabled={!isAdmin} onChange={e => setBaseDays(e.target.value)} />
           </Field>
-          <Field label="RIB de l'entreprise (virement des salaires)">
+          <Field label="RIB de l'entreprise (virement des salaires)" error={ribLiveError(bank.employerRib)}
+            hint={bank.employerRib.trim() ? ribHint(bank.employerRib) : undefined}>
             <input className={inputCls} value={bank.employerRib} disabled={!isAdmin} placeholder="24 chiffres" onChange={e => setBank({ ...bank, employerRib: e.target.value })} />
           </Field>
           <Field label="Banque (agence)">
@@ -222,7 +224,11 @@ export default function PayrollSettingsView() {
           </Field>
         </div>
         {isAdmin && (
-          <div><SubmitButton pending={saveSettings.isPending} onClick={() => saveSettings.mutate()}>Enregistrer</SubmitButton></div>
+          <div><SubmitButton pending={saveSettings.isPending} onClick={() => {
+            const ribErr = ribLiveError(bank.employerRib);
+            if (ribErr) { notify.error(`RIB de l'entreprise : ${ribErr}`); return; }
+            saveSettings.mutate();
+          }}>Enregistrer</SubmitButton></div>
         )}
       </section>
 

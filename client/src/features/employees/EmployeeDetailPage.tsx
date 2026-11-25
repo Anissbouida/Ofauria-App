@@ -27,6 +27,7 @@ import EmployeeDocuments from './contracts/EmployeeDocuments';
 import EmployeeDeparture from './contracts/EmployeeDeparture';
 import EmployeePayrollItems from './tabs/EmployeePayrollItems';
 import EmployeeSalaryHistory from './tabs/EmployeeSalaryHistory';
+import { ribHint, ribLiveError } from '../../utils/rib';
 
 /**
  * Fiche employé en pleine page (remplace les deux modales « Fiche » et
@@ -184,7 +185,8 @@ export default function EmployeeDetailPage() {
       setTab(!String(form.firstName).trim() || !String(form.lastName).trim() ? 'infos' : 'contrat');
       return;
     }
-    if (form.rib && !/^[0-9 ]{24,30}$/.test(String(form.rib))) { notify.error('RIB : 24 chiffres attendus'); setTab('contrat'); return; }
+    const ribErr = ribLiveError(String(form.rib ?? ''));
+    if (ribErr) { notify.error(`RIB : ${ribErr}`); setTab('contrat'); return; }
     if (form.payFrequency === 'weekly' && !form.weeklySalary) { notify.error('Salaire hebdomadaire requis pour une paie hebdomadaire'); setTab('contrat'); return; }
     save.mutate();
   };
@@ -406,7 +408,8 @@ export default function EmployeeDetailPage() {
                   <Row {...p} label="N° CNSS" name="cnssNumber" />
                 </div>
                 <div>
-                  <Row {...p} label="RIB" name="rib" hint="24 chiffres, pour le virement du salaire" mono />
+                  <Row {...p} label="RIB" name="rib" mono error={ribLiveError(String(form.rib ?? ''))}
+                    hint={String(form.rib ?? '').trim() ? `${ribHint(String(form.rib))} · virement du salaire` : '24 chiffres, pour le virement du salaire'} />
                   <Row {...p} label="Banque" name="bankName" />
                 </div>
               </div>
@@ -473,12 +476,12 @@ function Section({ title, children }: { icon?: typeof UserRound; title: string; 
 
 /** Ligne « libellé | valeur » : texte en lecture, champ en modification. */
 function Row({
-  form, set, editing, label, name, type = 'text', options, emptyLabel, required, hint, suffix, mono,
+  form, set, editing, label, name, type = 'text', options, emptyLabel, required, hint, error, suffix, mono,
 }: {
   form: Form; set: (k: string, v: string | boolean) => void; editing: boolean;
   label: string; name: string; type?: 'text' | 'date' | 'number' | 'checkbox';
   options?: Array<{ value: string; label: string }>; emptyLabel?: string;
-  required?: boolean; hint?: string; suffix?: string; mono?: boolean;
+  required?: boolean; hint?: string; error?: string; suffix?: string; mono?: boolean;
 }) {
   const v = form[name];
   let display: ReactNode;
@@ -522,7 +525,9 @@ function Row({
             {display || '—'}
           </span>
         )}
-        {hint && editing && <div className="ds-field-hint" style={{ marginTop: 2 }}>{hint}</div>}
+        {editing && error ? (
+          <div className="ds-field error"><span className="ds-field-hint" role="alert" style={{ marginTop: 2 }}>{error}</span></div>
+        ) : hint && editing && <div className="ds-field-hint" style={{ marginTop: 2 }}>{hint}</div>}
       </div>
     </div>
   );
