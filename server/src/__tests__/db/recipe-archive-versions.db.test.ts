@@ -112,7 +112,7 @@ describe.skipIf(!hasTestDb)('Recettes — archivage et versions completes', () =
     expect(inActive(await recipeRepository.findAll())).toBe(true);
     expect(inActive(await recipeRepository.findBaseRecipes())).toBe(true);
     expect((await recipeRepository.findById(baseId))?.archived_at).toBeNull();
-  });
+  }, 60000); // findAll calcule les coûts de toutes les fiches : plusieurs secondes sur une base de test chargée
 
   it('le produit fini lie a une recette archivee garde sa recette', async () => {
     await recipeRepository.archive([recipeId], fx.userId);

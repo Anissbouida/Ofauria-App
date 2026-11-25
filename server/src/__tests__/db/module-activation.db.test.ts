@@ -4,8 +4,17 @@
  * dépendances et modules socle sont contrôlés ; la garde serveur ferme l'API
  * d'un module désactivé, administrateur compris ; les données ne sont pas touchées.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { hasTestDb, testPool, closeTestPool, importRepositories } from './helpers.js';
+
+// La base de test est partagée : les fichiers joués avant celui-ci y laissent des lots
+// actifs, et la garde « capacité réglementaire utilisée » (mig 670) refuserait alors de
+// désactiver le Stock. Un test peut l'ignorer ; elle est couverte par sector-transition.test.ts.
+const usageGuard = vi.hoisted(() => ({ ignore: false }));
+vi.mock('../../services/capabilities.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../services/capabilities.js')>();
+  return { ...real, capabilityUsage: async (key: string) => (usageGuard.ignore ? [] : real.capabilityUsage(key)) };
+});
 
 describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
   let sectors: typeof import('../../repositories/sector.repository.js').sectorRepository;
@@ -92,7 +101,9 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
 
   it('désactiver le Stock retire aussi ses alias (packaging)', async () => {
     // Générique contient « packaging » (alias du Stock) : il ne doit pas le maintenir actif.
-    const r = await sectors.applyAdjustments({ modules: { stock: false } });
+    usageGuard.ignore = true;
+    let r: Awaited<ReturnType<typeof sectors.applyAdjustments>>;
+    try { r = await sectors.applyAdjustments({ modules: { stock: false } }); } finally { usageGuard.ignore = false; }
     expect('error' in r).toBe(false);
     const act = await sectors.activation();
     expect(act.modules.has('stock')).toBe(false);

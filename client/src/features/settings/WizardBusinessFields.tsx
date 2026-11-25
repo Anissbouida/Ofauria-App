@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { storesApi } from '../../api/stores.api';
 import { settingsApi } from '../../api/settings.api';
+import { BASE_CURRENCY } from '../../api/currencies.api';
+import { currencySymbol } from '../../utils/money';
 import { Briefcase, Check, Download, Upload, ChefHat, Cross, Factory, Hammer, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Shirt, ShoppingCart, Sprout, Store, Truck, TriangleAlert, Utensils } from 'lucide-react';
 import { ACTIVATABLE_MODULES, CORE_MODULES, MODULE_GROUPS, MODULE_LABELS, requiredModules, dependentModules, effectiveModules, VOCABULARY_KEYS, WORKSPACES, TABLE_DENSITIES, parseWorkspace, parseTableDensity, type AppModule } from '@ofauria/shared';
 import type { WizardAnswers, WizardCatalog, WizardData } from '../../api/wizard.api';
@@ -154,7 +156,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         {field('Raison sociale', <input className="ds-input" value={name} aria-invalid={!name.trim()} disabled={disabled} onChange={e => set('name', e.target.value)} />, name.trim() ? undefined : 'Saisissez la raison sociale.', true)}
         {field('Forme juridique', select('legalForm', ['SARL', 'SARL AU', 'SA', 'SAS', 'Entreprise individuelle', 'Coopérative'].map(v => ({ value: v, label: v }))))}
         {field('Pays et juridiction fiscale', select('country', [{ value: text(data.country), label: text(data.country) === 'MA' ? 'Maroc' : text(data.country) }], true), 'Pose le plan comptable, la TVA et la paie. Ne se change pas depuis l’assistant.', true)}
-        {field('Devise principale', select('currency', [{ value: text(data.currency), label: text(data.currency) === 'MAD' ? 'Dirham marocain (DH)' : text(data.currency) }], true), 'Ne se change plus après la première écriture.', true)}
+        {field('Devise principale', select('currency', [{ value: text(data.currency), label: text(data.currency) === BASE_CURRENCY ? `Dirham marocain (${currencySymbol()})` : text(data.currency) }], true), 'Ne se change plus après la première écriture.', true)}
         {field('Langue', select('locale', [{ value: 'fr', label: 'Français' }, { value: 'ar', label: 'Arabe' }, { value: 'en', label: 'Anglais' }]))}
         {field('Fuseau horaire', select('timezone', [{ value: 'Africa/Casablanca', label: 'Casablanca (UTC+1)' }, { value: 'Europe/Paris', label: 'Paris' }, { value: 'America/Toronto', label: 'Toronto' }]))}
         {field('Taille de l’entreprise', select('size', [{ value: 'TPE', label: '1 à 9 salariés (TPE)' }, { value: 'PME', label: '10 à 249 salariés (PME)' }, { value: 'Grande entreprise', label: '250 salariés et plus' }]), 'Sert aux recommandations de modules et de rôles.')}

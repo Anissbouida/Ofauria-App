@@ -21,7 +21,9 @@ const EXCEPTIONS: Record<string, string> = {
   'production.forecast_history': 'Profondeur d\'historique de prévision, sans lien avec le métier.',
   'production.replenishment_history': 'Profondeur d\'historique des demandes boutique, sans lien avec le métier.',
   'production.ledger_entries': 'Choix comptable (inventaire permanent ou intermittent) propre à chaque société, décidé avec son expert-comptable ; jamais imposé par un profil.',
-  'production.process_engine': 'Bascule de déploiement (éteint → ombre → actif) décidée société par société après observation ; aucun profil ne doit la livrer allumée.',
+  'production.equipment_capacity': 'Suit le rythme de production (mig 694) : artisanal = signaler, industriel ou continu = bloquer ; c\'est le rythme, choisi à l\'assistant, qui le fixe, pas le profil.',
+  'production.segregation_of_duties': 'Dépend de la taille de l\'équipe, pas du métier : une petite équipe ne peut pas séparer préparation et réception (désactivé par défaut, lot 7 de l\'audit pâtisserie).',
+  'production.process_engine':'Bascule de déploiement (éteint → ombre → actif) décidée société par société après observation ; aucun profil ne doit la livrer allumée.',
 };
 
 describe.skipIf(!hasTestDb)('Définition de fini : réglages livrés dans un profil (C-02)', () => {
