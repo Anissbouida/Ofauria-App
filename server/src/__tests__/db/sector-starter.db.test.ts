@@ -44,8 +44,18 @@ describe.skipIf(!hasTestDb)('Données de départ par secteur', () => {
     expect((await sectorStarterPreview('fabrication')).items.length).toBeGreaterThanOrEqual(5);
     const hadWorkshops = Number((await p().query(`SELECT count(*) FROM production_workshops WHERE is_active`)).rows[0].count);
 
+    // Mig 698 : ces valeurs sont au catalogue. Celles déjà actives pour la société (p. ex.
+    // « Assemblage », apporté par la spécialité Traiteur et salé) ne sont pas recomptées.
+    const already = async (table: string, codes: string[]) => Number((await p().query(
+      `SELECT count(*) FROM ref_entries WHERE table_id = $1 AND code = ANY($2::text[]) AND is_active`, [table, codes])).rows[0].count);
+    const steps = await already('production_step_types', ['preparation', 'usinage', 'assemblage', 'controle', 'conditionnement']);
+    const equipments = await already('production_equipment_types', ['machine', 'poste_manuel', 'outillage']);
+
     const r1 = await loadSectorStarter('fabrication');
-    expect(r1).toMatchObject({ units: 0, stepTypes: 5, equipmentTypes: 3, demo: 1 });
+    expect(r1).toMatchObject({ units: 0, stepTypes: 5 - steps, equipmentTypes: 3 - equipments, demo: 1 });
+    // Chargées à la demande : actives même si la société n'est pas en « fabrication ».
+    expect(await already('production_step_types', ['preparation', 'usinage', 'assemblage', 'controle', 'conditionnement'])).toBe(5);
+    expect(await already('production_equipment_types', ['machine', 'poste_manuel', 'outillage'])).toBe(3);
     // La base de test a déjà les 4 ateliers repris de la boulangerie : aucun n'est ajouté.
     expect(r1.workshops).toBe(hadWorkshops > 0 ? 0 : 1);
 

@@ -113,7 +113,11 @@ async function insertRefs(client: Client, tableId: string, refs: StarterRef[] | 
     const res = await client.query(
       `INSERT INTO ref_entries (table_id, code, label, display_order, metadata, origin, system_label, sectors)
        VALUES ($1, $2, $3::varchar, $4, $5, 'system', $3::varchar, ARRAY[$6::text])
-       ON CONFLICT (table_id, code) DO NOTHING RETURNING id`,
+       -- Valeur déjà au catalogue (mig 698) mais inactive pour le secteur de la société :
+       -- charger le pack est une demande explicite, elle est activée et le reste.
+       ON CONFLICT (table_id, code) DO UPDATE SET is_active = true, activation = 'forced_on', updated_at = now()
+         WHERE NOT ref_entries.is_active AND ref_entries.activation = 'auto'
+       RETURNING id`,
       [tableId, r.code, r.label, 200 + i * 10, JSON.stringify(r.metadata ?? {}), sectorCode]);
     if (res.rows[0]) created++;
   }
