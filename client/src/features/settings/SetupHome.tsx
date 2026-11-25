@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { allowedSettingsSections, hasWizardSettingsScope } from '@ofauria/shared';
+import { usePermissions } from '../../context/PermissionsContext';
 import { CheckCircle2, CircleAlert, TriangleAlert, Info, ChevronRight, ArrowRight, RefreshCw, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -51,6 +54,9 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
   onOpenUsers: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('open');
+  const { canEdit, canView, getModuleConfig } = usePermissions();
+  const allowed = allowedSettingsSections(getModuleConfig('settings'));
+  const canWizard = canView('settings') && canEdit('settings') && hasWizardSettingsScope(allowed);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, staleTime: 0,
   });
@@ -87,6 +93,7 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
 
   return (
     <div className="odoo-setup">
+      {canWizard && data?.wizard && <section className="odoo-setup-hero"><div className="odoo-setup-hero-text"><h3 className="odoo-settings-title">{data.wizard.count ? 'Configuration en cours' : 'Assistant de configuration multisectorielle'}</h3><p className="odoo-settings-subtitle">{data.wizard.count ? `${data.wizard.count} brouillon(s) enregistré(s)` : 'Préparez votre configuration étape par étape.'}</p><Link className="odoo-btn-primary" to="/settings/assistant">{data.wizard.count ? 'Reprendre' : 'Ouvrir l’assistant'} <ArrowRight size={14}/></Link></div></section>}
       {/* ── Avancement global ── */}
       <section className="odoo-setup-hero">
         <ProgressRing value={pct} />

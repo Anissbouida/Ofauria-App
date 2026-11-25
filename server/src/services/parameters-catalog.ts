@@ -1,5 +1,6 @@
 import type { SettingsSection } from '@ofauria/shared';
 import { baseCurrencyCode } from './currency.js';
+import type { ConfigLevel, ConfigMerge } from './config-resolver.js';
 
 /**
  * Catalogue des paramètres métier (audit Paramètres, lot 4).
@@ -46,6 +47,11 @@ export interface ParamDef {
    * (un seul endroit où le modifier) ; les niveaux plus précis le surchargent.
    */
   companyColumns?: Record<string, string>;
+  /** Métadonnées de résolution ; les paramètres non migrés gardent leur portée historique. */
+  levels?: readonly ConfigLevel[];
+  lockable?: boolean;
+  merge?: ConfigMerge;
+  preference?: boolean;
 }
 
 /** Tous les niveaux d'une politique de production. */

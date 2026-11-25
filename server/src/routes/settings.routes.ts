@@ -14,8 +14,8 @@ import { approvalRulesController } from '../controllers/approval-rules.controlle
 import { setupController } from '../controllers/setup.controller.js';
 import { apiSettingsController } from '../controllers/api-settings.controller.js';
 import multer from 'multer';
-import { authenticate } from '../middleware/auth.middleware.js';
-import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
+import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
+import { authorizeSettings, authorizeSettingsUpdate, authorizeWizardSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { legalEntityController, legalEntityCreateSchema, legalEntityUpdateSchema, legalEntityStoreSchema } from '../controllers/legal-entity.controller.js';
@@ -26,6 +26,13 @@ import { screenDefinitionRepository } from '../repositories/screen-definition.re
 import { setupSteps, simulateOrder, publishSetup } from '../services/production-setup.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
+import { z } from 'zod';
+import { WIZARD_STEPS } from '../services/wizard/steps.js';
+import { wizardParameterField } from '../services/wizard/parameter-definitions.js';
+import { listWizardSessions, createWizardSession, saveWizardSession, abandonWizardSession, rebaseWizardSession } from '../services/wizard/sessions.js';
+import { wizardCatalog } from '../services/wizard/catalog.js';
+import { previewWizardSession } from '../services/wizard/preview.js';
+import { compileWizardSession, simulateWizardChangeSet, technicalSimulationAvailable, currentWizardChangeSet } from '../services/wizard/change-set.js';
 import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, screenDraftSchema, screenScopeSchema, setupSimulateSchema, setupPublishSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
@@ -44,6 +51,72 @@ router.get('/units', authenticate, asyncHandler(async (_req, res) => {
 
 // Accueil de la configuration (refonte lot B) : points filtres par section visible.
 router.get('/setup', authenticate, asyncHandler(setupController.status));
+
+// Lot 1 : seul le brouillon est écrit. La publication sera un circuit distinct.
+const wizardMode = z.enum(['quick', 'advanced']);
+const wizardKey = z.string().refine(k => WIZARD_STEPS.some(s => s.key === k));
+const wizardRevision = z.number().int().min(0).max(2147483646);
+const wizardCreate = z.object({ kind: z.enum(['initial','evolution','upgrade']), mode: wizardMode }).strict();
+const wizardDataKeys: Record<string, readonly string[]> = {
+  company: ['name','legalForm','country','currency','locale','timezone','size','sites'], sector: ['primary','secondary'], specialties: ['selected'], modules: ['selected'],
+  operations: ['production','rhythm','stock','tracking','sales'], vocabulary: ['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie','warehouse','order','operator','workshop','station'],
+  rules: ['recipe','materialIssue','quality','transfer'], interfaces: ['workspace','density'], finance: ['year','vat','analytics'], roles: ['selected'], data: ['demo'], review: [],
+};
+const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revision: wizardRevision,
+  answers: z.record(wizardKey, z.object({ reviewed: z.boolean().optional(), note: z.string().max(4000).optional(),
+    data: z.record(z.string().max(100), z.union([z.string().max(200),z.boolean(),z.array(z.string().max(80)).max(100)])).optional() }).strict()) }).strict()
+  .superRefine((input, ctx) => { for (const [step, answer] of Object.entries(input.answers)) for (const key of Object.keys(answer.data ?? {})) {
+    const param=wizardParameterField(step,key);
+    if(param){
+      const value=answer.data![key];
+      if(param.field.type==='boolean'?typeof value!=='boolean':typeof value!=='string')ctx.addIssue({code:'custom',path:['answers',step,'data',key],message:'Type de paramètre invalide'});
+    }
+    else if (!wizardDataKeys[step]?.includes(key)) ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Champ inconnu pour cette étape' });
+    else {
+      const value = answer.data![key];
+      const array = key === 'selected' || (step === 'sector' && key === 'secondary');
+      const flag = step === 'rules' || (step === 'finance' && key === 'analytics') || (step === 'data' && key === 'demo');
+      if (array ? !Array.isArray(value) : flag ? typeof value !== 'boolean' : typeof value !== 'string') {
+        ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Type de donnée invalide' });
+      }
+    }
+  } });
+// Le brouillon contient désormais des valeurs de plusieurs sections. Les droits
+// société seuls ne doivent ni les exposer ni permettre de les simuler.
+router.use('/assistant',authenticate,authorizeWizardSettings);
+router.get('/assistant', authenticate, authorizeSettings('company', 'edit'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await listWizardSessions() });
+}));
+router.get('/assistant/catalog', authenticate, authorizeSettings('company', 'edit'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: { ...await wizardCatalog(), technicalSimulationAvailable: technicalSimulationAvailable() } });
+}));
+router.get('/assistant/:id/preview', authenticate, authorizeSettings('company', 'edit'), validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await previewWizardSession(String(req.params.id)) });
+}));
+router.get('/assistant/:id/changeset', authenticate, authorizeSettings('company', 'edit'), validateUuidParams('id'), asyncHandler(async (req,res) => {
+  res.json({success:true,data:await currentWizardChangeSet(String(req.params.id))});
+}));
+router.post('/assistant', authenticate, authorizeSettings('company', 'edit'), jsonParser, validate(wizardCreate), asyncHandler(async (req, res) => {
+  const user = (req as AuthRequest).user!;
+  res.status(201).json({ success: true, data: await createWizardSession(req.body.kind, req.body.mode, user.userId) });
+}));
+router.put('/assistant/:id', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(wizardSave), asyncHandler(async (req, res) => {
+  const user = (req as AuthRequest).user!;
+  res.json({ success: true, data: await saveWizardSession(String(req.params.id), req.body, user.userId) });
+}));
+router.post('/assistant/:id/abandon', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(z.object({ revision: wizardRevision }).strict()), asyncHandler(async (req, res) => {
+  const user = (req as AuthRequest).user!;
+  res.json({ success: true, data: await abandonWizardSession(String(req.params.id), req.body.revision, user.userId) });
+}));
+router.post('/assistant/:id/compile', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(z.object({ revision: wizardRevision }).strict()), asyncHandler(async (req, res) => {
+  res.json({ success:true, data:await compileWizardSession(String(req.params.id),req.body.revision,(req as AuthRequest).user!.userId) });
+}));
+router.post('/assistant/:id/rebase', authenticate, authorizeSettings('company','edit'),jsonParser,validateUuidParams('id'),validate(z.object({revision:wizardRevision}).strict()),asyncHandler(async(req,res)=>{
+  res.json({success:true,data:await rebaseWizardSession(String(req.params.id),req.body.revision,(req as AuthRequest).user!.userId)});
+}));
+router.post('/assistant/:id/simulate', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(z.object({ revision: wizardRevision }).strict()), asyncHandler(async (req, res) => {
+  res.json({ success:true, data:await simulateWizardChangeSet(String(req.params.id),req.body.revision,(req as AuthRequest).user!.userId) });
+}));
 
 // Journal des modifications (mig 328) et des connexions : section « audit ».
 router.get('/audit-log', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.list));
@@ -74,6 +147,7 @@ router.put('/parameters/:key', authenticate, jsonParser, validate(parameterValue
 // hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setSectorSchema), asyncHandler(companyController.setSector));
+router.post('/sector/preview', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setSectorSchema), asyncHandler(companyController.previewSector));
 router.get('/specializations', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.specializations));
 router.get('/modules/versions-compare', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.compareVersions));
 router.put('/specializations/:code', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(specializationSchema), asyncHandler(companyController.setSpecialization));

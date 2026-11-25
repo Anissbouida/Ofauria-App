@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { db } from '../config/database.js';
+import { db,inTransaction } from '../config/database.js';
 
 /**
  * Référentiels du procédé de fabrication (mig 513, plan Production générique P4) :
@@ -18,7 +18,8 @@ const CACHE_MS = 30_000;
 let cache: { at: number; byTable: Map<string, ProcessRefEntry[]> } | null = null;
 
 async function load(): Promise<Map<string, ProcessRefEntry[]>> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.byTable;
+  const transactional=inTransaction();
+  if (!transactional&&cache && Date.now() - cache.at < CACHE_MS) return cache.byTable;
   const { rows } = await db.query(
     `SELECT table_id, code, label, color, is_active, metadata FROM ref_entries
       WHERE table_id IN ('production_step_types', 'production_equipment_types', 'process_reading_params', 'scrap_reasons',
@@ -31,7 +32,7 @@ async function load(): Promise<Map<string, ProcessRefEntry[]>> {
     list.push({ code: r.code, label: r.label, color: r.color ?? null, isActive: r.is_active, metadata: r.metadata ?? {} });
     byTable.set(r.table_id, list);
   }
-  cache = { at: Date.now(), byTable };
+  if(!transactional)cache = { at: Date.now(), byTable };
   return byTable;
 }
 

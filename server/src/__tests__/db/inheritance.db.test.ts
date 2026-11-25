@@ -10,7 +10,7 @@
  *   - spécialisations : activer n'ajoute que ce qui manque, désactiver ne supprime rien ;
  *   - modèle v3 : le secteur enregistré hérite de son secteur de base (écarts seulement).
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { hasTestDb, testPool, closeTestPool, importRepositories, RUN } from './helpers.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -120,6 +120,28 @@ describe.skipIf(!hasTestDb)('Héritage des profils et spécialisations', () => {
       await p().query(`DELETE FROM company_specializations WHERE code = 'chocolaterie'`);
       if (!hadWorkshop) await p().query(`DELETE FROM production_workshops WHERE code = 'chocolaterie'`);
       if (!hadTemperage) await p().query(`DELETE FROM ref_entries WHERE table_id = 'production_step_types' AND code IN ('temperage', 'moulage')`);
+    }
+  });
+
+  it('annule atelier, référentiel, adhésion et versions si une capacité échoue', async () => {
+    const act=await sectors.activation();
+    const feature=act.catalog.find(f=>!act.features.has(f.key));
+    expect(feature).toBeDefined();
+    const code=`rollback_${RUN}`.slice(0,40);
+    const versionCount=async()=>(await p().query('SELECT count(*)::int AS n FROM config_versions')).rows[0].n;
+    const before=await versionCount();
+    await p().query(`INSERT INTO sector_specializations(code,sector_pack,label,content) VALUES($1,$2,$3,$4::jsonb)`,[code,act.sector.code,'Test rollback',JSON.stringify({workshop:{code,label:'Test rollback'},step_types:[{code,label:'Test rollback'}],features:[feature!.key]})]);
+    const fail=vi.spyOn(sectors,'applyAdjustments').mockResolvedValueOnce({error:'Échec de capacité injecté'});
+    try{
+      expect(await specs.enable(code)).toEqual({error:'Échec de capacité injecté'});
+      expect(fail).toHaveBeenCalled();
+      expect(await specs.active()).not.toContain(code);
+      expect((await p().query('SELECT 1 FROM production_workshops WHERE code=$1',[code])).rowCount).toBe(0);
+      expect((await p().query('SELECT 1 FROM ref_entries WHERE code=$1 AND table_id=\'production_step_types\'',[code])).rowCount).toBe(0);
+      expect(await versionCount()).toBe(before);
+    }finally{
+      fail.mockRestore();
+      await p().query('DELETE FROM sector_specializations WHERE code=$1',[code]);
     }
   });
 

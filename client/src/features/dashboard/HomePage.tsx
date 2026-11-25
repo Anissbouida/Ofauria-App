@@ -5,7 +5,8 @@ import { settingsApi } from '../../api/settings.api';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { Warehouse, Factory, ShoppingCart, Home, ChevronRight } from 'lucide-react';
-import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
+import { MODULE_LABELS, workspaceHomeRoute, type AppModule } from '@ofauria/shared';
+import { useInterfacePreferences } from '../../api/interface-preferences.api';
 import { navLabel, visibleNavGroups } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
 import { Breadcrumb, PageHeader, SectionHeader } from '../../components/ds';
@@ -22,10 +23,14 @@ export default function HomePage() {
   // Le clic sur le nom de l'application (en-tête) demande le menu principal : pas de renvoi.
   const fromLauncher = !!(location.state as { launcher?: boolean } | null)?.launcher;
   const { data: sector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
+  const preferences=useInterfacePreferences(user?.id);
   useEffect(() => {
-    const home = sector?.current?.home_route;
-    if (home && home !== '/' && !fromLauncher) navigate(home, { replace: true });
-  }, [sector, navigate, fromLauncher]);
+    if(preferences.isLoading)return;
+    const visible=visibleNavGroups(hasModule,user?.role).flatMap(g=>g.items.map(item=>item.href));
+    // Les préférences ne confèrent jamais de droit ; une route non visible garde l'accueil général.
+    const home=workspaceHomeRoute(preferences.data?.values.workspace??'sector',sector?.current?.home_route,visible,fromLauncher);
+    if(home)navigate(home,{replace:true});
+  },[sector,navigate,fromLauncher,preferences.isLoading,preferences.data?.values.workspace,hasModule,user?.role]);
 
   const userGroups = visibleNavGroups(hasModule, user?.role);
   const approvalsCount = useApprovalsCount(!!user);

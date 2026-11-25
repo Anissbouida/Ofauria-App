@@ -2,7 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { SETTINGS_SECTIONS, type SettingsSection } from '@ofauria/shared';
 import { settingsAccess } from '../middleware/settings-access.middleware.js';
-import { setupStatus } from '../services/setup-status.js';
+import { setupStatus, wizardSetupSummary } from '../services/setup-status.js';
 import { effectiveRights, hasRight, moduleKeys } from '../services/access-rights.js';
 import { auditLogRepository } from '../repositories/audit-log.repository.js';
 
@@ -27,6 +27,7 @@ export const setupController = {
         changed_at: r.changed_at, changed_by_name: r.changed_by_name,
       }))
       : null;
-    res.json({ success: true, data: { checks, recent } });
+    const wizard = access.canEdit('company') ? await wizardSetupSummary() : null;
+    res.json({ success: true, data: { checks, recent, wizard } });
   },
 };

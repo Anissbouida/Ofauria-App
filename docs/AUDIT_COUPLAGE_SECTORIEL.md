@@ -1,5 +1,7 @@
 # Audit du couplage sectoriel — vers un ERP multi-secteur
 
+> Document historique : les profils, modules et spécialités sont désormais présents. Voir le [suivi du programme multisectoriel](SUIVI_IMPLEMENTATION_MULTISECTORIELLE.md).
+
 > Objectif : rendre Kalum indépendant du métier « boulangerie / pâtisserie » pour
 > en faire un ERP multi-secteur (négoce, services, industrie, traiteur…), piloté
 > par **packs secteur** plutôt que par des hypothèses codées en dur.

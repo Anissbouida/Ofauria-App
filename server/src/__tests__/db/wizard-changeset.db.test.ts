@@ -1,0 +1,108 @@
+import { describe,it,expect,beforeAll,afterAll } from 'vitest';
+import { hasTestDb,testPool,closeTestPool,importRepositories,createBaseFixtures,cleanupFixtures,type Fixtures } from './helpers.js';
+
+describe.skipIf(!hasTestDb)('Jeu de changements — simulation transactionnelle isolée',()=>{
+  let repos: Awaited<ReturnType<typeof importRepositories>>;
+  let sessions: typeof import('../../services/wizard/sessions.js');
+  let changes: typeof import('../../services/wizard/change-set.js');
+  let sectors: typeof import('../../repositories/sector.repository.js')['sectorRepository'];
+  let fx:Fixtures;
+  const ids:string[]=[];
+  const prior=process.env.KALUM_WIZARD_SIMULATION_ENABLED;
+  beforeAll(async()=>{
+    repos=await importRepositories(); sessions=await import('../../services/wizard/sessions.js'); changes=await import('../../services/wizard/change-set.js');
+    ({sectorRepository:sectors}=await import('../../repositories/sector.repository.js')); fx=await createBaseFixtures();
+    process.env.KALUM_WIZARD_SIMULATION_ENABLED='true';
+  });
+  afterAll(async()=>{
+    if(prior===undefined) delete process.env.KALUM_WIZARD_SIMULATION_ENABLED; else process.env.KALUM_WIZARD_SIMULATION_ENABLED=prior;
+    await testPool().query('DELETE FROM config_change_sets WHERE session_id=ANY($1::uuid[])',[ids]);
+    await testPool().query('DELETE FROM config_wizard_sessions WHERE id=ANY($1::uuid[])',[ids]);
+    if(fx) await cleanupFixtures(fx); await repos?.db.pool.end();await closeTestPool();
+  });
+  it('compile, exécute le chemin réel puis annule les écritures, sans publier',async()=>{
+    const initial=await sectors.activation();
+    const before=(await testPool().query('SELECT count(*)::int AS n FROM config_versions')).rows[0].n;
+    const draft=await sessions.createWizardSession('evolution','quick',fx.userId);ids.push(draft.id);
+    const companyBefore=(await testPool().query('SELECT legal_name,default_locale,timezone FROM company_settings WHERE id=1')).rows[0];
+    const labelsBefore=await sectors.labelOverrides();
+    const specialtiesBefore=(await testPool().query('SELECT code FROM company_specializations ORDER BY code')).rows;
+    const {wizardParameters}=await import('../../services/wizard/parameter-operations.js');
+    const parametersBefore=await wizardParameters();
+    const selectedParams=parametersBefore.filter(p=>[...initial.modules].some(m=>m===p.module)&&p.value);
+    const policy=selectedParams.find(p=>p.key==='production.mrp_horizon');
+    const moduleParam=selectedParams.find(p=>p.key==='stock.negative_policy');
+    expect(policy).toBeDefined();expect(moduleParam).toBeDefined();
+    const days=policy!.value!.days===29?'30':'29';
+    const ingredient=moduleParam!.value!.ingredient==='block'?'allow_trace':'block';
+    const autoRelease=parametersBefore.find(p=>p.key==='quality.auto_release')!.value!.enabled!==true;
+    const {readInterfacePreferences}=await import('../../services/interface-preferences.js');
+    const interfaceBefore=await readInterfacePreferences();
+    const density=interfaceBefore.values.density==='compact'?'standard':'compact';
+    const answers={company:{reviewed:true,data:{name:'Société test',locale:'fr',timezone:'America/Toronto',sites:'2'}},sector:{reviewed:true,data:{primary:initial.sector.code,secondary:[]}},specialties:{reviewed:true,data:{selected:[]}},modules:{reviewed:true,data:{selected:[...initial.modules]}},finance:{reviewed:true},roles:{reviewed:true},vocabulary:{reviewed:true,data:{recipe:'Nomenclature test'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':days,'stock.negative_policy:ingredient':ingredient}},rules:{reviewed:true,data:{'quality.auto_release:enabled':autoRelease}}};
+    const extended={...answers,interfaces:{reviewed:true,data:{workspace:'direction',density}}};
+    const saved=await sessions.saveWizardSession(draft.id,{mode:'quick',current_step:'review',revision:draft.revision,answers:extended},fx.userId);
+    const compiled=await changes.compileWizardSession(draft.id,saved.revision,fx.userId);
+    expect(compiled.status).toBe('compiled');
+    const result=await changes.simulateWizardChangeSet(draft.id,saved.revision,fx.userId);
+    expect(result.status).toBe('simulated_partial');expect(result.simulation.rolledBack).toBe(true);
+    expect(result.simulation.pending).toContain('company');
+    expect(result.simulation.scope).toEqual(expect.arrayContaining(['company','vocabulary','specialties','operations','rules']));
+    expect(result.simulation.scope).toContain('interfaces');
+    expect(result.simulation.interfaceImpact).toEqual({before:interfaceBefore.values,after:{workspace:'direction',density}});
+    expect(await readInterfacePreferences()).toEqual(interfaceBefore);
+    expect(result.simulation.parameterImpact).toEqual(expect.arrayContaining([expect.objectContaining({key:'production.mrp_horizon',value:{days:Number(days)}}),expect.objectContaining({key:'stock.negative_policy',value:expect.objectContaining({ingredient})})]));
+    expect(await wizardParameters()).toEqual(parametersBefore);
+    expect(result.simulation.specialtyImpact.disabled).toEqual(specialtiesBefore.map(r=>r.code));
+    expect((await testPool().query('SELECT code FROM company_specializations ORDER BY code')).rows).toEqual(specialtiesBefore);
+    expect((await testPool().query('SELECT legal_name,default_locale,timezone FROM company_settings WHERE id=1')).rows[0]).toEqual(companyBefore);
+    expect(await sectors.labelOverrides()).toEqual(labelsBefore);
+    expect((await testPool().query('SELECT count(*)::int AS n FROM config_versions')).rows[0].n).toBe(before);
+    expect((await sectors.activation()).modules).toEqual(initial.modules);
+    expect((await sessions.listWizardSessions()).find(s=>s.id===draft.id)?.status).toBe('draft');
+    const edited=await sessions.saveWizardSession(draft.id,{mode:'quick',current_step:'review',revision:saved.revision,answers},fx.userId);
+    expect(edited.revision).toBeGreaterThan(saved.revision);
+    await expect(changes.simulateWizardChangeSet(draft.id,saved.revision,fx.userId)).rejects.toMatchObject({statusCode:409});
+    const rebased=await sessions.rebaseWizardSession(draft.id,edited.revision,fx.userId);
+    expect(rebased.revision).toBe(edited.revision+1);expect(rebased.answers.sector).toEqual(answers.sector);
+    expect(rebased.answers.review.reviewed).toBe(false);expect(await changes.currentWizardChangeSet(draft.id)).toBeNull();
+  },60000);
+  it('isole les préférences personnelles des versions de société et permet le retour à l’héritage',async()=>{
+    const {withTransaction,db}=await import('../../config/database.js');
+    const {readInterfacePreferences,setPersonalInterfacePreferences,restoreCompanyInterface}=await import('../../services/interface-preferences.js');
+    const {configLayersRepository}=await import('../../repositories/config-layers.repository.js');
+    const initial=await readInterfacePreferences(fx.userId);
+    const rollback=new Error('rollback test');
+    await expect(withTransaction(async()=>{
+      const layers=await configLayersRepository.capture();
+      await restoreCompanyInterface(db,[{key:'ui.workspace',value:'direction'},{key:'ui.table_density',value:'compact'}],fx.userId);
+      const personal=await setPersonalInterfacePreferences(fx.userId,{workspace:'sales',density:'standard'});
+      expect(personal.values).toEqual({workspace:'sales',density:'standard'});
+      expect((await readInterfacePreferences()).values).toEqual({workspace:'direction',density:'compact'});
+      await configLayersRepository.restore(db,{interface_preferences:layers.interface_preferences},fx.userId);
+      expect((await readInterfacePreferences(fx.userId)).values).toEqual(personal.values);
+      expect((await setPersonalInterfacePreferences(fx.userId,{workspace:null,density:null})).values).toEqual((await readInterfacePreferences()).values);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(await readInterfacePreferences(fx.userId)).toEqual(initial);
+  },60000);
+  it('versionne puis restaure un paramètre depuis le centre historique',async()=>{
+    const {withTransaction,db}=await import('../../config/database.js');
+    const {readAll,write}=await import('../../services/settings-center.js');
+    const {parameterByKey}=await import('../../services/parameters-catalog.js');
+    const key='stock.negative_policy',def=parameterByKey(key)!;
+    const before=(await readAll()).get(key)!;
+    const after={...before,ingredient:before.ingredient==='block'?'allow_trace':'block'};
+    const rollback=new Error('rollback test');
+    await expect(withTransaction(async()=>{
+      expect(await write(def,after,fx.userId)).toBe(true);
+      expect((await readAll()).get(key)).toEqual(after);
+      const version=(await db.query(`SELECT id FROM config_versions WHERE label=$1 ORDER BY id DESC LIMIT 1`,[`Avant modification : ${def.label}`])).rows[0];
+      expect(version).toBeDefined();
+      expect('error' in await sectors.restoreVersion(version.id,fx.userId)).toBe(false);
+      expect((await readAll()).get(key)).toEqual(before);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect((await readAll()).get(key)).toEqual(before);
+  },60000);
+});

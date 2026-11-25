@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { baseCurrencyCode } from './currency.js';
+import { resolveConfig } from './config-resolver.js';
 
 /**
  * Paramètres métier en table (mig 306) : remplacent les constantes de code et les
@@ -130,7 +131,8 @@ export async function getPersonSizes(): Promise<number[]> {
 
 export async function getParameter<T>(key: string): Promise<T> {
   const r = await db.query(`SELECT value FROM module_parameters WHERE key = $1`, [key]);
-  return (r.rows[0]?.value ?? DEFAULTS[key]) as T;
+  const value = r.rows[0]?.value;
+  return resolveConfig(DEFAULTS[key], value == null ? [] : [{ scope_type: 'company', scope_id: '', value }]).value as T;
 }
 
 export async function listParameters(prefix: string) {

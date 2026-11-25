@@ -1,4 +1,6 @@
 import { db } from '../config/database.js';
+import { WIZARD_MODULE_PARAMETER_KEYS } from '../services/wizard/parameter-definitions.js';
+import { companyInterfaceRows, restoreCompanyInterface } from '../services/interface-preferences.js';
 
 /**
  * Couches de configuration capturées dans chaque version (plan d'exécution multi-industries,
@@ -14,6 +16,8 @@ type Runner = { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> };
 export type ConfigLayers = Record<string, unknown[]>;
 
 const QUERIES: Record<string, string> = {
+  company_context: `SELECT id,legal_name,legal_form,default_locale,timezone,company_size FROM company_settings WHERE id=1`,
+  module_parameters: `SELECT key,value FROM module_parameters ORDER BY key`,
   labels: `SELECT label_key AS key, label_value AS value FROM company_label_overrides ORDER BY label_key`,
   specializations: `SELECT code FROM company_specializations ORDER BY code`,
   order_types: `SELECT code, label, requires_bon_sortie, requires_weighing, requires_quality_check, consumption_mode,
@@ -40,17 +44,30 @@ export const configLayersRepository = {
     for (const [key, sql] of Object.entries(QUERIES)) {
       try {
         if (inTx) await runner.query('SAVEPOINT cfg_layer');
-        out[key] = (await runner.query(sql)).rows;
+        const rows=(await runner.query(sql)).rows;
+        out[key] = key==='module_parameters'?rows.filter(r=>WIZARD_MODULE_PARAMETER_KEYS.includes(r.key)):rows;
         if (inTx) await runner.query('RELEASE SAVEPOINT cfg_layer');
       } catch {
         if (inTx) await runner.query('ROLLBACK TO SAVEPOINT cfg_layer').catch(() => undefined);
       }
     }
+    if((await runner.query(`SELECT to_regclass('public.config_values') IS NOT NULL AS ok`)).rows[0]?.ok)out.interface_preferences=await companyInterfaceRows(runner);
     return out;
   },
 
   /** Remet en place le vocabulaire et les spécialisations d'une version. */
   async restore(runner: Runner, layers: ConfigLayers, userId?: string | null): Promise<void> {
+    if(Array.isArray(layers.interface_preferences))await restoreCompanyInterface(runner,layers.interface_preferences,userId);
+    if(Array.isArray(layers.module_parameters)){
+      for(const row of layers.module_parameters as {key:string;value:unknown}[]){
+        if(!WIZARD_MODULE_PARAMETER_KEYS.includes(row.key))continue;
+        await runner.query(`UPDATE module_parameters SET value=$2::jsonb,updated_by=$3,updated_at=now() WHERE key=$1 AND value IS DISTINCT FROM $2::jsonb`,[row.key,JSON.stringify(row.value),userId??null]);
+      }
+    }
+    if (Array.isArray(layers.company_context) && layers.company_context.length===1) {
+      const c=layers.company_context[0] as {legal_name:string|null;legal_form:string|null;default_locale:string;timezone:string;company_size:string|null};
+      await runner.query(`UPDATE company_settings SET legal_name=$1,legal_form=$2,default_locale=$3,timezone=$4,company_size=$5,updated_at=now() WHERE id=1`,[c.legal_name,c.legal_form,c.default_locale,c.timezone,c.company_size]);
+    }
     if (Array.isArray(layers.labels)) {
       const wanted = new Map((layers.labels as { key: string; value: string }[]).map(l => [l.key, l.value]));
       const current = (await runner.query(`SELECT label_key FROM company_label_overrides`)).rows.map(r => r.label_key as string);
@@ -77,7 +94,7 @@ export const configLayersRepository = {
 
 /** Différences entre deux photographies, couche par couche (ajouts, retraits, modifications). */
 export function diffLayers(a: ConfigLayers, b: ConfigLayers): { layer: string; added: unknown[]; removed: unknown[]; changed: { before: unknown; after: unknown }[] }[] {
-  const idOf = (row: Record<string, unknown>) => String(row.code ?? row.key ?? row.doc_type ?? row.name ?? row.stage ?? JSON.stringify(row));
+  const idOf = (row: Record<string, unknown>) => String(row.code ?? row.key ?? row.doc_type ?? row.name ?? row.stage ?? row.id ?? JSON.stringify(row));
   const out: { layer: string; added: unknown[]; removed: unknown[]; changed: { before: unknown; after: unknown }[] }[] = [];
   for (const layer of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) {
     const ra = new Map(((a?.[layer] ?? []) as Record<string, unknown>[]).map(r => [idOf(r), r]));

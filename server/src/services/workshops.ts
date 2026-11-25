@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db,inTransaction } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { userRoleContext } from './access-rights.js';
 
@@ -35,7 +35,8 @@ const CACHE_MS = 30_000;
 let cache: { at: number; list: Workshop[] } | null = null;
 
 export async function listWorkshops(): Promise<Workshop[]> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.list;
+  const transactional=inTransaction();
+  if (!transactional&&cache && Date.now() - cache.at < CACHE_MS) return cache.list;
   const [ws, cats, members, recipeCats] = await Promise.all([
     db.query(`SELECT code, label, work_center_id, is_default, is_active, sort_order, color, short_code FROM production_workshops ORDER BY sort_order, label`),
     db.query(`SELECT wc.workshop_code, c.id, c.slug FROM production_workshop_categories wc JOIN categories c ON c.id = wc.category_id`),
@@ -58,7 +59,7 @@ export async function listWorkshops(): Promise<Workshop[]> {
     if (!w) continue;
     if (m.role_code) w.memberRoles.push(m.role_code); else if (m.user_id) w.memberUsers.push(m.user_id);
   }
-  cache = { at: Date.now(), list };
+  if(!transactional)cache = { at: Date.now(), list };
   return list;
 }
 

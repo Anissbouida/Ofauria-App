@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { invalidateWorkshops } from '../services/workshops.js';
 import { invalidateProcessRefs } from '../services/process-referentials.js';
@@ -34,7 +34,7 @@ export type SpecializationResult = { workshops: number; stepTypes: number; featu
 export const specializationRepository = {
   async list(): Promise<Specialization[]> {
     const current = await sectorRepository.current();
-    const lineage = new Set(current.lineage ?? [current.code]);
+    const lineage = new Set(current.specialtyLineage ?? current.lineage ?? [current.code]);
     const { rows } = await db.query(
       `SELECT s.code, s.sector_pack, s.label, s.description, s.sort_order, s.content,
               (c.code IS NOT NULL) AS enabled, c.enabled_at
@@ -51,11 +51,18 @@ export const specializationRepository = {
 
   /** Active une spécialisation : atelier, types d'étape et capacités manquants seulement. */
   async enable(code: string, userId?: string | null): Promise<{ error: string } | SpecializationResult> {
+    try{return await withTransaction(async()=>{
+    await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
     const { rows } = await db.query(`SELECT code, label, sector_pack, content FROM sector_specializations WHERE code = $1`, [code]);
     const spec = rows[0];
     if (!spec) return { error: 'Spécialisation inconnue' };
+    const current = await sectorRepository.current();
+    if (!(current.specialtyLineage ?? current.lineage ?? [current.code]).includes(spec.sector_pack)) {
+      return { error: 'Cette spécialisation ne relève pas du profil actif ni de ses parents' };
+    }
     const content = (spec.content ?? {}) as SpecializationContent;
     const result: SpecializationResult = { workshops: 0, stepTypes: 0, features: [] };
+    await sectorRepository.recordVersion(`Avant activation spécialisation : ${spec.label}`,userId);
 
     const client = await db.getClient();
     try {
@@ -104,15 +111,25 @@ export const specializationRepository = {
     const missing = (content.features ?? []).filter(f => known.has(f) && !act.features.has(f));
     if (missing.length) {
       const r = await sectorRepository.applyAdjustments({ features: Object.fromEntries(missing.map(f => [f, true])) }, userId);
-      if (!('error' in r)) result.features = missing;
-    }
+      if ('error' in r) throw Object.assign(new Error(r.error),{statusCode:409});
+      if(missing.some(f=>!r.activation.features.has(f)))throw Object.assign(new Error('Les capacités requises par cette spécialisation ne sont pas toutes actives.'),{statusCode:409});
+      result.features = missing;
+    }else await sectorRepository.recordVersion(`Spécialisation activée : ${spec.label}`,userId);
     return result;
+    })}catch(e){if((e as {statusCode?:number}).statusCode===409)return {error:(e as Error).message};throw e}
+    finally{sectorRepository.invalidate();invalidateWorkshops();invalidateProcessRefs()}
   },
 
   /** Désactive une spécialisation : rien n'est supprimé (atelier, données, capacités). */
-  async disable(code: string): Promise<{ error: string } | { ok: true }> {
-    const { rows } = await db.query(`DELETE FROM company_specializations WHERE code = $1 RETURNING code`, [code]);
-    if (!rows[0]) return { error: 'Spécialisation non active' };
-    return { ok: true };
+  async disable(code: string,userId?:string|null): Promise<{ error: string } | { ok: true }> {
+    return withTransaction(async()=>{
+      await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+      if(!(await db.query(`SELECT 1 FROM company_specializations WHERE code=$1`,[code])).rows[0])return {error:'Spécialisation non active'};
+      if(userId)await db.query(`SELECT set_config('app.user_id',$1,true)`,[userId]);
+      await sectorRepository.recordVersion(`Avant retrait spécialisation : ${code}`,userId);
+      await db.query(`DELETE FROM company_specializations WHERE code=$1`,[code]);
+      await sectorRepository.recordVersion(`Spécialisation retirée : ${code}`,userId);
+      return {ok:true as const};
+    });
   },
 };

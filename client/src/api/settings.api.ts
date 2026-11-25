@@ -144,6 +144,7 @@ export interface BusinessParameter {
   key: string; domain: string; domainLabel: string; label: string; help: string;
   fields: ParamField[]; defaults: Record<string, unknown>;
   value: Record<string, unknown> | null; available: boolean; editable: boolean;
+  source?: 'company' | 'default' | 'unavailable';
   history: { changed_at: string; by_name: string | null; diff: Record<string, { old: unknown; new: unknown }> | null }[];
 }
 
@@ -189,12 +190,13 @@ export interface SetupCheck {
 }
 export interface SetupOverview {
   checks: SetupCheck[];
+  wizard?: { count: number } | null;
   recent: { id: string; table_name: string; operation: string; record_label: string | null; changed_at: string; changed_by_name: string | null }[] | null;
 }
 
 export interface SectorInfo {
   // modules / features = listes EFFECTIVES (secteur + ajustements, mig 507).
-  current: { code: string; label: string; modules: string[]; features?: string[]; home_route?: string | null; report_keys?: string[] };
+  current: { code: string; label: string; modules: string[]; features?: string[]; home_route?: string | null; report_keys?: string[]; secondarySectors?: string[] };
   // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
   labels?: Record<string, string>;
   /** Nombre d'ajustements (modules + options) par rapport au préréglage. */
@@ -350,6 +352,8 @@ export const settingsApi = {
     api.put(`/settings/specializations/${code}`, { enabled }).then(r => r.data.data) as Promise<{ result: { workshops?: number; stepTypes?: number; features?: string[] } }>,
   setSector: (code: string, keepAdjustments = true) =>
     api.put('/settings/sector', { code, keepAdjustments }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
+  previewSector: (code: string, keepAdjustments = true) =>
+    api.post('/settings/sector/preview', { code, keepAdjustments }).then(r => r.data.data) as Promise<ModuleImpact>,
   sectorStarter: (sector?: string) => api.get('/settings/sector/starter', { params: sector ? { sector } : {} }).then(r => r.data.data) as Promise<{ sector: string; preview: { categories: string[]; items: string[] } }>,
   loadSectorStarter: () => api.post('/settings/sector/starter').then(r => r.data.data) as Promise<Record<string, number>>,
   modules: () => api.get('/settings/modules').then(r => r.data.data) as Promise<ModuleActivation>,

@@ -2549,6 +2549,10 @@
  "GET /settings": null,
  "GET /settings/api-keys": null,
  "GET /settings/approval-rules": null,
+ "GET /settings/assistant": null,
+ "GET /settings/assistant/:id/changeset": null,
+ "GET /settings/assistant/:id/preview": null,
+ "GET /settings/assistant/catalog": null,
  "GET /settings/audit-log": null,
  "GET /settings/audit-log/tables": null,
  "GET /settings/audit-trail/:table/:id": null,
@@ -2774,6 +2778,7 @@
   "admin"
  ],
  "GET /users/me/action-permissions": null,
+ "GET /users/me/interface-preferences": null,
  "GET /users/me/permissions": null,
  "GET /users/roles": [
   "admin"
@@ -4707,6 +4712,11 @@
  "POST /schedules/week": null,
  "POST /settings/api-keys": null,
  "POST /settings/approval-rules": null,
+ "POST /settings/assistant": null,
+ "POST /settings/assistant/:id/abandon": null,
+ "POST /settings/assistant/:id/compile": null,
+ "POST /settings/assistant/:id/rebase": null,
+ "POST /settings/assistant/:id/simulate": null,
  "POST /settings/bank-accounts": null,
  "POST /settings/data/import/:entity/commit": null,
  "POST /settings/data/import/:entity/preview": null,
@@ -4727,6 +4737,7 @@
  "POST /settings/production-setup/simulate": null,
  "POST /settings/screens/:key/publish": null,
  "POST /settings/screens/:key/reset": null,
+ "POST /settings/sector/preview": null,
  "POST /settings/sector/starter": null,
  "POST /settings/sectors": null,
  "POST /settings/tax-codes": null,
@@ -5484,6 +5495,7 @@
  "PUT /settings/production-documents/:key": null,
  "PUT /settings/screens/:key/draft": null,
  "PUT /settings/sector": null,
+ "PUT /settings/assistant/:id": null,
  "PUT /settings/specializations/:code": null,
  "PUT /settings/tax-codes/:id": null,
  "PUT /settings/vocabulary/:key": null,
@@ -5526,6 +5538,7 @@
  "PUT /users/:id/permissions": [
   "admin"
  ],
+ "PUT /users/me/interface-preferences": null,
  "PUT /users/me/locale": null,
  "PUT /users/roles/:code": [
   "admin"

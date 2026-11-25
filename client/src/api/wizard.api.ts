@@ -1,0 +1,37 @@
+import api from './client';
+import type { ModuleImpact } from './settings.api';
+import type { InterfacePreferences } from '@ofauria/shared';
+
+export type WizardMode = 'quick' | 'advanced';
+export type WizardData = Record<string, string | string[] | boolean>;
+export type WizardAnswers = Record<string, { reviewed?: boolean; note?: string; data?: WizardData }>;
+export interface WizardParameter { step:string; module:string; key:string; label:string; help:string; value:Record<string,unknown>|null; fields:{name:string;label:string;type:string;unit?:string;min?:number;max?:number;options?:{value:string;label:string}[]}[] }
+export interface WizardCatalog {
+  profiles: { code: string; label: string; description?: string; status?: string; lineage: string[]; modules: string[]; features: string[]; labels?: Record<string,string> }[];
+  specialties: { code: string; label: string; description: string | null; sector: string; enabled: boolean }[];
+  country: string; currency: string; currentSector: string; modules: string[];
+  currentSecondary?: string[];
+  company?: { name:string;legalForm:string;locale:string;timezone:string;size:string };
+  technicalSimulationAvailable?: boolean;
+  parameters?: WizardParameter[];
+  interfacePreferences?: {available:boolean;values:InterfacePreferences};
+}
+export interface WizardChangeSet { id: string; session_id: string; session_revision: number; status: string; operations: { step: string; data: WizardData; execution: 'sector_modules' | 'company_context' | 'vocabulary' | 'specializations' | 'parameters' | 'interface_preferences' | 'pending'; reason?: string }[]; issues: WizardSession['issues']; simulation?: { scope:string[]; rolledBack:boolean; pending:string[]; note:string; parameterImpact?:{key:string;before:Record<string,unknown>;value:Record<string,unknown>;step:string}[]; interfaceImpact?:{before:InterfacePreferences;after:InterfacePreferences} } | null }
+export interface WizardStep { key: string; phase: string; label: string; description: string; advanced: boolean }
+export interface WizardSession {
+  id: string; kind: 'initial' | 'evolution' | 'upgrade'; status: string; mode: WizardMode;
+  current_step: string; answers: WizardAnswers; revision: number; updated_at: string;
+  steps: WizardStep[]; issues: { step: string; severity: string; message: string }[];
+}
+export const wizardApi = {
+  catalog: () => api.get('/settings/assistant/catalog').then(r => r.data.data as WizardCatalog),
+  preview: (id: string) => api.get(`/settings/assistant/${id}/preview`).then(r => r.data.data as { revision: number; issues: WizardSession['issues']; impact: ModuleImpact | null }),
+  list: () => api.get('/settings/assistant').then(r => r.data.data as WizardSession[]),
+  create: (kind: WizardSession['kind'], mode: WizardMode) => api.post('/settings/assistant', { kind, mode }).then(r => r.data.data as WizardSession),
+  save: (id: string, input: Pick<WizardSession, 'mode' | 'current_step' | 'revision' | 'answers'>) => api.put(`/settings/assistant/${id}`, input).then(r => r.data.data as WizardSession),
+  abandon: (id: string, revision: number) => api.post(`/settings/assistant/${id}/abandon`, { revision }),
+  compile: (id: string, revision: number) => api.post(`/settings/assistant/${id}/compile`,{revision}).then(r => r.data.data as WizardChangeSet),
+  rebase: (id:string,revision:number)=>api.post(`/settings/assistant/${id}/rebase`,{revision}).then(r=>r.data.data as WizardSession),
+  changeset: (id: string) => api.get(`/settings/assistant/${id}/changeset`).then(r => r.data.data as WizardChangeSet|null),
+  simulate: (id: string, revision: number) => api.post(`/settings/assistant/${id}/simulate`,{revision}).then(r => r.data.data as WizardChangeSet),
+};

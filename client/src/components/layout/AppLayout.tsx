@@ -1,4 +1,5 @@
 import '../../styles/design-system.css';
+import { useInterfacePreferences } from '../../api/interface-preferences.api';
 import { useState, useRef, useEffect } from 'react';
 import MfaSetup from '../../features/auth/MfaSetup';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
@@ -90,6 +91,7 @@ function TimeoutWarningModal() {
 
 export default function AppLayout() {
   const { user, isLoading: authLoading, mfaConfigured } = useAuth();
+  const preferences=useInterfacePreferences(user?.id);
   const { hasModule, isLoading: permsLoading } = usePermissions();
   const { locale, t } = useLocale();
   const isLoading = authLoading || permsLoading;
@@ -183,7 +185,7 @@ export default function AppLayout() {
       {/* Main content — pas de padding sur les pages Stock (style Odoo full-width) */}
       {/* Design Ventes partout (2026-11-18) : chaque page pose sa barre et ses marges (zone .kl-apple) ;
           seule la Caisse garde la marge historique. Remplace l'ancienne liste blanche de routes pleine largeur. */}
-      <main className={`flex-1 overflow-auto ${location.pathname === '/pos' ? 'p-6' : 'kl-apple kl-ds'}`}>
+      <main className={`flex-1 overflow-auto ${location.pathname === '/pos' ? 'p-6' : 'kl-apple kl-ds'} ${preferences.data?.values.density==='compact'?'kl-density-compact':''}`}>
         <Outlet />
       </main>
 

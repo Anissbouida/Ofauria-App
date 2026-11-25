@@ -107,6 +107,8 @@ button.ds-kpi:hover, .ds-kpi.active { box-shadow: inset 0 0 0 2px var(--ds-accen
 .kl-ds.kl-ds .ds-panel .odoo-table tbody td { height: var(--ds-row); padding: 6px 12px; font-size: var(--ds-t-body); }
 .kl-ds.kl-ds .ds-panel .odoo-table.ds-dense tbody td { height: var(--ds-row-dense); padding: 3px 12px; font-size: 13px; }
 .kl-ds.kl-ds .ds-panel .odoo-table.ds-dense thead th { padding: 8px 12px; }
+.kl-ds.kl-ds.kl-density-compact .ds-panel .odoo-table:not(.fixed .odoo-table) tbody td { height: var(--ds-row-dense); padding-block: 3px; }
+.kl-ds.kl-ds.kl-density-compact .ds-panel .odoo-table:not(.fixed .odoo-table) thead th { padding-block: 8px; }
 .kl-ds.kl-ds .ds-panel .odoo-table :is(th, td):first-child { padding-left: 20px; }
 .kl-ds.kl-ds .ds-panel .odoo-table :is(th, td):last-child { padding-right: 20px; }
 .kl-ds.kl-ds .odoo-table:not(.fixed .odoo-table) tfoot td { font-weight: 700; color: var(--ds-ink); border-top: 1px solid var(--ds-sep); }

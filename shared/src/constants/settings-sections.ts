@@ -28,6 +28,10 @@ export const SETTINGS_SECTIONS = {
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[keyof typeof SETTINGS_SECTIONS];
 
+/** L'assistant global expose les valeurs de ces trois sections dans un même brouillon. */
+export const WIZARD_SETTINGS_SECTIONS = ['company','production','business'] as const satisfies readonly SettingsSection[];
+export const hasWizardSettingsScope = (sections: readonly SettingsSection[] | null) => !sections || WIZARD_SETTINGS_SECTIONS.every(s=>sections.includes(s));
+
 export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   company: 'Entreprise',
   appearance: 'Apparence',

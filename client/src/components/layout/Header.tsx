@@ -11,6 +11,7 @@ import GlobalSearch from './GlobalSearch';
 import { NAV_ITEM_BY_PATH, NAV_LABEL_BY_PATH, SALES_SHELL_PATHS, navLabel } from '../../config/navigation';
 import { useLocale } from '../../i18n';
 import { LanguageMenu } from './LanguageSwitcher';
+import InterfacePreferenceMenu from './InterfacePreferenceMenu';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const { user, logout } = useAuth();
@@ -98,6 +99,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
             <div className="border-t" />
             {/* G6-05 : langue de l'interface, enregistrée sur le compte. */}
             <LanguageMenu onDone={() => setShowUserMenu(false)} />
+            <InterfacePreferenceMenu />
             <div className="border-t" />
             <button onClick={logout}
               className="w-full text-start px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">

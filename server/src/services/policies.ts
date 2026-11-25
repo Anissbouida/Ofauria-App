@@ -1,8 +1,9 @@
 import type { PoolClient } from 'pg';
-import { db, withTransaction } from '../config/database.js';
+import { db, withTransaction, inTransaction } from '../config/database.js';
 import { parameterByKey, validateParameter, PARAMETERS, type ParamDef } from './parameters-catalog.js';
 import { listWorkshops } from './workshops.js';
 import { withCurrency } from './currency.js';
+import { resolveConfig } from './config-resolver.js';
 
 /**
  * Politiques à héritage (M1-02, mig 538).
@@ -47,13 +48,14 @@ export async function policySnapshot(q: Queryable = db): Promise<PolicyRow[]> {
 }
 
 async function allPolicies(): Promise<Map<string, PolicyRow[]>> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.byKey;
+  const transactional=inTransaction();
+  if (!transactional&&cache && Date.now() - cache.at < CACHE_MS) return cache.byKey;
   const byKey = new Map<string, PolicyRow[]>();
   for (const r of await policySnapshot()) {
     const list = byKey.get(r.key);
     if (list) list.push(r); else byKey.set(r.key, [r]);
   }
-  cache = { at: Date.now(), byKey };
+  if(!transactional)cache = { at: Date.now(), byKey };
   return byKey;
 }
 
@@ -74,14 +76,9 @@ export const policyDefinitions = (): ParamDef[] => PARAMETERS.filter(p => p.stor
 export async function resolvePolicy<T = Record<string, unknown>>(key: string, ctx: PolicyContext = {}): Promise<ResolvedPolicy<T>> {
   const def = policyDef(key);
   const rows = (await allPolicies()).get(key) ?? [];
-  const wanted: [PolicyScope, string | null | undefined][] = [
-    ['product', ctx.productId], ['order_type', ctx.orderType], ['workshop', ctx.workshop], ['store', ctx.storeId], ['company', ''],
-  ];
-  for (const [scope, id] of wanted) {
-    if (id === null || id === undefined) continue;
-    const hit = rows.find(r => r.scope_type === scope && r.scope_id === id);
-    if (hit) return { value: { ...def.defaults, ...hit.value } as T, source: scope, scopeId: id };
-  }
+  const resolved = resolveConfig(def.defaults, rows, { product: ctx.productId ?? undefined, order_type: ctx.orderType ?? undefined,
+    workshop: ctx.workshop ?? undefined, store: ctx.storeId ?? undefined }, { levels: POLICY_SCOPES });
+  if (resolved.source !== 'default') return { value: { ...def.defaults, ...resolved.value } as T, source: resolved.source as PolicyScope, scopeId: resolved.scopeId };
   // Niveau société tenu par une colonne historique : c'est elle qui fait foi. Lue à chaque
   // fois (hors cache) : son écran d'origine la modifie sans passer par ce service.
   if (def.companyColumns) {
@@ -139,18 +136,18 @@ export async function setPolicy(
   const bad = await checkScope(def, scopeType, scopeId);
   if (bad) return { error: bad };
 
-  let value: Record<string, unknown> | null = null;
-  if (input !== null) {
-    const current = (await db.query(
-      `SELECT value FROM policy_values WHERE key = $1 AND scope_type = $2 AND scope_id = $3`, [key, scopeType, scopeId])).rows[0]?.value ?? {};
-    const checked = validateParameter(def, input, current);
-    if (typeof checked === 'string') return { error: checked };
-    value = checked;
-  }
-
   const { sectorRepository } = await import('../repositories/sector.repository.js');
   try {
-    await withTransaction(async () => {
+    return await withTransaction(async () => {
+      await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+      let value: Record<string, unknown> | null = null;
+      if (input !== null) {
+        const current = (await db.query(
+          `SELECT value FROM policy_values WHERE key = $1 AND scope_type = $2 AND scope_id = $3`, [key, scopeType, scopeId])).rows[0]?.value ?? {};
+        const checked = validateParameter(def, input, current);
+        if (typeof checked === 'string') return { error: checked };
+        value = checked;
+      }
       if (userId) await db.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
       const before = await policySnapshot();
       if (value === null) {
@@ -164,13 +161,13 @@ export async function setPolicy(
       const level = scopeType === 'company' ? 'société' : `${POLICY_SCOPE_LABELS[scopeType].toLowerCase()} ${scopeId}`;
       await sectorRepository.recordVersion(
         `Politique « ${def.label} » : ${value === null ? 'valeur retirée' : 'valeur posée'} (${level})`, userId, before);
+      return {value};
     });
   } finally {
     // Aussi après un échec : une lecture faite pendant la transaction a pu mettre en cache
     // une valeur qui n'a pas été validée.
     invalidatePolicies();
   }
-  return { value };
 }
 
 /**

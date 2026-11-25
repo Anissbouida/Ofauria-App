@@ -14,7 +14,7 @@ const DIRS = ['server/src', 'client/src', 'shared/src'];
 /** Fichiers de configuration autorisés à nommer un secteur (données, pas décisions). */
 const ALLOWED: Record<string, string> = {};
 
-const CODES = 'boulangerie|generique|negoce|process|discret|atelier';
+const CODES = 'boulangerie|generique|negoce|process|discret|atelier|agroalimentaire|agro_conditionne';
 const PATTERNS: RegExp[] = [
   new RegExp(`(===|!==|==|!=)\\s*['"\`](${CODES})['"\`]`),
   new RegExp(`['"\`](${CODES})['"\`]\\s*(===|!==|==|!=)`),

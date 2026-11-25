@@ -10,6 +10,7 @@ import { permissionsOfUser } from '../services/permissions.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { z } from 'zod';
+import { readInterfacePreferences, setPersonalInterfacePreferences } from '../services/interface-preferences.js';
 import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserSchema, delegationSchema, enforcementModeSchema, permissionsSchema, updateRoleSchema, updateSodRuleSchema, updateUserSchema } from '../validators/users.validator.js';
 
 /** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
@@ -79,6 +80,13 @@ router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('use
 
 // Profil de l'utilisateur connecté — aucune clé de droit : chacun règle sa propre langue (G6-05).
 router.put('/me/locale', authenticate, validate(setLocaleSchema), asyncHandler(userController.setMyLocale));
+const interfacePreferencesSchema=z.object({workspace:z.enum(['sector','direction','production','sales','accounting']).nullable().optional(),density:z.enum(['standard','compact']).nullable().optional()}).strict();
+router.get('/me/interface-preferences',authenticate,asyncHandler(async(req,res)=>{
+  res.json({success:true,data:await readInterfacePreferences((req as AuthRequest).user!.userId)});
+}));
+router.put('/me/interface-preferences',authenticate,validate(interfacePreferencesSchema),asyncHandler(async(req,res)=>{
+  res.json({success:true,data:await setPersonalInterfacePreferences((req as AuthRequest).user!.userId,req.body)});
+}));
 
 // Permissions
 router.get('/me/permissions', authenticate, userController.myPermissions);

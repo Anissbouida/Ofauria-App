@@ -1,4 +1,5 @@
 import { APP_MODULES, LEGACY_MODULE_KEYS, canonicalModule, type AppModule } from './modules.js';
+import { dependencyClosure, dependencyDependents, dependencyMissing, type DependencyRelation } from './dependency-engine.js';
 
 /**
  * Activation des modules (plan Production générique, lot P0a, mig 507).
@@ -27,6 +28,8 @@ export const MODULE_DEPENDENCIES: Partial<Record<AppModule, AppModule[]>> = {
   replenishment: ['production'],
   reconciliation: ['pos'],
 };
+export const MODULE_RELATIONS: readonly DependencyRelation<AppModule>[] = (Object.entries(MODULE_DEPENDENCIES) as [AppModule, AppModule[]][])
+  .flatMap(([module, deps]) => deps.map(related => ({ module, related, kind: 'requires' as const })));
 
 /** Une ligne d'explication par module, affichée sous l'interrupteur. */
 export const MODULE_DESCRIPTIONS: Partial<Record<AppModule, string>> = {
@@ -84,36 +87,19 @@ export function effectiveModules(packModules: readonly string[], overrides: Modu
 
 /** Dépendances d'un module, en cascade (sans le module lui-même). */
 export function requiredModules(module: AppModule): AppModule[] {
-  const out = new Set<AppModule>();
-  const walk = (m: AppModule) => {
-    for (const d of MODULE_DEPENDENCIES[m] ?? []) {
-      if (d !== module && !out.has(d)) { out.add(d); walk(d); }
-    }
-  };
-  walk(module);
+  const out = dependencyClosure([module], MODULE_RELATIONS);
+  out.delete(module);
   return [...out];
 }
 
 /** Modules qui dépendent de celui-ci, en cascade (sans le module lui-même). */
 export function dependentModules(module: AppModule): AppModule[] {
-  const out = new Set<AppModule>();
-  const walk = (m: AppModule) => {
-    for (const [mod, deps] of Object.entries(MODULE_DEPENDENCIES) as [AppModule, AppModule[]][]) {
-      if (deps.includes(m) && mod !== module && !out.has(mod)) { out.add(mod); walk(mod); }
-    }
-  };
-  walk(module);
-  return [...out];
+  return [...dependencyDependents(module, MODULE_RELATIONS)];
 }
 
 /** Modules actifs auxquels manque une dépendance (configuration incohérente). */
 export function missingDependencies(active: ReadonlySet<AppModule>): { module: AppModule; missing: AppModule[] }[] {
-  const out: { module: AppModule; missing: AppModule[] }[] = [];
-  for (const m of active) {
-    const missing = (MODULE_DEPENDENCIES[m] ?? []).filter(d => !active.has(d));
-    if (missing.length) out.push({ module: m, missing });
-  }
-  return out;
+  return dependencyMissing(active, MODULE_RELATIONS);
 }
 
 /**

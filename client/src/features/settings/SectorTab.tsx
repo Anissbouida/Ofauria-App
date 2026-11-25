@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, Lock, RotateCcw, Save, SlidersHorizontal, Sparkles, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
-  missingDependencies, requiredModules, withRequirements, dependentsOf, type AppModule,
+  missingDependencies, requiredModules, withRequirements, dependentsOf, allowedSettingsSections, hasWizardSettingsScope, type AppModule,
 } from '@ofauria/shared';
 import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ConfigSuggestion, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection, SettingsTabs } from './SettingsPrimitives';
@@ -54,7 +54,9 @@ function mergeOverrides(base: Record<string, boolean>, changes: Record<string, b
 export default function SectorTab() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { reload, canEdit } = usePermissions();
+  const { reload, canEdit, canView, getModuleConfig } = usePermissions();
+  const wizardScope=allowedSettingsSections(getModuleConfig('settings'));
+  const canWizard=canView('settings')&&canEdit('settings')&&hasWizardSettingsScope(wizardScope);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [keepAdjustments, setKeepAdjustments] = useState(true);
   const [rolloutFor, setRolloutFor] = useState<AppModule | null>(null);
@@ -82,7 +84,7 @@ export default function SectorTab() {
   const sectorMut = useMutation({
     mutationFn: ({ code, keep }: { code: string; keep: boolean }) => settingsApi.setSector(code, keep),
     onSuccess: () => { refresh(); notify.success('Secteur mis à jour'); },
-    onError: () => notify.error('Changement de secteur impossible'),
+    onError: (e: unknown) => notify.error((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Changement de secteur impossible'),
   });
   const resetMut = useMutation({
     mutationFn: settingsApi.resetModules,
@@ -304,9 +306,18 @@ export default function SectorTab() {
       : '';
     // C-03 : ce que le profil apporte (types d'ordre, politiques, impressions…), chargé ensuite
     // par « Données de départ » sans rien écraser.
+    let impact;
+    try { impact = await settingsApi.previewSector(code, keepAdjustments); }
+    catch (e) { notify.error(errMsg(e, 'Impossible de vérifier les impacts du secteur')); return; }
+    const impactNote = [
+      impact.modulesOn.length ? `Modules activés : ${impact.modulesOn.map(k => moduleLabel(k)).join(', ')}.` : '',
+      impact.modulesOff.length ? `Modules masqués : ${impact.modulesOff.map(k => moduleLabel(k)).join(', ')}.` : '',
+      impact.hidden.length ? `Données masquées : ${impact.hidden.map(x => `${x.count} ${x.label}`).join(', ')}.` : '',
+      impact.roles.length ? `${impact.roles.length} rôle(s) touché(s).` : '',
+    ].filter(Boolean).join(' ');
     const brings = await settingsApi.sectorStarter(code).then(r => r.preview.items).catch(() => [] as string[]);
     const bringsNote = brings.length ? ` Données de départ proposées ensuite : ${brings.join(' · ')}.` : '';
-    const ok = await confirm(`Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote}${bringsNote}`,
+    const ok = await confirm(`Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote} ${impactNote}${bringsNote}`,
       { title: `Basculer sur « ${label} » ?`, confirmLabel: 'Changer de secteur' });
     if (ok) sectorMut.mutate({ code, keep: keepAdjustments });
   };
@@ -360,6 +371,12 @@ export default function SectorTab() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <section className="ds-panel" style={{ padding: 20 }} aria-label="Parcours de configuration">
+        <h2 style={{ fontSize: 17, fontWeight: 700 }}>Configuration guidée de l’activité</h2>
+        <p className="odoo-setting-help">Préparez vos choix dans le parcours multisectoriel sans modifier immédiatement les paramètres actifs.</p>
+        <button type="button" className="odoo-btn-primary" disabled={dirtyCount > 0 || !canWizard} onClick={() => navigate('/settings/assistant')}>Ouvrir l’assistant de configuration</button>
+        {dirtyCount > 0 && <p className="odoo-setting-help">Enregistrez ou annulez les ajustements avant de poursuivre.</p>}
+      </section>
       {/* Lot S3 : trois onglets (secteur, modules, modèles) ; tous restent montés, le
           brouillon des modules reste donc dans la barre d'enregistrement. */}
       <SettingsTabs label="Secteur et modules" value={tab} onChange={setTab} tabs={[

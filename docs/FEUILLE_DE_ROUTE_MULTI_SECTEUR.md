@@ -1,5 +1,7 @@
 # Feuille de route — Kalum multi-secteur, domaine Ventes
 
+> Document historique (novembre 2026) : l'état du secteur décrit ici est dépassé. Voir le [suivi du programme multisectoriel](SUIVI_IMPLEMENTATION_MULTISECTORIELLE.md).
+
 Rédigée le 2026-11-09 sur `main` (`de3912f`, dernière migration `467`). Elle met en une
 seule séquence les deux plans existants :
 

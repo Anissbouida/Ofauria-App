@@ -1,6 +1,6 @@
 import { policySnapshot, restorePolicies, type PolicyRow } from '../services/policies.js';
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, inTransaction } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import {
   ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, STORE_SCOPED_MODULES, canonicalModule, effectiveModules,
@@ -34,6 +34,8 @@ export type SectorPack = {
   base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number;
   /** Chaîne des parents, de la racine au profil lui-même (codes). */
   lineage?: string[];
+  secondarySectors?: string[];
+  specialtyLineage?: string[];
 };
 
 /** Capacité du catalogue (options mig 507, catalogue étendu mig 632). */
@@ -58,7 +60,7 @@ export type Activation = {
 
 export type AdjustmentChanges = { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> };
 
-export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides; rollout?: ModuleRollout; policies?: PolicyRow[]; layers?: ConfigLayers };
+export type ConfigSnapshot = { sector: string; secondarySectors?: string[]; modules: ModuleOverrides; features: ModuleOverrides; rollout?: ModuleRollout; policies?: PolicyRow[]; layers?: ConfigLayers };
 
 /** Diffusion d'un module : pilote (null = ouvert à tous) et établissements fermés. */
 export type RolloutChange = { pilot: ModulePilot | null; disabledStores: string[] };
@@ -68,6 +70,18 @@ export type ConfigVersion = { id: number; created_at: string; created_by_name: s
 type Target = { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides; rollout: ModuleRollout };
 
 const EMPTY_ROLLOUT: ModuleRollout = { pilots: {}, storeDisabled: {} };
+
+/** Principal conserve ses libellés et sa navigation ; les capacités se cumulent. */
+export function combineSectorPacks(primary: SectorPack, others: SectorPack[]): SectorPack {
+  return { ...primary, modules:[...new Set([...primary.modules,...others.flatMap(p=>p.modules)])],
+    features:[...new Set([...(primary.features??[]),...others.flatMap(p=>p.features??[])])],
+    secondarySectors:others.map(p=>p.code).sort(), specialtyLineage:[...new Set([...(primary.lineage??[primary.code]),...others.flatMap(p=>p.lineage??[p.code])])] };
+}
+
+async function secondaryCodes():Promise<string[]> {
+  if (!(await db.query(`SELECT to_regclass('public.company_sectors') IS NOT NULL AS ok`)).rows[0]?.ok) return [];
+  return (await db.query(`SELECT sector_code FROM company_sectors WHERE NOT is_primary ORDER BY sector_code`)).rows.map(r=>String(r.sector_code));
+}
 
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
@@ -177,7 +191,7 @@ function normalize(target: Target, catalog: FeatureDef[] = []): Target {
 }
 
 const snapshotOf = (t: Target): ConfigSnapshot =>
-  ({ sector: t.sector.code, modules: t.modules, features: t.features, rollout: t.rollout });
+  ({ sector: t.sector.code, secondarySectors:t.sector.secondarySectors??[], modules: t.modules, features: t.features, rollout: t.rollout });
 
 async function loadRollout(): Promise<ModuleRollout> {
   const [pilots, members, stores] = await Promise.all([
@@ -276,6 +290,9 @@ export const sectorRepository = {
       print_templates: mergeBy('print_templates', 'doc_type'),
       work_centers: mergeBy('work_centers', 'name'),
       locations: mergeBy('locations', 'code'),
+      control_plans: [...new Map(layers.flatMap(l => Array.isArray(l.control_plans)
+        ? (l.control_plans as Record<string, unknown>[]).map(item => [JSON.stringify([item.category, item.stage, item.characteristic].map(v => String(v ?? '').toLowerCase())), item] as const)
+        : [])).values()],
     };
   },
 
@@ -285,7 +302,7 @@ export const sectorRepository = {
     const packs = await allPacks();
     const { rows } = await db.query(`SELECT sector_pack FROM company_settings WHERE id = 1`);
     const mine = rows[0]?.sector_pack ? packs.get(rows[0].sector_pack) : undefined;
-    if (mine) return mine;
+    if (mine) return combineSectorPacks(mine,(await secondaryCodes()).filter(c=>c!==mine.code).map(c=>packs.get(c)).filter((p):p is SectorPack=>!!p));
     const def = [...packs.values()].find(p => p.is_default) ?? [...packs.values()][0];
     return def ?? { code: 'boulangerie', label: 'Boulangerie / Pâtisserie', modules: [], is_default: true, features: [] };
   },
@@ -335,7 +352,8 @@ export const sectorRepository = {
 
   /** Préréglage + ajustements → modules et options effectifs (mis en cache). */
   async activation(): Promise<Activation> {
-    if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
+    const transactional=inTransaction();
+    if (!transactional&&cache && Date.now() - cache.at < CACHE_MS) return cache.value;
     const [sector, moduleOverrides, featureOverrides, catalogRes, rollout] = await Promise.all([
       this.current(),
       loadOverrides('company_module_settings', 'module_key'),
@@ -350,7 +368,7 @@ export const sectorRepository = {
       sector, packModules: canonicalPack(sector), packFeatures: sector.features ?? [],
       moduleOverrides, featureOverrides, catalog, modules: state.modules, features: state.features, rollout,
     };
-    cache = { at: Date.now(), value };
+    if(!transactional)cache = { at: Date.now(), value };
     return value;
   },
 
@@ -467,19 +485,64 @@ export const sectorRepository = {
   /** Change le secteur de la société. Renvoie null si le code n'existe pas.
    *  keepAdjustments = false : repart du préréglage du nouveau secteur. Avec true, les
    *  écarts devenus égaux au nouveau préréglage sont retirés (plus de faux « Ajusté »). */
-  async setSector(code: string, opts: { keepAdjustments?: boolean; userId?: string | null } = {}): Promise<SectorPack | null> {
+  async planSector(code: string, keep = true): Promise<{ current: Activation; target: Target; diff: ImpactDiff } | null> {
     const pack = await this.pack(code);
     if (!pack) return null;
     const current = await this.activation();
-    const keep = opts.keepAdjustments !== false;
+    const secondary=await Promise.all((current.sector.secondarySectors??[]).filter(c=>c!==code).map(c=>this.pack(c)));
     const target = normalize({
-      sector: pack,
+      sector: combineSectorPacks(pack,secondary.filter((p):p is SectorPack=>!!p)),
       modules: keep ? current.moduleOverrides : {},
       features: keep ? current.featureOverrides : {},
       rollout: keep ? current.rollout : EMPTY_ROLLOUT,
     }, current.catalog);
-    await this.commit(current, target, opts.userId, `Secteur : ${pack.label}${keep ? '' : ' (préréglage)'}`);
+    await this.validateTransition(current, target);
+    return { current, target, diff: diffActivation(current, stateOf(target, current.catalog)) };
+  },
+
+  /** Union des profils sélectionnés et choix explicites du brouillon. */
+  async planWizardSelection(primary: string, secondary: string[], selected: string[]): Promise<{ current: Activation; target: Target; diff: ImpactDiff }> {
+    const packs = await allPacks();
+    const main = packs.get(primary);
+    if (!main || secondary.some(c => !packs.has(c) || c === primary)) throw Object.assign(new Error('Profil industriel invalide'), { statusCode: 400 });
+    if (selected.some(k => !ACTIVATABLE_MODULES.includes(k as AppModule)) || [...CORE_MODULES].some(k => !selected.includes(k))) {
+      throw Object.assign(new Error('Sélection des modules invalide'), { statusCode: 400 });
+    }
+    const others = [...new Set(secondary)].map(c => packs.get(c)!);
+    const sector = combineSectorPacks(main,others);
+    const current = await this.activation();
+    const modules = Object.fromEntries(ACTIVATABLE_MODULES.map(k => [k, selected.includes(k)]));
+    const target = normalize({ sector, modules, features: current.featureOverrides, rollout: current.rollout }, current.catalog);
+    await this.validateTransition(current, target);
+    return { current, target, diff: diffActivation(current, stateOf(target, current.catalog)) };
+  },
+
+  async previewWizardSelection(primary: string, secondary: string[], selected: string[]): Promise<{ current: Activation; diff: ImpactDiff }> {
+    const { current, diff } = await this.planWizardSelection(primary, secondary, selected);
+    return { current, diff };
+  },
+
+  async setSector(code: string, opts: { keepAdjustments?: boolean; userId?: string | null } = {}): Promise<SectorPack | null> {
+    const keep = opts.keepAdjustments !== false;
+    const plan = await this.planSector(code, keep);
+    if (!plan) return null;
+    await this.commit(plan.current, plan.target, opts.userId, `Secteur : ${plan.target.sector.label}${keep ? '' : ' (préréglage)'}`);
     return this.current();
+  },
+
+  /** Invariants communs à toutes les transitions, y compris restauration et réinitialisation. */
+  async validateTransition(current: Activation, target: Target) {
+    const after = stateOf(target, current.catalog);
+    const missing = missingDependencies(after.modules);
+    if (missing.length) {
+      const m = missing[0];
+      throw Object.assign(new Error(`« ${MODULE_LABELS[m.module]} » a besoin de : ${m.missing.map(d => MODULE_LABELS[d]).join(', ')}`), { statusCode: 409 });
+    }
+    for (const def of current.catalog) {
+      if (def.kind !== 'reglementaire' || !current.features.has(def.key) || after.features.has(def.key)) continue;
+      const usage = await capabilityUsage(def.key);
+      if (usage.length) throw Object.assign(new Error(`« ${def.label} » est une capacité réglementaire utilisée : ${usage.map(u => `${u.count} ${u.label}`).join(', ')}.`), { statusCode: 409 });
+    }
   },
 
   /**
@@ -489,12 +552,21 @@ export const sectorRepository = {
    * « Configuration initiale » : le tout premier changement reste annulable.
    */
   async commit(current: Activation, target: Target, userId?: string | null, label?: string, opts: { policies?: PolicyRow[]; layers?: ConfigLayers } = {}) {
+    await this.validateTransition(current, target);
     const before: Target = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides, rollout: current.rollout };
     const after = stateOf(target, current.catalog);
     const summary = describeDiff(diffActivation(current, after), this.featureLabel(current));
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      const live=(await client.query(`SELECT sector_pack FROM company_settings WHERE id=1 FOR UPDATE`)).rows[0];
+      const readOverrides=async(table:'company_module_settings'|'company_feature_settings',column:'module_key'|'feature_key')=>Object.fromEntries((await client.query(`SELECT ${column} AS key,enabled FROM ${table}`)).rows.map(r=>[r.key,r.enabled]));
+      const sameOverrides=(a:ModuleOverrides,b:ModuleOverrides)=>JSON.stringify(Object.entries(a).sort())===JSON.stringify(Object.entries(b).sort());
+      const secondaryExists=(await client.query(`SELECT to_regclass('public.company_sectors') IS NOT NULL AS ok`)).rows[0]?.ok;
+      const liveSecondary=secondaryExists?(await client.query(`SELECT sector_code FROM company_sectors WHERE NOT is_primary ORDER BY sector_code`)).rows.map(r=>r.sector_code):[];
+      if(live?.sector_pack!==current.sector.code||!sameOverrides(await readOverrides('company_module_settings','module_key'),current.moduleOverrides)||!sameOverrides(await readOverrides('company_feature_settings','feature_key'),current.featureOverrides)||JSON.stringify(liveSecondary)!==JSON.stringify([...(current.sector.secondarySectors??[])].sort())){
+        throw Object.assign(new Error('La configuration a changé depuis la préparation. Rechargez puis réessayez.'),{statusCode:409});
+      }
       await setAuditUser(client, userId);
       const { rows: existing } = await client.query(`SELECT 1 FROM config_versions LIMIT 1`);
       if (!existing.length) {
@@ -507,6 +579,11 @@ export const sectorRepository = {
       if (opts.layers) await configLayersRepository.restore(client, opts.layers, userId);
       if (target.sector.code !== current.sector.code) {
         await client.query(`UPDATE company_settings SET sector_pack = $1, updated_at = now() WHERE id = 1`, [target.sector.code]);
+      }
+      const oldSecondary=current.sector.secondarySectors??[], newSecondary=target.sector.secondarySectors??[];
+      if (JSON.stringify([...oldSecondary].sort())!==JSON.stringify([...newSecondary].sort())) {
+        await client.query(`DELETE FROM company_sectors WHERE NOT is_primary AND NOT(sector_code=ANY($1::text[]))`,[newSecondary]);
+        await client.query(`INSERT INTO company_sectors(sector_code,is_primary) SELECT unnest($1::varchar[]),false ON CONFLICT(sector_code) DO NOTHING`,[newSecondary]);
       }
       await syncOverrides(client, 'company_module_settings', 'module_key', current.moduleOverrides, target.modules, userId);
       await syncOverrides(client, 'company_feature_settings', 'feature_key', current.featureOverrides, target.features, userId);
@@ -612,7 +689,7 @@ export const sectorRepository = {
       .filter(k => (x ?? {})[k] !== (y ?? {})[k]).map(k => ({ key: k, before: (x ?? {})[k] ?? null, after: (y ?? {})[k] ?? null }));
     return {
       a, b,
-      sector: sa.sector === sb.sector ? null : { before: sa.sector, after: sb.sector },
+      sector: sa.sector === sb.sector && JSON.stringify(sa.secondarySectors??[])===JSON.stringify(sb.secondarySectors??[]) ? null : { before: sa.sector, after: sb.sector, secondaryBefore:sa.secondarySectors??[],secondaryAfter:sb.secondarySectors??[] },
       modules: keys(sa.modules, sb.modules),
       features: keys(sa.features, sb.features),
       layers: diffLayers({ policies: sa.policies ?? [], ...(sa.layers ?? {}) } as ConfigLayers, { policies: sb.policies ?? [], ...(sb.layers ?? {}) } as ConfigLayers),
@@ -649,7 +726,9 @@ export const sectorRepository = {
     }
     const features: ModuleOverrides = {};
     for (const [k, on] of Object.entries(snap.features ?? {})) if (known.has(k)) features[k] = on;
-    const target = normalize({ sector: pack, modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) }, current.catalog);
+    const secondaries=await Promise.all((snap.secondarySectors??[]).filter(c=>c!==pack.code).map(c=>this.pack(c)));
+    if(secondaries.some(p=>!p)) return {error:'Une activité complémentaire de cette version n’existe plus'};
+    const target = normalize({ sector: combineSectorPacks(pack,secondaries.filter((p):p is SectorPack=>!!p)), modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) }, current.catalog);
     const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
     // Une version d'avant les politiques (sans le champ) ne les touche pas.
     await this.commit(current, target, userId, `Restauration de la version du ${date}`,

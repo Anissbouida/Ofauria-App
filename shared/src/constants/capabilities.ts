@@ -11,6 +11,8 @@
  *     (contrôlé côté serveur, qui seul peut compter ces données).
  */
 
+import { dependencyClosure, dependencyDependents, type DependencyRelation } from './dependency-engine.js';
+
 export type CapabilityKind = 'fonction' | 'reglementaire';
 
 export type CapabilityDef = {
@@ -31,31 +33,16 @@ export const CAPABILITY_KIND_LABELS: Record<CapabilityKind, string> = {
 
 /** Capacités demandées + toutes celles dont elles dépendent (fermeture transitive). */
 export function withRequirements(keys: Iterable<string>, catalog: readonly CapabilityDef[]): Set<string> {
-  const byKey = new Map(catalog.map(c => [c.key, c]));
-  const out = new Set<string>();
-  const stack = [...keys];
-  while (stack.length) {
-    const k = stack.pop()!;
-    if (out.has(k)) continue;
-    out.add(k);
-    for (const r of byKey.get(k)?.requires ?? []) if (!out.has(r)) stack.push(r);
-  }
-  return out;
+  return dependencyClosure(keys, capabilityRelations(catalog));
 }
 
 /** Capacités qui dépendent (directement ou non) de `key`. */
 export function dependentsOf(key: string, catalog: readonly CapabilityDef[]): Set<string> {
-  const out = new Set<string>();
-  let frontier = [key];
-  while (frontier.length) {
-    const next: string[] = [];
-    for (const c of catalog) {
-      if (out.has(c.key) || c.key === key) continue;
-      if ((c.requires ?? []).some(r => frontier.includes(r))) { out.add(c.key); next.push(c.key); }
-    }
-    frontier = next;
-  }
-  return out;
+  return dependencyDependents(key, capabilityRelations(catalog));
+}
+
+function capabilityRelations(catalog: readonly CapabilityDef[]): DependencyRelation[] {
+  return catalog.flatMap(c => (c.requires ?? []).map(related => ({ module: c.key, related, kind: 'requires' })));
 }
 
 /** Capacités actives dont une dépendance est éteinte. */

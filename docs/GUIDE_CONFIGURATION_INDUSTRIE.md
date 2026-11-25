@@ -1,5 +1,7 @@
 # Configurer Kalum pour une industrie
 
+> Nouveau parcours : [suivi de l'assistant multisectoriel](SUIVI_IMPLEMENTATION_MULTISECTORIELLE.md). Les réglages détaillés ci-dessous restent utilisables ; la préparation guidée ne publie pas encore la configuration.
+
 Ce guide décrit comment installer Kalum pour un métier autre que la boulangerie, sans écrire de code. Chaque étape renvoie à un écran existant. Rien n'est irréversible : chaque changement de modules passe par un aperçu d'impact et l'historique des versions, et les données de départ n'écrasent jamais ce qui existe.
 
 ## 1. Choisir le profil

@@ -62,6 +62,7 @@ import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import MaintenancePage from './features/maintenance/MaintenancePage';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
+import ConfigurationWizard from './features/settings/ConfigurationWizard';
 import AccountingPage from './features/accounting/AccountingPage';
 import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
@@ -175,6 +176,7 @@ export default function App() {
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/purchasing" element={<PurchasingPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/assistant" element={<ConfigurationWizard />} />
               <Route path="/approvals" element={<ApprovalsPage />} />
               {/* Projets (mig 358) : module à rubriques, fiche en pleine page. */}
               <Route path="/projects" element={<ProjectsPage />} />

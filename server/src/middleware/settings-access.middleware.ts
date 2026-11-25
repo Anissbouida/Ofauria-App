@@ -2,7 +2,7 @@ import type { Response, NextFunction } from 'express';
 import type { AuthRequest } from './auth.middleware.js';
 import {
   allowedSettingsSections, settingsSectionOfField,
-  SETTINGS_SECTION_LABELS, type SettingsSection,
+  SETTINGS_SECTION_LABELS, hasWizardSettingsScope, type SettingsSection,
 } from '@ofauria/shared';
 import type { ModuleAction } from './module.middleware.js';
 import { effectiveRights, rightRow } from '../services/access-rights.js';
@@ -40,6 +40,16 @@ export async function settingsAccess(user: NonNullable<AuthRequest['user']>): Pr
 
 function deny(res: Response, message = 'Accès interdit') {
   res.status(403).json({ success: false, error: { message } });
+}
+
+/** Le brouillon global peut exposer des paramètres de plusieurs domaines. */
+export async function authorizeWizardSettings(req:AuthRequest,res:Response,next:NextFunction){
+  if(!req.user){res.status(401).json({success:false,error:{message:'Non authentifié'}});return;}
+  try{
+    const {can,sections}=await settingsRights(req.user);
+    if(!can.view||!can.edit||!hasWizardSettingsScope(sections)){deny(res,'Accès interdit à l’assistant de configuration multisectorielle');return;}
+    next();
+  }catch(e){next(e);}
 }
 
 /**

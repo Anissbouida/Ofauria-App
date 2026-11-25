@@ -55,9 +55,14 @@ drift_fix() {
 
 SKIPPED=()
 DRIFTED=()
+if [[ "${TEST_MIGRATE_COMPILED:-0}" == "1" ]]; then
+  MIGRATOR=(node dist/config/migrate.js)
+else
+  MIGRATOR=(npx tsx src/config/migrate.ts)
+fi
 for i in $(seq 1 80); do
   set +e
-  OUT=$(cd "$HERE" && DATABASE_URL="$URL" JWT_SECRET="${JWT_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef}" npx tsx src/config/migrate.ts 2>&1)
+  OUT=$(cd "$HERE" && DATABASE_URL="$URL" JWT_SECRET="${JWT_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef}" "${MIGRATOR[@]}" 2>&1)
   RC=$?
   set -e
   if [[ $RC -eq 0 ]]; then

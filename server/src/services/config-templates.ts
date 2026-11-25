@@ -262,7 +262,8 @@ export async function saveModelAsSector(raw: unknown, userId?: string | null): P
 export async function deleteCustomSector(code: string): Promise<{ error: string } | { ok: true }> {
   const pack = await sectorRepository.pack(code);
   if (!pack || !pack.is_custom) return { error: 'Seul un secteur personnalisé peut être supprimé' };
-  if ((await sectorRepository.current()).code === code) return { error: 'Ce secteur est celui de la société : changez de secteur avant de le supprimer' };
+  const current=await sectorRepository.current();
+  if (current.code === code || current.secondarySectors?.includes(code)) return { error: 'Ce secteur est utilisé par la société : retirez-le avant de le supprimer' };
   await db.query(`DELETE FROM sector_packs WHERE code = $1 AND is_custom`, [code]);
   return { ok: true };
 }

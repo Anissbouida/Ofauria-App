@@ -4,12 +4,14 @@ import { settingsAccess } from '../middleware/settings-access.middleware.js';
 import { DOMAIN_LABELS, PARAMETERS, parameterByKey, validateParameter } from '../services/parameters-catalog.js';
 import { history, readAll, write } from '../services/settings-center.js';
 import { withCurrency } from '../services/currency.js';
+import { db, withTransaction } from '../config/database.js';
 
 /** Paramètres métier (Paramètres › Paramètres métier, lot 4). */
 export const parametersController = {
   async list(req: AuthRequest, res: Response) {
     const access = await settingsAccess(req.user!);
-    const values = await readAll();
+    const origins = new Map<string, 'company' | 'default' | 'unavailable'>();
+    const values = await readAll(origins);
     // Une politique dont le niveau société est une colonne historique (companyColumns) se
     // règle sur son écran d'origine et dans Production › Politiques, pas ici.
     const visible = PARAMETERS.filter(p => access.canView(p.section) && !(p.storage.kind === 'policy' && !(p.scopes ?? ['company']).includes('company')));
@@ -22,6 +24,7 @@ export const parametersController = {
       fields: withCurrency(p.fields),
       defaults: p.defaults,
       value: values.get(p.key) ?? null,
+      source: origins.get(p.key) ?? 'unavailable',
       // Stockage absent de cette base (migration non appliquée) : affiché grisé.
       available: values.get(p.key) !== null,
       editable: access.canEdit(p.section),
@@ -38,17 +41,16 @@ export const parametersController = {
       res.status(403).json({ success: false, error: { message: 'Accès interdit à ce paramètre' } });
       return;
     }
-    const current = (await readAll()).get(def.key);
-    if (current === null || current === undefined) {
-      res.status(409).json({ success: false, error: { message: 'Paramètre non disponible sur cette base' } });
-      return;
-    }
-    const value = validateParameter(def, req.body?.value, current);
-    if (typeof value === 'string') { res.status(400).json({ success: false, error: { message: value } }); return; }
-    if (!(await write(def, value, req.user?.userId))) {
-      res.status(409).json({ success: false, error: { message: 'Paramètre non disponible sur cette base' } });
-      return;
-    }
-    res.json({ success: true, data: { key: def.key, value, history: await history(def) } });
+    const result=await withTransaction(async()=>{
+      await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+      const current=(await readAll()).get(def.key);
+      if(current==null)return {status:409,error:'Paramètre non disponible sur cette base'} as const;
+      const value=validateParameter(def,req.body?.value,current);
+      if(typeof value==='string')return {status:400,error:value} as const;
+      if(!(await write(def,value,req.user?.userId)))return {status:409,error:'Paramètre non disponible sur cette base'} as const;
+      return {value};
+    });
+    if('error' in result){res.status(result.status??409).json({success:false,error:{message:result.error}});return;}
+    res.json({ success: true, data: { key: def.key, value:result.value, history: await history(def) } });
   },
 };

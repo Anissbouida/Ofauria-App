@@ -32,8 +32,11 @@ async function count(c: Counter): Promise<number> {
   try {
     const { rows } = await db.query(c.sql);
     return rows[0]?.n ?? 0;
-  } catch {
-    return 0;
+  } catch (err) {
+    // Une indisponibilité de la base ne prouve pas l'absence de données.
+    // Seule une table absente d'une installation partielle est tolérée.
+    if ((err as { code?: string }).code === '42P01') return 0;
+    throw err;
   }
 }
 

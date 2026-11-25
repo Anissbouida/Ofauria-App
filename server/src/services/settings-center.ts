@@ -1,7 +1,9 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 import { PARAMETERS, type ParamDef } from './parameters-catalog.js';
 import { policySnapshot, setPolicy } from './policies.js';
+import { WIZARD_MODULE_PARAMETER_KEYS } from './wizard/parameter-definitions.js';
+import { isDeepStrictEqual } from 'node:util';
 
 /**
  * Lecture / écriture des paramètres du catalogue (lot 4), quel que soit leur
@@ -13,7 +15,7 @@ async function moduleParametersAvailable(): Promise<boolean> {
 }
 
 /** Valeurs actuelles de tous les paramètres (null = stockage absent de cette base). */
-export async function readAll(): Promise<Map<string, Record<string, unknown> | null>> {
+export async function readAll(origins?: Map<string, 'company' | 'default' | 'unavailable'>): Promise<Map<string, Record<string, unknown> | null>> {
   const out = new Map<string, Record<string, unknown> | null>();
   const company = (await db.query(`SELECT * FROM company_settings WHERE id = 1`)).rows[0] ?? {};
   const hasMp = await moduleParametersAvailable();
@@ -28,6 +30,7 @@ export async function readAll(): Promise<Map<string, Record<string, unknown> | n
   for (const p of PARAMETERS) {
     if (p.storage.kind === 'policy') {
       out.set(p.key, hasPolicies ? { ...p.defaults, ...(company_policies.get(p.key) ?? {}) } : null);
+      origins?.set(p.key, !hasPolicies ? 'unavailable' : company_policies.has(p.key) ? 'company' : 'default');
     } else if (p.storage.kind === 'company_settings') {
       const v: Record<string, unknown> = { ...p.defaults };
       for (const [field, col] of Object.entries(p.storage.columns)) {
@@ -37,8 +40,10 @@ export async function readAll(): Promise<Map<string, Record<string, unknown> | n
         }
       }
       out.set(p.key, v);
+      origins?.set(p.key, Object.values(p.storage.columns).some(c => company[c] !== null && company[c] !== undefined) ? 'company' : 'default');
     } else {
       out.set(p.key, mp.has(p.key) ? { ...p.defaults, ...mp.get(p.key) } : null);
+      origins?.set(p.key, mp.has(p.key) ? 'company' : 'unavailable');
     }
   }
   return out;
@@ -76,6 +81,20 @@ export async function write(def: ParamDef, value: Record<string, unknown>, actor
   }
   if (def.storage.kind === 'module_parameters') {
     if (!(await moduleParametersAvailable())) return false;
+    if(WIZARD_MODULE_PARAMETER_KEYS.includes(def.key)){
+      return withTransaction(async()=>{
+        await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+        const current=(await db.query(`SELECT value FROM module_parameters WHERE key=$1 FOR UPDATE`,[def.key])).rows[0];
+        if(!current)return false;
+        if(isDeepStrictEqual(current.value,value))return true;
+        const {sectorRepository}=await import('../repositories/sector.repository.js');
+        await sectorRepository.recordVersion(`Avant modification : ${def.label}`,actorId);
+        const r=await auditedQuery(actorId,`UPDATE module_parameters SET value=$2,updated_by=$3,updated_at=now() WHERE key=$1`,[def.key,JSON.stringify(value),actorId??null]);
+        if((r.rowCount??0)!==1)throw new Error(`Écriture du paramètre impossible : ${def.key}`);
+        await sectorRepository.recordVersion(`Paramètre modifié : ${def.label}`,actorId);
+        return true;
+      });
+    }
     const r = await auditedQuery(actorId,
       `UPDATE module_parameters SET value = $2, updated_by = $3, updated_at = now() WHERE key = $1`,
       [def.key, JSON.stringify(value), actorId ?? null]);

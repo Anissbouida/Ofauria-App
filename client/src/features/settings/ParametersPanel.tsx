@@ -242,7 +242,7 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
           {!param.available && <StatusTag tone="cancelled" label="Non disponible sur cette base" />}
           {param.available && !param.editable && <StatusTag tone="draft" icon={Lock} label="Lecture seule" />}
         </div>
-        <p className="odoo-params-help">{helpShort}</p>
+        <p className="odoo-params-help">{helpShort}{param.source && param.source !== 'unavailable' && <span style={{ display: 'block', marginTop: 4 }}>Origine : {param.source === 'company' ? 'Société' : 'Valeur par défaut du catalogue'}</span>}</p>
       </div>
 
       <div className="odoo-params-control">

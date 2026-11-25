@@ -41,6 +41,13 @@ async function count(table: string, where = 'TRUE'): Promise<number | null> {
 const filled = (v: unknown) => typeof v === 'string' ? v.trim() !== '' : v !== null && v !== undefined;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
 
+/** Résumé seulement ; les réponses du brouillon restent dans l'API de l'assistant. */
+export async function wizardSetupSummary(): Promise<{ count: number } | null> {
+  if (!(await exists('config_wizard_sessions'))) return null;
+  const { rows } = await db.query(`SELECT count(*)::int AS count FROM config_wizard_sessions WHERE status IN ('draft','simulated')`);
+  return { count: rows[0].count };
+}
+
 export async function setupStatus(): Promise<SetupCheck[]> {
   // to_jsonb : tient même si une colonne récente (mig 326/331) n'est pas encore là.
   const cs = ((await db.query(`SELECT to_jsonb(c) AS j FROM company_settings c WHERE id = 1`)).rows[0]?.j ?? {}) as Record<string, any>;

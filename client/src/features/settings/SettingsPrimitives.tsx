@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { HelpCircle } from 'lucide-react';
 import './settings.css';
+import { Switch } from '../../components/ds/Switch';
 
 /** Ancre stable d'un réglage, partagée par les blocs et l'index de recherche ⌘K. */
 export function settingAnchor(title: string) {
@@ -26,12 +27,7 @@ export function PageNote({ children, help }: { children: ReactNode; help?: strin
 export function OdooToggle({ checked, onChange, disabled }: {
   checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
 }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}
-      className={`odoo-toggle${checked ? ' on' : ''}`}>
-      <span className="odoo-toggle-knob" />
-    </button>
-  );
+  return <Switch checked={checked} onChange={onChange} disabled={disabled} />;
 }
 
 // Bloc de reglages : en-tete + grille de reglages (2 colonnes par defaut).

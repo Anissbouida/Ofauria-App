@@ -133,7 +133,7 @@ export const companyController = {
     const code = String(req.params.code ?? '');
     const r = enabled
       ? await specializationRepository.enable(code, req.user?.userId)
-      : await specializationRepository.disable(code);
+      : await specializationRepository.disable(code,req.user?.userId);
     if ('error' in r) { bad(res, r.error, r.error.includes('inconnue') ? 404 : 400); return; }
     res.json({ success: true, data: { result: r, specializations: await specializationRepository.list() } });
   },
@@ -279,6 +279,13 @@ export const companyController = {
   },
 
   /** Change le secteur de la société (réservé à la direction via la route). */
+  async previewSector(req: AuthRequest, res: Response) {
+    const { code, keepAdjustments } = req.body;
+    const plan = await sectorRepository.planSector(code, keepAdjustments !== false);
+    if (!plan) { bad(res, 'Secteur inconnu', 404); return; }
+    res.json({ success: true, data: await impactPreview(plan.diff, sectorRepository.featureLabel(plan.current)) });
+  },
+
   async setSector(req: AuthRequest, res: Response) {
     const body = (req.body ?? {}) as { code?: unknown; keepAdjustments?: unknown };
     const code = String(body.code ?? '').trim();
