@@ -84,6 +84,9 @@ export const passkeyController = {
       excludeCredentials: existing.filter(p => p.rp_id === rp.rpID)
         .map(p => ({ id: p.credential_id, transports: p.transports as AuthenticatorTransportFuture[] })),
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+      // « Ajouter une passkey sur cet appareil » : Touch ID / Face ID / Windows Hello de l'appareil
+      // en cours, sans détour par un téléphone (qui refuse d'ailleurs le domaine localhost).
+      preferredAuthenticatorType: 'localDevice',
     });
     res.json({ success: true, data: { options, ticket: signTicket({ purpose: 'webauthn-reg', ch: options.challenge, origin: rp.origin, rp: rp.rpID, uid: user.id }) } });
   },
