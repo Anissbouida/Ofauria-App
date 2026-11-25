@@ -17,7 +17,8 @@ export async function previewWizardSession(id: string) {
   if (typeof primary !== 'string' || !Array.isArray(modules)) return { revision: row.revision, issues, impact: null };
   if (issues.some(i => i.severity === 'blocking')) return { revision: row.revision, issues, impact: null };
   try {
-    const plan = await sectorRepository.previewWizardSelection(primary, Array.isArray(secondary) ? secondary : [], modules);
+    const features = answers.modules?.data?.features;
+    const plan = await sectorRepository.previewWizardSelection(primary, Array.isArray(secondary) ? secondary : [], modules, Array.isArray(features) ? features : undefined);
     return { revision: row.revision, issues, impact: await impactPreview(plan.diff, sectorRepository.featureLabel(plan.current)) };
   } catch (e) {
     if ((e as { statusCode?: number }).statusCode !== 409) throw e;

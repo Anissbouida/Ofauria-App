@@ -31,7 +31,7 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
 export type SectorPack = {
   code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean;
   /** Héritage vivant (mig 633) : parent, regroupement et état affichés dans le choix du profil. */
-  base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number;
+  base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number; in_wizard?: boolean;
   /** Chaîne des parents, de la racine au profil lui-même (codes). */
   lineage?: string[];
   secondarySectors?: string[];
@@ -87,12 +87,12 @@ const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
   home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [], is_custom: r.is_custom ?? false,
   base_sector: r.base_sector ?? null, inherits: r.inherits ?? false, family: r.family ?? null,
-  status: r.status ?? 'disponible', description: r.description ?? null, sort_order: r.sort_order ?? 100,
+  status: r.status ?? 'disponible', description: r.description ?? null, sort_order: r.sort_order ?? 100, in_wizard: r.in_wizard ?? false,
 });
 
 const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features, sp.is_custom,
   sp.base_sector, sp.inherits, sp.add_modules, sp.remove_modules, sp.add_features, sp.remove_features,
-  sp.family, sp.status, sp.description, sp.sort_order`;
+  sp.family, sp.status, sp.description, sp.sort_order, sp.in_wizard`;
 
 /** Profondeur maximale d'héritage (garde-fou contre une chaîne anormale). */
 const MAX_LINEAGE = 8;
@@ -501,7 +501,8 @@ export const sectorRepository = {
   },
 
   /** Union des profils sélectionnés et choix explicites du brouillon. */
-  async planWizardSelection(primary: string, secondary: string[], selected: string[]): Promise<{ current: Activation; target: Target; diff: ImpactDiff }> {
+  /** `features` : capacités voulues pour les modules retenus (absent = écarts actuels conservés). */
+  async planWizardSelection(primary: string, secondary: string[], selected: string[], features?: string[]): Promise<{ current: Activation; target: Target; diff: ImpactDiff }> {
     const packs = await allPacks();
     const main = packs.get(primary);
     if (!main || secondary.some(c => !packs.has(c) || c === primary)) throw Object.assign(new Error('Profil industriel invalide'), { statusCode: 400 });
@@ -512,13 +513,27 @@ export const sectorRepository = {
     const sector = combineSectorPacks(main,others);
     const current = await this.activation();
     const modules = Object.fromEntries(ACTIVATABLE_MODULES.map(k => [k, selected.includes(k)]));
-    const target = normalize({ sector, modules, features: current.featureOverrides, rollout: current.rollout }, current.catalog);
+    let featureOverrides: ModuleOverrides = current.featureOverrides;
+    if (features) {
+      const known = new Set(current.catalog.map(f => f.key));
+      const unknown = features.filter(k => !known.has(k));
+      if (unknown.length) throw Object.assign(new Error(`Capacités inconnues : ${unknown.join(', ')}`), { statusCode: 400 });
+      const want = new Set(features);
+      featureOverrides = {};
+      // Capacités des modules retenus : celles demandées, pas les autres. Les modules non
+      // retenus gardent leurs écarts (sans effet tant que le module est inactif).
+      for (const def of current.catalog) {
+        if (selected.includes(canonicalModule(def.module_key as AppModule))) featureOverrides[def.key] = want.has(def.key);
+        else if (current.featureOverrides[def.key] !== undefined) featureOverrides[def.key] = current.featureOverrides[def.key];
+      }
+    }
+    const target = normalize({ sector, modules, features: featureOverrides, rollout: current.rollout }, current.catalog);
     await this.validateTransition(current, target);
     return { current, target, diff: diffActivation(current, stateOf(target, current.catalog)) };
   },
 
-  async previewWizardSelection(primary: string, secondary: string[], selected: string[]): Promise<{ current: Activation; diff: ImpactDiff }> {
-    const { current, diff } = await this.planWizardSelection(primary, secondary, selected);
+  async previewWizardSelection(primary: string, secondary: string[], selected: string[], features?: string[]): Promise<{ current: Activation; diff: ImpactDiff }> {
+    const { current, diff } = await this.planWizardSelection(primary, secondary, selected, features);
     return { current, diff };
   },
 

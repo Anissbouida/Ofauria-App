@@ -35,7 +35,28 @@ export function profileIcon(code: string, size = 20) {
   if (/fabric|discret|process|atelier|indus/.test(code)) return <Factory size={size} />;
   return <LayoutGrid size={size} />;
 }
-export const profileStatus = (status?: string) => status === 'a_valider' ? <Tag tone="o">À valider</Tag> : status === 'brouillon' ? <Tag tone="x">Brouillon</Tag> : <Tag tone="g">Disponible</Tag>;
+export const profileStatus = (status?: string) => status === 'a_valider' ? <Tag tone="o">À valider</Tag> : status === 'nouveau' ? <Tag tone="b">Nouveau profil</Tag> : status === 'sur_demande' ? <Tag tone="x">Sur demande</Tag> : <Tag tone="g">Disponible</Tag>;
+
+/** Capacités proposées par défaut : actives aujourd'hui si le secteur ne change pas, sinon
+ *  celles des profils retenus et du socle. */
+function defaultCapabilities(catalog: WizardCatalog | undefined, profiles: WizardCatalog['profiles'], unchanged: boolean): string[] {
+  if (unchanged) return catalog?.activeCapabilities ?? [];
+  return [...new Set([...profiles.flatMap(p => p.features), ...(catalog?.capabilities ?? []).filter(c => c.default_on).map(c => c.code)])];
+}
+/** Une capacité et, récursivement, celles dont elle a besoin. */
+function withRequirements(code: string, catalog: WizardCatalog | undefined, out = new Set<string>()): Set<string> {
+  if (out.has(code)) return out;
+  out.add(code);
+  for (const r of catalog?.capabilities?.find(c => c.code === code)?.requires ?? []) withRequirements(r, catalog, out);
+  return out;
+}
+/** Capacités qui dépendent, directement ou non, de celle-ci. */
+function dependentCapabilities(code: string, catalog: WizardCatalog | undefined, active: Set<string>): string[] {
+  const out = new Set<string>();
+  const walk = (k: string) => (catalog?.capabilities ?? []).filter(c => c.requires.includes(k) && active.has(c.code) && !out.has(c.code)).forEach(c => { out.add(c.code); walk(c.code); });
+  walk(code);
+  return [...out];
+}
 
 /** Profils du brouillon (principal + complémentaires) et modules qu'ils recommandent. */
 export function draftProfiles(answers: WizardAnswers, catalog: WizardCatalog | undefined) {
@@ -62,7 +83,10 @@ export function draftData(step: string, answers: WizardAnswers, catalog: WizardC
   if (step === 'company') defaults = { name: company, locale:'fr',timezone:'Africa/Casablanca',...catalog?.company,country:catalog?.country??'',currency:catalog?.currency??'' };
   if (step === 'sector') defaults = { primary, secondary };
   if (step === 'specialties') defaults = { selected: catalog?.specialties.filter(s => s.enabled && profiles.some(p => p.lineage.includes(s.sector))).map(s => s.code) ?? [] };
-  if (step === 'modules') defaults = { selected: catalog && primary === catalog.currentSector && JSON.stringify([...secondary].sort())===JSON.stringify([...(catalog.currentSecondary??[])].sort()) ? catalog.modules : [...recommended] };
+  if (step === 'modules') {
+    const unchanged = !!catalog && primary === catalog.currentSector && JSON.stringify([...secondary].sort()) === JSON.stringify([...(catalog.currentSecondary ?? [])].sort());
+    defaults = { selected: unchanged ? catalog!.modules : [...recommended], features: defaultCapabilities(catalog, profiles, unchanged) };
+  }
   if (step === 'vocabulary') defaults = Object.fromEntries(VOCAB.map(v => [v.key, profiles.find(p => p.code === primary)?.labels?.[v.key] ?? v.fallback]));
   if (step === 'roles') defaults = { selected: proposedRoleTemplates(answers,catalog,company).filter(t => !t.exists).map(t => t.code) };
   return { ...defaults, ...answers[step]?.data };
@@ -116,7 +140,8 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   }
 
   if (step === 'sector') {
-    const all = catalog?.profiles ?? [];
+    const current = [catalog?.currentSector, ...(catalog?.currentSecondary ?? []), text(data.primary), ...list(data.secondary)];
+    const all = (catalog?.profiles ?? []).filter(p => p.wizard || current.includes(p.code));
     const shown = all.filter(p => `${p.label} ${p.description ?? ''}`.toLowerCase().includes(search.toLowerCase()));
     const secondary = list(data.secondary);
     return <>
@@ -163,6 +188,21 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     const groups = [...MODULE_GROUPS.filter(g => g.key !== 'core'), { key: 'other', label: 'Autres', modules: ACTIVATABLE_MODULES.filter(m => !known.has(m) && !CORE_MODULES.has(m)) }]
       .map(g => ({ ...g, modules: g.modules.filter(m => (ACTIVATABLE_MODULES as string[]).includes(m)) })).filter(g => g.modules.length);
     const missing = [...recommended].filter(m => !selected.has(m) && !CORE_MODULES.has(m as AppModule) && (ACTIVATABLE_MODULES as string[]).includes(m));
+    const caps = new Set(list(data.features));
+    const switchCapability = (code: string, on: boolean) => {
+      const next = new Set(caps);
+      const label = (k: string) => catalog?.capabilities?.find(c => c.code === k)?.label ?? k;
+      if (on) {
+        const added = [...withRequirements(code, catalog)].filter(k => !next.has(k) && k !== code);
+        withRequirements(code, catalog).forEach(k => next.add(k));
+        setNote(added.length ? { tone: 'info', text: `« ${label(code)} » a besoin de ${added.map(label).join(', ')} : activé${added.length > 1 ? 'es' : 'e'} en même temps.` } : null);
+      } else {
+        const removed = dependentCapabilities(code, catalog, next);
+        [code, ...removed].forEach(k => next.delete(k));
+        setNote(removed.length ? { tone: 'info', text: `« ${label(code)} » retirée : ${removed.map(label).join(', ')} en dépend${removed.length > 1 ? 'ent' : ''} et ${removed.length > 1 ? 'sont retirées' : 'est retirée'} aussi.` } : null);
+      }
+      set('features', [...next]);
+    };
     const switchModule = (m: AppModule, on: boolean) => {
       const next = new Set(selected);
       if (on) {
@@ -184,7 +224,10 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
       {groups.map(g => <div key={g.key}><h3 className="ds-subhead" style={{ marginBottom: 2 }}>{g.label}</h3>{g.modules.map(m => {
         const core = CORE_MODULES.has(m), on = core || selected.has(m), reco = recommended.has(m), deps = requiredModules(m);
         const tag = core ? <Tag tone="x" lock>Obligatoire</Tag> : reco ? <Tag tone="b">Recommandé</Tag> : <Tag tone="x">Facultatif</Tag>;
-        return <Row key={m} title={<>{MODULE_LABELS[m]} {tag}</>} help={deps.length ? `A besoin de : ${deps.map(x => MODULE_LABELS[x]).join(', ')}.` : undefined}>
+        const subs = on ? (catalog?.capabilities ?? []).filter(c => c.module === m) : [];
+        return <Row key={m} title={<>{MODULE_LABELS[m]} {tag}</>} help={<>{deps.length ? `A besoin de : ${deps.map(x => MODULE_LABELS[x]).join(', ')}.` : null}
+          {subs.length > 0 && <span className="wz-subs">{subs.map(c => <label key={c.code} title={c.description ?? undefined}>
+            <Switch label={c.label} checked={caps.has(c.code)} disabled={disabled} onChange={v => switchCapability(c.code, v)} />{c.label}{c.kind === 'reglementaire' && <Lock size={11} aria-label="Réglementaire" style={{ color: 'var(--ds-warning)' }} />}</label>)}</span>}</>}>
           <Switch label={MODULE_LABELS[m]} checked={on} disabled={disabled || core} onChange={v => switchModule(m, v)} /></Row>;
       })}</div>)}
     </>;

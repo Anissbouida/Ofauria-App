@@ -20,7 +20,7 @@ describe('Aperçu d’un brouillon sans publication', () => {
     const result = await previewWizardSession('draft');
     expect(result.impact?.modulesOn).toEqual(['sales']);
     expect(result.issues.some(i => i.severity === 'warning')).toBe(true);
-    expect(sectorRepository.previewWizardSelection).toHaveBeenCalledWith('profile',['other'],row.answers.modules.data.selected);
+    expect(sectorRepository.previewWizardSelection).toHaveBeenCalledWith('profile',['other'],row.answers.modules.data.selected,undefined);
     expect(vi.mocked(db.query).mock.calls.every(([sql]) => sql.startsWith('SELECT'))).toBe(true);
   });
   it('affiche le refus d’un contrôle réglementaire sans appliquer ni simuler', async () => {

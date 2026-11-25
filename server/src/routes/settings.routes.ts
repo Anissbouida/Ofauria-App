@@ -58,7 +58,7 @@ const wizardKey = z.string().refine(k => WIZARD_STEPS.some(s => s.key === k));
 const wizardRevision = z.number().int().min(0).max(2147483646);
 const wizardCreate = z.object({ kind: z.enum(['initial','evolution','upgrade']), mode: wizardMode }).strict();
 const wizardDataKeys: Record<string, readonly string[]> = {
-  company: ['name','legalForm','country','currency','locale','timezone','size','sites'], sector: ['primary','secondary'], specialties: ['selected'], modules: ['selected'],
+  company: ['name','legalForm','country','currency','locale','timezone','size','sites'], sector: ['primary','secondary'], specialties: ['selected'], modules: ['selected','features'],
   operations: ['production','rhythm','stock','tracking','sales'], vocabulary: ['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie','warehouse','order','operator','workshop','station'],
   rules: ['recipe','materialIssue','quality','transfer'], interfaces: ['workspace','density'], finance: ['year','vat','analytics'], roles: ['selected'], data: ['demo'], review: [],
 };

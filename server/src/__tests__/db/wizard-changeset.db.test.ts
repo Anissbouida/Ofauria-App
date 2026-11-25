@@ -39,7 +39,7 @@ describe.skipIf(!hasTestDb)('Jeu de changements — simulation transactionnelle 
     const {readInterfacePreferences}=await import('../../services/interface-preferences.js');
     const interfaceBefore=await readInterfacePreferences();
     const density=interfaceBefore.values.density==='compact'?'standard':'compact';
-    const answers={company:{reviewed:true,data:{name:'Société test',locale:'fr',timezone:'America/Toronto',sites:'2'}},sector:{reviewed:true,data:{primary:initial.sector.code,secondary:[]}},specialties:{reviewed:true,data:{selected:[]}},modules:{reviewed:true,data:{selected:[...initial.modules]}},finance:{reviewed:true},roles:{reviewed:true},vocabulary:{reviewed:true,data:{recipe:'Nomenclature test'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':days,'stock.negative_policy:ingredient':ingredient}},rules:{reviewed:true,data:{'quality.auto_release:enabled':autoRelease}}};
+    const answers={company:{reviewed:true,data:{name:'Société test',locale:'fr',timezone:'America/Toronto',sites:'2'}},sector:{reviewed:true,data:{primary:initial.sector.code,secondary:[]}},specialties:{reviewed:true,data:{selected:[]}},modules:{reviewed:true,data:{selected:[...initial.modules]}},finance:{reviewed:true},roles:{reviewed:true},vocabulary:{reviewed:true,data:{recipe:'Nomenclature test'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':days,'stock.negative_policy:ingredient':ingredient}},rules:{reviewed:true,data:{'quality.auto_release:enabled':autoRelease}},data:{reviewed:true}};
     const extended={...answers,interfaces:{reviewed:true,data:{workspace:'direction',density}}};
     const saved=await sessions.saveWizardSession(draft.id,{mode:'quick',current_step:'review',revision:draft.revision,answers:extended},fx.userId);
     const compiled=await changes.compileWizardSession(draft.id,saved.revision,fx.userId);
@@ -116,7 +116,7 @@ describe.skipIf(!hasTestDb)('Jeu de changements — simulation transactionnelle 
     const days=policy!.value!.days===29?30:29;
     const answers={company:{reviewed:true,data:{name:'Société publiée',locale:'fr',timezone:'Africa/Casablanca'}},sector:{reviewed:true,data:{primary:initial.sector.code,secondary:[]}},
       specialties:{reviewed:true,data:{selected:await specializationRepository.active()}},modules:{reviewed:true,data:{selected:[...initial.modules]}},finance:{reviewed:true},roles:{reviewed:true},
-      vocabulary:{reviewed:true,data:{recipe:'Nomenclature publiée'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':String(days)}},rules:{reviewed:true}};
+      vocabulary:{reviewed:true,data:{recipe:'Nomenclature publiée'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':String(days)}},rules:{reviewed:true},data:{reviewed:true}};
     const prepare=async()=>{
       const draft=await sessions.createWizardSession('evolution','quick',fx.userId);ids.push(draft.id);
       const saved=await sessions.saveWizardSession(draft.id,{mode:'quick',current_step:'review',revision:draft.revision,answers},fx.userId);

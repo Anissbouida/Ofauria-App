@@ -7,7 +7,7 @@ export type WizardData = Record<string, string | string[] | boolean>;
 export type WizardAnswers = Record<string, { reviewed?: boolean; note?: string; data?: WizardData }>;
 export interface WizardParameter { step:string; module:string; key:string; label:string; help:string; value:Record<string,unknown>|null; fields:{name:string;label:string;type:string;unit?:string;min?:number;max?:number;options?:{value:string;label:string}[]}[] }
 export interface WizardCatalog {
-  profiles: { code: string; label: string; description?: string; status?: string; lineage: string[]; modules: string[]; features: string[]; labels?: Record<string,string> }[];
+  profiles: { code: string; label: string; description?: string; status?: string; wizard?: boolean; lineage: string[]; modules: string[]; features: string[]; labels?: Record<string,string> }[];
   specialties: { code: string; label: string; description: string | null; sector: string; enabled: boolean }[];
   country: string; currency: string; currentSector: string; modules: string[];
   currentSecondary?: string[];
@@ -15,6 +15,9 @@ export interface WizardCatalog {
   technicalSimulationAvailable?: boolean;
   parameters?: WizardParameter[];
   interfacePreferences?: {available:boolean;values:InterfacePreferences};
+  /** Personnalisation des modules : capacités du catalogue (app_features) et capacités actives. */
+  capabilities?: { code: string; module: string; label: string; description: string | null; kind: 'fonction' | 'reglementaire'; requires: string[]; default_on: boolean }[];
+  activeCapabilities?: string[];
   /** Lot 11 : modèles de rôles (mig 690) ; `sod` = conflits de séparation des tâches du modèle complet. */
   roleTemplates?: { code:string; label:string; description:string|null; base_role:string; sector_code:string|null; specialization_code:string|null;
     requires_modules:string[]; permissions:{module:string;rights:string;scope?:'own'|'store'|'all';verbs?:string[]}[]; home_route:string|null; exists:boolean;

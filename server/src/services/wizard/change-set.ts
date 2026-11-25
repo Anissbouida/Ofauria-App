@@ -103,7 +103,8 @@ async function executeOperations(answers: WizardAnswers, actor: string, label: s
   const primary = answers.sector!.data!.primary as string;
   const secondary = answers.sector?.data?.secondary;
   const modules = answers.modules!.data!.selected as string[];
-  const plan = await sectorRepository.planWizardSelection(primary, Array.isArray(secondary) ? secondary : [], modules);
+  const features = answers.modules?.data?.features;
+  const plan = await sectorRepository.planWizardSelection(primary, Array.isArray(secondary) ? secondary : [], modules, Array.isArray(features) ? features : undefined);
   const layers = await prepareWizardLayers(primary, answers.company?.data, answers.vocabulary?.data, answers.interfaces?.data);
   const beforeInterface = layers.interface_preferences ? await readInterfacePreferences() : null;
   await sectorRepository.commit(plan.current, plan.target, actor, label, { layers });

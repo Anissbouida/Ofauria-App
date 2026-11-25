@@ -62,7 +62,8 @@
 .wz-app .wz-row p { margin: 2px 0 0; font-size: 13px; color: var(--ds-muted); }
 .wz-app .wz-row.off b, .wz-app .wz-row.off p { opacity: .55; }
 .wz-app .wz-subs { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
-.wz-app .wz-subs label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.wz-app .wz-subs label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ds-ink); }
+.wz-app .wz-row p .wz-subs { display: flex; }
 .wz-app .wz-control { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .wz-app .wz-control .ds-input { min-width: 180px; }
 /* Interrupteur à la couleur du thème (la page Paramètres le rend en vert). */

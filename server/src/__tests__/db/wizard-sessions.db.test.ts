@@ -14,9 +14,9 @@ describe.skipIf(!hasTestDb)('Assistant — brouillons persistants (PostgreSQL)',
     const before = await testPool().query('SELECT id, sector_pack FROM company_settings WHERE id=1');
     const beforeVersions = await testPool().query('SELECT count(*) FROM config_versions');
     const created = await services.createWizardSession('evolution', 'advanced', null!); ids.push(created.id);
-    const a = { vocabulary: { note: 'Économat', reviewed: true } };
-    const updated = await services.saveWizardSession(created.id, { mode: 'quick', current_step: 'vocabulary', revision: created.revision, answers: a }, null!);
-    expect(updated.current_step).toBe('finance');
+    const a = { operations: { note: 'Sur stock', reviewed: true } };
+    const updated = await services.saveWizardSession(created.id, { mode: 'quick', current_step: 'operations', revision: created.revision, answers: a }, null!);
+    expect(updated.current_step).toBe('vocabulary');
     const resumed = (await services.listWizardSessions()).find(s => s.id === created.id)!;
     expect(resumed.answers).toEqual(a);
     await expect(services.saveWizardSession(created.id, { mode: 'advanced', current_step: 'company', revision: created.revision, answers: {} }, null!)).rejects.toMatchObject({ statusCode: 409 });

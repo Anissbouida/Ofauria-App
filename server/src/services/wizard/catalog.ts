@@ -17,10 +17,13 @@ export async function wizardCatalog(includeLabels = true) {
     db.query(`SELECT to_jsonb(c) AS data FROM company_settings c WHERE id=1`), wizardParameters(),readInterfacePreferences(),
   ]);
   const profiles = await Promise.all(packs.map(async p => ({ code: p.code, label: p.label, description: p.description,
-    status: p.status, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
+    status: p.status, wizard: p.in_wizard === true, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
     labels: includeLabels ? await (p.code === activation.sector.code ? sectorRepository.labels(p.code) : sectorRepository.sectorLabels(p.code)) : {} })));
   return {
     profiles, parameters,interfacePreferences, sodRules,
+    // Personnalisation des modules : capacités du catalogue et capacités actives aujourd'hui.
+    capabilities: activation.catalog.map(f => ({ code: f.key, module: f.module_key, label: f.label, description: f.description, kind: f.kind, requires: f.requires ?? [], default_on: f.default_on })),
+    activeCapabilities: [...activation.features],
     // Lot 11 : modèles de rôles ; `sod` = conflits du modèle complet (avant filtrage par modules).
     roleTemplates: templates.map(t => ({ ...t, sod: templateSod(templateRights(t, t.permissions.map(p => p.module)), sodRules) })),
     specialties: specialties.map(s => ({ code: s.code, label: s.label, description: s.description, sector: s.sector_pack, enabled: s.enabled })),
@@ -49,6 +52,12 @@ export function validateWizardCatalog(answers: WizardAnswers, catalog: Awaited<R
   issues.push(...validateLayerData(company,answers.vocabulary?.data));
   issues.push(...prepareParameterChanges(answers,catalog.parameters??[]).issues);
   issues.push(...validateInterfaceData(answers.interfaces?.data,answers.modules?.data?.selected,catalog.interfacePreferences?.available===true));
+  const caps = answers.modules?.data?.features;
+  if (Array.isArray(caps)) {
+    const known = new Set((catalog.capabilities ?? []).map(c => c.code));
+    const unknown = caps.filter(c => !known.has(String(c)));
+    if (unknown.length) block('modules', `Capacités inconnues : ${unknown.join(', ')}.`);
+  }
   issues.push(...roleTemplateIssues(answers, catalog.roleTemplates ?? [], catalog.sodRules ?? [], new Set(packs.flatMap(p => p.lineage))));
   return issues;
 }
