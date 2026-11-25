@@ -17,6 +17,7 @@ import { AccessRightsView, AccessHistoryView } from './AccessReviewPanel';
 import { SecuritySection, MfaTag, errorMessage, fullName, formatLastLogin, formatDateTime, generatePassword, type UserRow } from './AccountSecurity';
 import { ExceptionsPanel } from './ExceptionsPanel';
 import { StoresField } from './StoresField';
+import { useSecurityPolicy, strongPasswordOk, passwordRule, pinOk, deviceLabel, METHOD_LABELS } from './securityPolicy';
 import { fmtDate } from './UsersOverview';
 import { InvitationSentModal } from './NewUserWizard';
 import type { InvitationResult } from '../../api/users.api';
@@ -30,7 +31,6 @@ import './users.css';
  */
 type Tab = 'profile' | 'roles' | 'rights' | 'security' | 'history';
 
-const strongPasswordOk = (p: string) => p.length >= 12 && p.length <= 128 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
 const docLabel = (d: string) => (APPROVAL_DOC_TYPES as Record<string, { label: string }>)[d]?.label ?? d;
 const PROVIDERS: Record<string, string> = { google: 'Google', microsoft: 'Microsoft' };
 
@@ -390,8 +390,9 @@ function SecurityTab({ u, selfId, onDeleted }: { u: UserRow; selfId?: string; on
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [pin, setPin] = useState('');
-  const pwdInvalid = !!password && !strongPasswordOk(password);
-  const pinInvalid = !!pin && !/^\d{6,10}$/.test(pin);
+  const policy = useSecurityPolicy();
+  const pwdInvalid = !!password && !strongPasswordOk(password, policy.passwordMinLength);
+  const pinInvalid = !!pin && !pinOk(pin, policy.pinMinLength);
   const save = useMutation({
     mutationFn: (data: Record<string, unknown>) => usersApi.update(u.id, data),
     onSuccess: (_d, data) => {
@@ -428,18 +429,18 @@ function SecurityTab({ u, selfId, onDeleted }: { u: UserRow; selfId?: string; on
         <div className="usr-pad">
           <fieldset className="ds-fieldset"><legend>Mot de passe et code PIN</legend>
             <div className="ds-form-grid">
-              <FormField label="Nouveau mot de passe" htmlFor="u-pwd" error={pwdInvalid ? '12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial' : undefined}
+              <FormField label="Nouveau mot de passe" htmlFor="u-pwd" error={pwdInvalid ? passwordRule(policy.passwordMinLength) : undefined}
                 hint={pwdInvalid ? undefined : 'Pensez à imposer un changement à la prochaine connexion, ci-dessous.'}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input id="u-pwd" type={show ? 'text' : 'password'} className="ds-input" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} aria-invalid={pwdInvalid || undefined} />
-                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => { setPassword(generatePassword()); setShow(true); }} title="Générer un mot de passe sûr"><Wand2 size={13} aria-hidden="true" /> Générer</button>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => { setPassword(generatePassword(Math.max(14, policy.passwordMinLength + 2))); setShow(true); }} title="Générer un mot de passe sûr"><Wand2 size={13} aria-hidden="true" /> Générer</button>
                   {password && show && <button type="button" className="ds-icon-btn" onClick={() => void copy()} aria-label="Copier le mot de passe"><Copy size={15} /></button>}
                 </div>
               </FormField>
-              <FormField label="Code PIN de caisse" htmlFor="u-pin" error={pinInvalid ? '6 à 10 chiffres' : undefined}
-                hint={pinInvalid ? undefined : (u.hasPin ? (u.pinWeak ? 'Code actuel à renouveler (moins de 6 chiffres).' : 'Un code est défini ; saisir pour le remplacer.') : 'Aucun code : connexion rapide indisponible sur les postes partagés.')}>
+              <FormField label="Code PIN de caisse" htmlFor="u-pin" error={pinInvalid ? `${policy.pinMinLength} à 10 chiffres` : undefined}
+                hint={pinInvalid ? undefined : (u.hasPin ? (u.pinWeak ? `Code actuel à renouveler (moins de ${policy.pinMinLength} chiffres).` : 'Un code est défini ; saisir pour le remplacer.') : 'Aucun code : connexion rapide indisponible sur les postes partagés.')}>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <input id="u-pin" className="ds-input" inputMode="numeric" autoComplete="off" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} placeholder="6 chiffres au moins" />
+                  <input id="u-pin" className="ds-input" inputMode="numeric" autoComplete="off" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} placeholder={`${policy.pinMinLength} chiffres au moins`} />
                   {u.hasPin && <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={save.isPending} onClick={() => save.mutate({ pinCode: null })}>Retirer</button>}
                 </div>
               </FormField>
@@ -455,6 +456,63 @@ function SecurityTab({ u, selfId, onDeleted }: { u: UserRow; selfId?: string; on
       <DataPanel label="Sécurité du compte">
         <div className="usr-pad"><SecuritySection userId={u.id} selfId={selfId} onDeleted={onDeleted} /></div>
       </DataPanel>
+      <SessionsPanel u={u} selfId={selfId} />
     </>
+  );
+}
+
+/* ============ SESSIONS ET APPAREILS (lot 8) ============ */
+
+function SessionsPanel({ u, selfId }: { u: UserRow; selfId?: string }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const { data: sessions = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['user-sessions', u.id], queryFn: () => usersApi.sessions(u.id) });
+  const refresh = () => ['user-sessions', 'users', 'access-history'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+  const closeOne = useMutation({
+    mutationFn: (jti: string) => usersApi.closeSession(u.id, jti),
+    onSuccess: () => { notify.success('Session fermée'); refresh(); },
+    onError: err => notify.error(errorMessage(err, 'Fermeture refusée')),
+  });
+  const closeAll = useMutation({
+    mutationFn: () => usersApi.revokeSessions(u.id),
+    onSuccess: () => { notify.success('Sessions fermées'); refresh(); },
+    onError: err => notify.error(errorMessage(err, 'Fermeture refusée')),
+  });
+  const self = u.id === selfId;
+  const askAll = async () => {
+    if (await confirm(`${fullName(u)} devra se reconnecter sur tous ses appareils ; les postes de confiance sont oubliés.`,
+      { title: 'Fermer toutes les sessions ?', confirmLabel: 'Fermer les sessions' })) closeAll.mutate();
+  };
+  return (
+    <section style={{ display: 'grid', gap: 'var(--ds-s3)' }} aria-label="Sessions et appareils">
+      <SectionHeader title="Sessions et appareils" note="Connexions encore ouvertes, avec leur dernière activité">
+        {!self && sessions.length > 0 && (
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={closeAll.isPending} onClick={() => void askAll()}>Fermer toutes les sessions</button>
+        )}
+      </SectionHeader>
+      <DataPanel label="Sessions et appareils">
+        {isError ? <ErrorState bare error={error} title="Les sessions n'ont pas pu être chargées" onRetry={() => void refetch()} />
+          : isLoading ? <LoadingState bare />
+          : sessions.length ? (
+            <table className="odoo-table ds-dense">
+              <thead><tr><th>Appareil</th><th>Connexion</th><th>Adresse IP</th><th>Ouverte le</th><th>Dernière activité</th><th className="ds-actions"><span className="sr-only">Action</span></th></tr></thead>
+              <tbody>
+                {sessions.map(s => (
+                  <tr key={s.jti}>
+                    <td><span className="ds-strong">{deviceLabel(s.userAgent)}</span>{s.current && <span className="kl-tag b" style={{ marginLeft: 6 }}>Cette session</span>}{s.storeName && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{s.storeName}</div>}</td>
+                    <td>{METHOD_LABELS[s.method ?? ''] ?? '—'}</td>
+                    <td>{s.ip ?? '—'}</td>
+                    <td>{formatDateTime(s.createdAt)}</td>
+                    <td>{formatLastLogin(s.lastSeenAt)}</td>
+                    <td className="ds-actions">
+                      {!s.current && <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={closeOne.isPending} onClick={() => closeOne.mutate(s.jti)}>Fermer</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <EmptyState icon={Lock} bare title="Aucune session ouverte" text="Les connexions faites depuis la mise en place du suivi apparaissent ici." />}
+      </DataPanel>
+    </section>
   );
 }

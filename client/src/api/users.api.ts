@@ -24,6 +24,12 @@ export const usersApi = {
     api.put(`/users/${id}/preferences`, data).then(r => r.data.data),
   mfaPolicy: () => api.get('/users/security/mfa-policy').then(r => r.data.data as { requiredRoles: string[] }),
   setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[] }),
+  /** Politique de sécurité (lot 8) et valeurs admises. */
+  securityPolicy: () => api.get('/users/security/policy').then(r => r.data.data as { policy: SecurityPolicy; limits: Record<keyof SecurityPolicy, { min: number; max: number } | number[]> }),
+  setSecurityPolicy: (policy: Partial<SecurityPolicy>) => api.put('/users/security/policy', policy).then(r => r.data.data as { policy: SecurityPolicy }),
+  /** Sessions et appareils actifs d'un compte (lot 8). */
+  sessions: (id: string) => api.get(`/users/${id}/sessions`).then(r => r.data.data as UserSession[]),
+  closeSession: (id: string, jti: string) => api.delete(`/users/${id}/sessions/${jti}`).then(r => r.data),
   /** Exceptions individuelles (lot 6) : s'ajoutent aux rôles, motif et date de fin. */
   exceptions: (id: string) => api.get(`/users/${id}/exceptions`).then(r => r.data.data as UserExceptions),
   setModuleException: (id: string, module: string, body: ModuleExceptionBody) =>
@@ -171,6 +177,16 @@ export const governanceApi = {
   setDocumentSodMode: (mode: DocumentSodMode) => api.put('/users/sod/documents/mode', { mode }).then(r => r.data.data),
   setDocumentSodRule: (code: string, isActive: boolean) => api.put(`/users/sod/documents/rules/${code}`, { isActive }).then(r => r.data.data),
 };
+
+// ─── Politique de sécurité et sessions (refonte Utilisateurs, lot 8) ─────
+export interface SecurityPolicy {
+  passwordMinLength: number; passwordMaxAgeDays: number; lockoutThreshold: number; lockoutMinutes: number;
+  mfaGraceDays: number; pinMinLength: number; idleMinutes: number;
+}
+export interface UserSession {
+  jti: string; method: string | null; ip: string | null; userAgent: string | null; storeName: string | null;
+  createdAt: string; lastSeenAt: string; expiresAt: string; current: boolean;
+}
 
 // ─── Exceptions individuelles (refonte Utilisateurs, lot 6) ─────────────
 export type ExceptionEffect = 'grant' | 'revoke' | 'change' | 'none';

@@ -25,6 +25,12 @@ const setActionPermissionsSchema = z.object({ keys: z.array(z.string().min(3).ma
 const requiredFlagSchema = z.object({ required: z.boolean() }).strict();
 const valueFlagSchema = z.object({ value: z.boolean() }).strict();
 const emptySchema = z.object({}).strict();
+/** Politique de sécurité (lot 8) : chaque valeur est contrôlée par security-policy.ts. */
+const securityPolicySchema = z.object({
+  passwordMinLength: z.number().int().optional(), passwordMaxAgeDays: z.number().int().optional(),
+  lockoutThreshold: z.number().int().optional(), lockoutMinutes: z.number().int().optional(),
+  mfaGraceDays: z.number().int().optional(), pinMinLength: z.number().int().optional(), idleMinutes: z.number().int().optional(),
+}).strict();
 const mfaPolicySchema = z.object({ requiredRoles: z.array(z.string().min(1).max(60)).max(100) }).strict();
 
 const router = Router();
@@ -54,6 +60,9 @@ router.put('/security', authenticate, can('users.edit'), validate(enforcementMod
 // Politique de double authentification par rôle (paramètre security.mfa).
 router.get('/security/mfa-policy', authenticate, can('users.view'), asyncHandler(userController.mfaPolicy));
 router.put('/security/mfa-policy', authenticate, can('users.edit'), validate(mfaPolicySchema), asyncHandler(userController.setMfaPolicy));
+// Politique de sécurité (lot 8, mig 708) : mot de passe, verrouillage, délai 2FA, PIN, inactivité.
+router.get('/security/policy', authenticate, can('users.view'), asyncHandler(userController.securityPolicy));
+router.put('/security/policy', authenticate, can('users.edit'), validate(securityPolicySchema), asyncHandler(userController.setSecurityPolicy));
 
 // Gouvernance (mig 336) : separation des taches (SoD), plafonds d'approbation,
 // delegations temporaires. Litteraux specifiques declares avant /sod/:code.
@@ -89,6 +98,9 @@ router.delete('/:id', authenticate, can('users.delete'), asyncHandler(userContro
 router.put('/:id/mfa-required', authenticate, validateUuidParams('id'), can('users.edit'), validate(requiredFlagSchema), asyncHandler(userController.setMfaRequired));
 router.post('/:id/mfa-reset', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.resetMfa));
 router.post('/:id/unlock', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.unlock));
+// Sessions et appareils (lot 8) : liste des sessions actives, fermeture d'une session.
+router.get('/:id/sessions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.sessions));
+router.delete('/:id/sessions/:jti', authenticate, validateUuidParams('id', 'jti'), can('users.edit'), asyncHandler(userController.closeSession));
 router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.revokeSessions));
 router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
 router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), asyncHandler(userController.hardDelete));

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { invitationRepository } from '../repositories/invitation.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword } from '../utils/hash.js';
+import { passwordPolicyError } from '../services/security-policy.js';
 
 /**
  * Invitation d'un nouveau compte (refonte Utilisateurs, lot 3) — routes PUBLIQUES : la personne
@@ -23,6 +24,9 @@ export const invitationController = {
 
   async accept(req: Request, res: Response) {
     const token = String(req.params.token ?? '');
+    // Lot 8 : longueur minimale du mot de passe selon la politique de sécurité.
+    const tooShort = await passwordPolicyError(String(req.body.password ?? ''));
+    if (tooShort) { res.status(400).json({ success: false, error: { message: tooShort } }); return; }
     const done = await invitationRepository.accept(token, await hashPassword(String(req.body.password)));
     if (!done) {
       const info = await invitationRepository.peek(token);

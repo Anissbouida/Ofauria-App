@@ -5,7 +5,7 @@ import { oidcController } from '../controllers/oidc.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
-import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema, strongPassword } from '../validators/auth.validator.js';
+import { loginSchema, pinLoginSchema, changePasswordSchema, strongPassword } from '../validators/auth.validator.js';
 import { invitationController } from '../controllers/invitation.controller.js';
 import { passkeyController } from '../controllers/passkey.controller.js';
 
@@ -96,7 +96,7 @@ router.post('/change-password', authenticate, validate(changePasswordSchema), au
 // Invitation d'un nouveau compte (refonte Utilisateurs, lot 3) : routes publiques, limitées en fréquence.
 router.get('/invitations/:token', pinUsersLimiter, asyncHandler(invitationController.peek));
 router.post('/invitations/:token/accept', loginLimiter, validate(acceptInvitationSchema), asyncHandler(invitationController.accept));
-router.post('/register', authenticate, can('users.auth.register'), validate(registerSchema), authController.register);
+// Inscription libre supprimée (lot 8) : un compte se crée depuis Utilisateurs, par un administrateur.
 router.post('/logout', authenticate, validate(emptyBody), authController.logout);
 router.get('/me', authenticate, authController.me);
 // Établissements du compte et bascule de l'établissement actif (refonte Utilisateurs, lot 7).

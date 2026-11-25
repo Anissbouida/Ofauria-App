@@ -55,7 +55,9 @@ export type AuthEventType =
   | 'invitation_sent'
   | 'invitation_accepted'
   // Bascule de l'établissement actif (refonte Utilisateurs, lot 7, mig 707).
-  | 'active_store_changed';
+  | 'active_store_changed'
+  // Politique de sécurité modifiée (refonte Utilisateurs, lot 8, mig 708).
+  | 'security_policy_changed';
 
 export interface AuthEventInput {
   eventType: AuthEventType;

@@ -4,6 +4,7 @@ import { Check, Copy, KeyRound, Mail, ShieldCheck, TriangleAlert, Wand2 } from '
 import { usersApi, rolesApi, type InvitationResult } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
 import { StoresField } from './StoresField';
+import { useSecurityPolicy, strongPasswordOk, passwordRule, pinOk } from './securityPolicy';
 import { Modal, FormField, Alert } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { errorMessage, generatePassword, type UserRow } from './AccountSecurity';
@@ -23,7 +24,6 @@ const STEPS: { key: Step; label: string; lead: string }[] = [
   { key: 'security', label: 'Sécurité', lead: 'Double authentification et code PIN de caisse.' },
   { key: 'review', label: 'Vérification', lead: 'Contrôle avant création du compte.' },
 ];
-const strongPasswordOk = (p: string) => p.length >= 12 && p.length <= 128 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
 
 type Created = { user: UserRow; invitation: InvitationResult | null; password: string | null };
 
@@ -31,6 +31,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
   const queryClient = useQueryClient();
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false });
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
+  const policy = useSecurityPolicy();
   const { data: employees = [] } = useQuery<Array<{ id: string; name: string; user_id: string | null }>>({ queryKey: ['employees-link'], queryFn: usersApi.employeesForLink });
   const { data: mfaPolicy } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy, retry: false });
 
@@ -57,12 +58,12 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
   const invalid: Record<Step, string | null> = useMemo(() => ({
     identity: !f.firstName.trim() || !f.lastName.trim() ? 'Prénom et nom requis'
       : !/^\S+@\S+\.\S+$/.test(f.email.trim()) ? 'E-mail invalide'
-      : f.access === 'password' && !strongPasswordOk(f.password) ? 'Mot de passe : 12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial' : null,
+      : f.access === 'password' && !strongPasswordOk(f.password, policy.passwordMinLength) ? `Mot de passe : ${passwordRule(policy.passwordMinLength)}` : null,
     roles: f.roles.length === 0 ? 'Choisissez au moins un rôle' : null,
     scope: null,
-    security: f.pin && !/^\d{6,10}$/.test(f.pin) ? 'Code PIN : 6 à 10 chiffres' : null,
+    security: f.pin && !pinOk(f.pin, policy.pinMinLength) ? `Code PIN : ${policy.pinMinLength} à 10 chiffres` : null,
     review: blocked ? 'Conflit de séparation des tâches : la création serait refusée (mode Bloquer)' : null,
-  }), [f, blocked]);
+  }), [f, blocked, policy.passwordMinLength, policy.pinMinLength]);
 
   const idx = STEPS.findIndex(s => s.key === step);
   const go = (s: Step) => { setStep(s); setVisited(v => new Set(v).add(s)); };
@@ -180,10 +181,10 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
               </button>
             </div>
             {f.access === 'password' && (
-              <FormField label="Mot de passe provisoire" htmlFor="nu-pwd" hint="12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial.">
+              <FormField label="Mot de passe provisoire" htmlFor="nu-pwd" hint={`${passwordRule(policy.passwordMinLength)}.`}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input id="nu-pwd" className="ds-input" value={f.password} onChange={e => set('password', e.target.value)} autoComplete="new-password" />
-                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => set('password', generatePassword())}><Wand2 size={13} aria-hidden="true" /> Générer</button>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => set('password', generatePassword(Math.max(14, policy.passwordMinLength + 2)))}><Wand2 size={13} aria-hidden="true" /> Générer</button>
                 </div>
               </FormField>
             )}
@@ -236,7 +237,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
           </div>
           <div className="usr-row" style={{ padding: '14px 0 0' }}>
             <div><b>Code PIN de caisse</b><p>Utile seulement sur les postes partagés (caisse, pesée).</p></div>
-            <input className="ds-input" style={{ width: 160 }} inputMode="numeric" placeholder="6 chiffres au moins" aria-label="Code PIN" value={f.pin} onChange={e => set('pin', e.target.value.replace(/\D/g, ''))} />
+            <input className="ds-input" style={{ width: 160 }} inputMode="numeric" placeholder={`${policy.pinMinLength} chiffres au moins`} aria-label="Code PIN" value={f.pin} onChange={e => set('pin', e.target.value.replace(/\D/g, ''))} />
           </div>
         </div>
       )}

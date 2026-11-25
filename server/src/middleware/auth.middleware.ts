@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { touchSession } from '../services/sessions.js';
 import { verifyToken } from '../utils/jwt.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { userRepository } from '../repositories/user.repository.js';
@@ -60,6 +61,8 @@ export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonN
       if (payload.tokenVersion !== currentVersion) return { error: 'Token obsolete (privileges modifiés)' };
     }
 
+    // Lot 8 : dernière activité de la session (au plus une écriture par minute).
+    touchSession(payload.jti);
     return {
       user: {
         userId: payload.userId,

@@ -34,6 +34,7 @@ const HISTORY_LABELS: Record<string, string> = {
   mfa_reset: 'Double authentification réinitialisée', mfa_requirement_changed: 'Exigence de double authentification modifiée',
   access_denied: 'Accès hors droits', user_deleted: 'Compte supprimé définitivement',
   invitation_sent: 'Invitation envoyée', invitation_accepted: 'Invitation acceptée',
+  active_store_changed: 'Changement d\'établissement',
 };
 
 /** Droits résolus d'un compte : rôles, conflits, droits par module et d'où ils viennent, plafonds. */
@@ -117,7 +118,7 @@ export function AccessRightsView({ userId }: { userId: string }) {
 
 /** Historique d'un compte : connexions et sécurité (auth_events) et changements de droits (journal). */
 const HISTORY_GROUPS: Record<'logins' | 'rights' | 'security' | 'denied', (kind: string) => boolean> = {
-  logins: k => /^(login_|pin_login_|logout|account_locked)/.test(k),
+  logins: k => /^(login_|pin_login_|logout|account_locked|active_store_changed)/.test(k),
   rights: k => /^(user_created|user_updated|permission_changed|role_|invitation_)/.test(k),
   security: k => /^(mfa_|token_revoked|account_unlocked|user_deleted)/.test(k),
   denied: k => k === 'access_denied',

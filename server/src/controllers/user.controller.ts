@@ -2,14 +2,16 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { listExceptions, setModuleException, setActionException, removeException, ExceptionError } from '../services/user-exceptions.js';
+import { userSessionRepository } from '../repositories/user-session.repository.js';
+import { securityPolicy, passwordPolicyError, pinPolicyError, POLICY_LIMITS, validatePolicy, setSecurityPolicy } from '../services/security-policy.js';
+import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
-import { NEW_PIN_RE, NEW_PIN_MIN_LENGTH } from '../validators/auth.validator.js';
 
 /** G0-06 : PIN à renouveler — moins de 6 chiffres, ou antérieur (longueur inconnue). */
-const pinIsWeak = (u: { pin_code: string | null; pin_length?: number | null }) =>
-  !!u.pin_code && (u.pin_length == null || u.pin_length < NEW_PIN_MIN_LENGTH);
-const NEW_PIN_MESSAGE = 'Le code PIN doit compter 6 à 10 chiffres';
+/** PIN à renouveler — plus court que la politique (lot 8), ou antérieur (longueur inconnue). */
+const pinIsWeak = (u: { pin_code: string | null; pin_length?: number | null }, min: number) =>
+  !!u.pin_code && (u.pin_length == null || u.pin_length < min);
 import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
 import { permissionView } from '../services/permission-input.js';
@@ -130,6 +132,7 @@ export const userController = {
       invitationRepository.openByUser(), mfaRepository.trustedDeviceCounts(), passkeyRepository.countsByUser(),
       userRepository.storeIdsByUser(),
     ]);
+    const policy = await securityPolicy();
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
       const arr = rolesByUser.get(r.user_id) ?? [];
@@ -145,7 +148,7 @@ export const userController = {
       return {
         id: u.id, email: u.email, firstName: u.first_name, lastName: u.last_name,
         role: u.role, roles,
-        isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
+        isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u, policy.pinMinLength), mustChangePassword: !!u.must_change_password,
         storeId: u.store_id, createdAt: u.created_at,
         // Établissements du compte, le défaut en tête (lot 7).
         storeIds: storeIds.get(u.id) ?? (u.store_id ? [u.store_id] : []),
@@ -195,12 +198,13 @@ export const userController = {
       res.status(409).json({ success: false, error: { message: 'Cet email est déjà utilisé' } });
       return;
     }
-    // G0-06 : tout nouveau PIN compte 6 à 10 chiffres. Le PIN n'a plus à être
-    // unique : le compte est désigné par sa tuile avant la saisie du PIN.
-    if (pinCode && !NEW_PIN_RE.test(String(pinCode))) {
-      res.status(400).json({ success: false, error: { message: NEW_PIN_MESSAGE } });
-      return;
-    }
+    // G0-06 / lot 8 : longueur du PIN selon la politique (6 à 10 chiffres par défaut). Le PIN
+    // n'a plus à être unique : le compte est désigné par sa tuile avant la saisie du PIN.
+    const pinError = pinCode ? await pinPolicyError(String(pinCode)) : null;
+    if (pinError) { res.status(400).json({ success: false, error: { message: pinError } }); return; }
+    // Lot 8 : longueur minimale du mot de passe selon la politique.
+    const pwdError = password ? await passwordPolicyError(String(password)) : null;
+    if (pwdError) { res.status(400).json({ success: false, error: { message: pwdError } }); return; }
     // Invitation : un mot de passe aléatoire que personne ne connaît, remplacé à l'acceptation.
     const invite = req.body.invite === true;
     if (!invite && !password) {
@@ -303,14 +307,16 @@ export const userController = {
       if (typeof sel === 'string') { res.status(400).json({ success: false, error: { message: sel } }); return; }
       stores = sel;
     } else if (storeId !== undefined) updateData.storeId = storeId;
-    if (password) updateData.passwordHash = await hashPassword(password);
+    if (password) {
+      const pwdError = await passwordPolicyError(String(password));
+      if (pwdError) { res.status(400).json({ success: false, error: { message: pwdError } }); return; }
+      updateData.passwordHash = await hashPassword(password);
+    }
     if (pinCode !== undefined) {
       if (pinCode) {
-        // G0-06 : nouveau PIN de 6 à 10 chiffres, sans contrainte d'unicité.
-        if (!NEW_PIN_RE.test(String(pinCode))) {
-          res.status(400).json({ success: false, error: { message: NEW_PIN_MESSAGE } });
-          return;
-        }
+        // G0-06 / lot 8 : nouveau PIN selon la politique, sans contrainte d'unicité.
+        const pinError = await pinPolicyError(String(pinCode));
+        if (pinError) { res.status(400).json({ success: false, error: { message: pinError } }); return; }
         updateData.pinCode = await hashPin(String(pinCode));
         updateData.pinLength = String(pinCode).length;
       } else {
@@ -489,6 +495,7 @@ export const userController = {
     const target = await userRepository.findById(req.params.id);
     if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
     await userRepository.bumpTokenVersion(target.id);
+    await userSessionRepository.revokeAllForUser(target.id, 'admin_all');
     // Fermer les sessions oublie aussi les postes de confiance (appareil perdu ou volé, mig 702).
     const forgottenDevices = await mfaRepository.forgetDevices(target.id);
     await authEventRepository.recordFromRequest(req, {
@@ -528,6 +535,52 @@ export const userController = {
       eventType: 'mfa_requirement_changed', userId: req.user?.userId, success: true, details: { requiredRoles: roles },
     });
     res.json({ success: true, data: { requiredRoles: roles } });
+  },
+
+  /** Politique de sécurité (lot 8) et valeurs admises. */
+  async securityPolicy(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { policy: await securityPolicy(), limits: POLICY_LIMITS } });
+  },
+
+  async setSecurityPolicy(req: AuthRequest, res: Response) {
+    const current = await securityPolicy();
+    const next = validatePolicy(req.body ?? {}, current);
+    if (typeof next === 'string') { res.status(400).json({ success: false, error: { message: next } }); return; }
+    await setSecurityPolicy(next, req.user!.userId);
+    const changed = (Object.keys(next) as (keyof typeof next)[]).filter(k => next[k] !== current[k]);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'security_policy_changed', userId: req.user?.userId, success: true,
+      details: { changed: Object.fromEntries(changed.map(k => [k, { from: current[k], to: next[k] }])) },
+    });
+    res.json({ success: true, data: { policy: next } });
+  },
+
+  /** Sessions et appareils encore actifs d'un compte (lot 8) ; `current` = la session de l'appelant. */
+  async sessions(req: AuthRequest, res: Response) {
+    const rows = await userSessionRepository.listActive(req.params.id);
+    res.json({
+      success: true,
+      data: rows.map(r => ({
+        jti: r.jti, method: r.method, ip: r.ip, userAgent: r.user_agent, storeName: r.store_name,
+        createdAt: r.created_at, lastSeenAt: r.last_seen_at, expiresAt: r.expires_at, current: r.jti === req.user?.jti,
+      })),
+    });
+  },
+
+  /** Ferme une session : le jeton est révoqué, la personne doit se reconnecter sur cet appareil. */
+  async closeSession(req: AuthRequest, res: Response) {
+    const s = await userSessionRepository.find(req.params.jti);
+    if (!s || s.user_id !== req.params.id || s.revoked_at) {
+      res.status(404).json({ success: false, error: { message: 'Session introuvable ou déjà fermée' } });
+      return;
+    }
+    await revokedTokenRepository.revoke(s.jti, s.user_id, Math.floor(new Date(s.expires_at).getTime() / 1000));
+    await userSessionRepository.revoke(s.jti, 'admin');
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'token_revoked', userId: req.user?.userId, targetUserId: s.user_id, success: true,
+      details: { action: 'one_session', jti: s.jti },
+    });
+    res.json({ success: true, data: null });
   },
 
   /** Exceptions individuelles d'un compte (lot 6), avec leur effet et les droits de ses rôles. */

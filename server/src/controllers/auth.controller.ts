@@ -7,7 +7,9 @@ import { loginRoleContext } from '../services/access-rights.js';
 import { authEventRepository, clientIp, clientUserAgent } from '../repositories/auth-event.repository.js';
 import { hashPassword, comparePassword, comparePin } from '../utils/hash.js';
 import { meetsPasswordPolicy } from '../validators/auth.validator.js';
-import { generateToken } from '../utils/jwt.js';
+import { issueToken } from '../services/sessions.js';
+import { userSessionRepository } from '../repositories/user-session.repository.js';
+import { securityPolicy, passwordPolicyError, passwordExpired } from '../services/security-policy.js';
 import jwt from 'jsonwebtoken';
 import { mfaRepository } from '../repositories/mfa.repository.js';
 import { passkeyRepository } from '../repositories/passkey.repository.js';
@@ -18,11 +20,8 @@ import { passkeyRepository } from '../repositories/passkey.repository.js';
 // toute entree contre ce hash en ~200-400ms (cost 12), identique au cas nominal.
 const DUMMY_HASH = '$2b$12$UxU1Tp4KJsAmO.WHvNvvveuwXdUvUlXrtWSW61B3P/ZS4ArHjAgt6';
 
-// OWASP A04-2 : politique de lockout.
-// Apres LOGIN_FAIL_THRESHOLD echecs consecutifs, le compte est
-// verrouille pour LOGIN_LOCK_DURATION_MS.
-const LOGIN_FAIL_THRESHOLD = 5;
-const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+// OWASP A04-2 : politique de verrouillage — seuil et durée lus dans la politique de sécurité
+// (lot 8, security.policy ; 5 échecs, 15 minutes par défaut).
 
 function lockoutErrorMessage(lockedUntil: Date): string {
   const secs = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 1000));
@@ -137,8 +136,9 @@ export const authController = {
 
     const valid = await comparePassword(password, user.password_hash);
     if (!valid) {
+      const policy = await securityPolicy();
       const { count, lockedUntil: newLock } = await userRepository.recordFailedLogin(
-        user.id, LOGIN_FAIL_THRESHOLD, LOGIN_LOCK_DURATION_MS
+        user.id, policy.lockoutThreshold, policy.lockoutMinutes * 60_000
       );
       await authEventRepository.recordFromRequest(req, {
         eventType: 'login_failed',
@@ -149,12 +149,12 @@ export const authController = {
         await authEventRepository.recordFromRequest(req, {
           eventType: 'account_locked',
           userId: user.id, email: user.email, success: false,
-          details: { until: newLock.toISOString(), threshold: LOGIN_FAIL_THRESHOLD },
+          details: { until: newLock.toISOString(), threshold: policy.lockoutThreshold },
         });
         res.status(423).json({ success: false, error: { message: lockoutErrorMessage(newLock) } });
         return;
       }
-      const remaining = Math.max(0, LOGIN_FAIL_THRESHOLD - count);
+      const remaining = Math.max(0, policy.lockoutThreshold - count);
       res.status(401).json({
         success: false,
         error: { message: `Email ou mot de passe incorrect (${remaining} tentative(s) restante(s))` },
@@ -166,7 +166,11 @@ export const authController = {
     await userRepository.resetFailedLogins(user.id);
     // G0-06 : un mot de passe antérieur à la politique (trop court, sans
     // majuscule…) laisse entrer, mais impose son changement avant toute autre action.
-    const mustChange = !!user.must_change_password || !meetsPasswordPolicy(password);
+    // Lot 8 : plus court que la politique, ou plus vieux que la durée de renouvellement.
+    const policy = await securityPolicy();
+    const mustChange = !!user.must_change_password || !meetsPasswordPolicy(password)
+      || password.length < policy.passwordMinLength
+      || passwordExpired((user as { password_changed_at?: Date | null }).password_changed_at, policy);
     if (mustChange) await userRepository.setMustChangePassword(user.id, true);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'login_success',
@@ -268,6 +272,8 @@ export const authController = {
       res.status(400).json({ success: false, error: { message: 'Le nouveau mot de passe doit être différent de l\'actuel' } });
       return;
     }
+    const tooShort = await passwordPolicyError(newPassword);
+    if (tooShort) { res.status(400).json({ success: false, error: { message: tooShort } }); return; }
     await userRepository.update(user.id, { passwordHash: await hashPassword(newPassword), mustChangePassword: false }, user.id);
     // Les jetons déjà émis deviennent invalides ; on en réémet un pour cette session.
     const tokenVersion = await userRepository.bumpTokenVersion(user.id);
@@ -278,7 +284,7 @@ export const authController = {
       details: { changed: ['passwordHash'], self: true },
     });
     const roleCtx = await loginRoleContext(user.id);
-    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion });
+    const token = await issueToken(req, { userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion }, 'password');
     setAuthCookie(res, token);
     res.json({ success: true, data: { token, mustChangePassword: false } });
   },
@@ -289,31 +295,6 @@ export const authController = {
     res.json({
       success: true,
       data: users.map(u => ({ id: u.id, firstName: u.first_name, lastInitial: u.last_initial })),
-    });
-  },
-
-  async register(req: AuthRequest, res: Response) {
-    const { email, password, firstName, lastName, role } = req.body;
-
-    const existing = await userRepository.findByEmail(email);
-    if (existing) {
-      res.status(409).json({ success: false, error: { message: 'Cet email est déjà utilisé' } });
-      return;
-    }
-
-    const passwordHash = await hashPassword(password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role }, req.user?.userId);
-
-    res.status(201).json({
-      success: true,
-      data: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        isActive: user.is_active,
-      },
     });
   },
 
@@ -346,8 +327,9 @@ export const authController = {
 
     const valid = await comparePin(pinCode, user.pin_code);
     if (!valid) {
+      const policy = await securityPolicy();
       const { count, lockedUntil: newLock } = await userRepository.recordFailedLogin(
-        user.id, LOGIN_FAIL_THRESHOLD, LOGIN_LOCK_DURATION_MS
+        user.id, policy.lockoutThreshold, policy.lockoutMinutes * 60_000
       );
       await authEventRepository.recordFromRequest(req, {
         eventType: 'pin_login_failed', userId: user.id, email: user.email, success: false,
@@ -356,12 +338,12 @@ export const authController = {
       if (newLock && newLock > new Date()) {
         await authEventRepository.recordFromRequest(req, {
           eventType: 'account_locked', userId: user.id, email: user.email, success: false,
-          details: { until: newLock.toISOString(), threshold: LOGIN_FAIL_THRESHOLD, via: 'pin' },
+          details: { until: newLock.toISOString(), threshold: policy.lockoutThreshold, via: 'pin' },
         });
         res.status(423).json({ success: false, error: { message: lockoutErrorMessage(newLock) } });
         return;
       }
-      const remaining = Math.max(0, LOGIN_FAIL_THRESHOLD - count);
+      const remaining = Math.max(0, policy.lockoutThreshold - count);
       res.status(401).json({ success: false, error: { message: `Code PIN incorrect (${remaining} tentative(s) restante(s))` } });
       return;
     }
@@ -385,7 +367,7 @@ export const authController = {
     // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
     // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
     const roleCtx = await loginRoleContext(user.id);
-    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+    const token = await issueToken(req, { userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 }, 'pin');
     setAuthCookie(res, token);
     res.json({
       success: true,
@@ -404,6 +386,7 @@ export const authController = {
           isActive: user.is_active,
           storeId: user.store_id || null,
           locale: user.locale ?? null,
+          idleMinutes: (await securityPolicy()).idleMinutes,
         },
       },
     });
@@ -429,6 +412,7 @@ export const authController = {
     const exp = req.user?.exp;
     if (jti && userId && exp) {
       await revokedTokenRepository.revoke(jti, userId, exp);
+      await userSessionRepository.revoke(jti, 'logout');
     }
     if (userId) {
       await authEventRepository.recordFromRequest(req, {
@@ -469,12 +453,17 @@ export const authController = {
       return;
     }
     const roleCtx = await loginRoleContext(userId);
-    const token = generateToken({
+    const { jti, exp } = req.user!;
+    // La session garde son heure d'ouverture (lot 8) : le nouveau jeton la prolonge.
+    const previous = jti ? await userSessionRepository.find(jti) : null;
+    const token = await issueToken(req, {
       userId, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId,
       tokenVersion: (user as { token_version?: number | null }).token_version ?? 0,
-    });
-    const { jti, exp } = req.user!;
-    if (jti && exp) await revokedTokenRepository.revoke(jti, userId, exp);
+    }, previous?.method ?? 'password', previous?.created_at ?? null);
+    if (jti && exp) {
+      await revokedTokenRepository.revoke(jti, userId, exp);
+      await userSessionRepository.revoke(jti, 'store_switch');
+    }
     setAuthCookie(res, token);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'active_store_changed', userId, success: true, details: { from: req.user!.storeId ?? null, to: storeId },
@@ -507,6 +496,8 @@ export const authController = {
         storeId: req.user!.storeId || user.store_id || null,
         locale: user.locale ?? null,
         mustChangePassword: !!user.must_change_password,
+        // Lot 8 : déconnexion après inactivité (politique de sécurité).
+        idleMinutes: (await securityPolicy()).idleMinutes,
         // G6-01 : rôle soumis à la double authentification, pas encore activée → configuration imposée.
         mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
       },
@@ -519,9 +510,21 @@ type RoleCtx = Awaited<ReturnType<typeof loginRoleContext>>;
 export const roleCodesOf = (ctx: RoleCtx) => [...new Set([ctx.roleCode, ctx.primaryBaseRole, ...(ctx.baseRoles ?? []),
   ...((ctx.roles ?? []) as unknown[]).map(r => (typeof r === 'string' ? r : (r as { code?: string })?.code)).filter((x): x is string => !!x)])]
   .filter((x): x is string => !!x);
+/**
+ * Configuration de la double authentification imposée ? Exigée et non configurée, une fois passé
+ * le délai de la politique (lot 8) : le délai court à partir de la première connexion où l'exigence
+ * est constatée ; 0 jour = dès cette connexion.
+ */
 async function mfaSetupRequired(userId: string, ctx: RoleCtx): Promise<boolean> {
   const s = await mfaRepository.state(userId, roleCodesOf(ctx));
-  return s.required && !s.protected;
+  if (!s.required || s.protected) {
+    await mfaRepository.clearGrace(userId);
+    return false;
+  }
+  const { mfaGraceDays } = await securityPolicy();
+  if (!mfaGraceDays) return true;
+  const started = await mfaRepository.startGrace(userId);
+  return Date.now() - started.getTime() > mfaGraceDays * 86_400_000;
 }
 const mfaKey = () => `${env.JWT_SECRET}:mfa`;
 export function signMfaToken(userId: string, mustChange: boolean) {
@@ -535,11 +538,11 @@ export function readMfaToken(token: string): { uid: string; mc: boolean } | null
 }
 
 /** Ouvre la session (jeton + cookie) et renvoie le profil — commun au mot de passe et au second facteur. */
-export async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null; locale?: string | null }, mustChange: boolean) {
+export async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null; locale?: string | null }, mustChange: boolean, method = 'password') {
   // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
   // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
   const roleCtx = await loginRoleContext(user.id);
-  const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+  const token = await issueToken(res.req, { userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 }, method);
   setAuthCookie(res, token);
   res.json({
     success: true,
@@ -559,6 +562,7 @@ export async function issueSession(res: Response, user: { id: string; email: str
         storeId: user.store_id || null,
         locale: user.locale ?? null,
         mustChangePassword: mustChange,
+        idleMinutes: (await securityPolicy()).idleMinutes,
         mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
       },
     },

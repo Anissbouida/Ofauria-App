@@ -10,6 +10,8 @@ export interface User {
   storeId?: string | null;
   /** G0-06 : mot de passe antérieur à la politique — à changer avant toute autre action. */
   mustChangePassword?: boolean;
+  /** Déconnexion après N minutes d'inactivité (politique de sécurité, refonte Utilisateurs, lot 8). */
+  idleMinutes?: number;
   /** G6-05 : langue de l'interface (mig 610) ; null = langue par défaut de la société. */
   locale?: 'fr' | 'ar' | 'en' | null;
   /** Page d'accueil du rôle principal (refonte Utilisateurs, lot 4) ; null = celle du secteur. */

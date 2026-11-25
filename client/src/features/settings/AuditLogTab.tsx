@@ -66,6 +66,7 @@ export const AUTH_EVENT_LABELS: Record<string, string> = {
   user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Droits modifiés',
   access_denied: 'Accès hors droits',
   invitation_sent: 'Invitation envoyée', invitation_accepted: 'Invitation acceptée',
+  active_store_changed: 'Changement d\'établissement', security_policy_changed: 'Politique de sécurité modifiée',
   account_unlocked: 'Compte déverrouillé', token_revoked: 'Sessions fermées', user_deleted: 'Compte supprimé définitivement',
   mfa_trusted_device: 'Connexion depuis un poste mémorisé',
   passkey_added: 'Passkey ajoutée', passkey_removed: 'Passkey supprimée', passkey_failed: 'Échec de connexion par passkey',

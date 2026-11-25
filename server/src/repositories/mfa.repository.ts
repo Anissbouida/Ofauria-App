@@ -39,6 +39,17 @@ export const mfaRepository = {
     );
   },
 
+  /** Début du délai pour configurer la double authentification (lot 8) : posé au premier appel. */
+  async startGrace(userId: string): Promise<Date> {
+    const r = await db.query(
+      `UPDATE users SET mfa_grace_started_at = COALESCE(mfa_grace_started_at, now()) WHERE id = $1 RETURNING mfa_grace_started_at`, [userId]);
+    return r.rows[0]?.mfa_grace_started_at ?? new Date();
+  },
+
+  async clearGrace(userId: string): Promise<void> {
+    await db.query(`UPDATE users SET mfa_grace_started_at = NULL WHERE id = $1 AND mfa_grace_started_at IS NOT NULL`, [userId]).catch(() => undefined);
+  },
+
   /** Exigence posée par l'administrateur sur un compte (mig 617). */
   async setRequiredForUser(userId: string, required: boolean) {
     const r = await db.query(`UPDATE users SET mfa_required = $2, updated_at = now() WHERE id = $1`, [userId, required]);

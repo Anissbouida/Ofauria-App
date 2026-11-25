@@ -6,7 +6,8 @@ import { probeSession } from './sessionProbe';
 import type { User, LoginRequest } from '@ofauria/shared';
 
 // Inactivity timeout configuration (in minutes)
-const INACTIVITY_TIMEOUT = 15; // Auto-logout after 15 minutes of inactivity
+// Déconnexion après inactivité : durée de la politique de sécurité (lot 8), 15 minutes par défaut.
+const DEFAULT_INACTIVITY_TIMEOUT = 15;
 const WARNING_BEFORE = 2; // Show warning 2 minutes before auto-logout
 
 interface AuthContextType {
@@ -71,8 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastActivityRef.current = Date.now();
     setTimeoutWarning(false);
 
-    const warningDelay = (INACTIVITY_TIMEOUT - WARNING_BEFORE) * 60 * 1000;
-    const logoutDelay = INACTIVITY_TIMEOUT * 60 * 1000;
+    const idle = user?.idleMinutes ?? DEFAULT_INACTIVITY_TIMEOUT;
+    const warningDelay = (idle - WARNING_BEFORE) * 60 * 1000;
+    const logoutDelay = idle * 60 * 1000;
 
     warningTimerRef.current = setTimeout(() => {
       setTimeoutWarning(true);
@@ -81,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logoutTimerRef.current = setTimeout(() => {
       performLogout();
     }, logoutDelay);
-  }, [clearTimers, performLogout]);
+  }, [clearTimers, performLogout, user?.idleMinutes]);
 
   const resetActivity = useCallback(() => {
     if (!user) return;

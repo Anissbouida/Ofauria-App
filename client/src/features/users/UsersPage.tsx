@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { usersApi, rolesApi, governanceApi } from '../../api/users.api';
+import { usersApi, rolesApi, governanceApi, type SecurityPolicy as SecurityPolicyValues } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
 import ControlsPanel, { DelegationsPanel } from './ControlsPanel';
 import RoleActionMatrix from './RoleActionMatrix';
@@ -27,7 +27,7 @@ import { RowMenu } from '../../components/ui/RowMenu';
 import { HrHeaderSlot } from '../employees/ui';
 import { FilterChips } from '../sales/ListTemplate';
 import {
-  Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, SectionHeader, Alert,
+  Toolbar, SearchBar, DataPanel, FormFooter, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, SectionHeader, Alert,
 } from '../../components/ds';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -140,20 +140,52 @@ export default function UsersPage() {
 
 /* ============ SÉCURITÉ ET CONNEXIONS ============ */
 
+const DAYS = (n: number) => `${n} jour${n > 1 ? 's' : ''}`;
+const IDLE_LABELS: Record<number, string> = { 15: '15 minutes', 60: '1 heure', 480: '8 heures', 1440: '24 heures' };
+
 /**
- * Règles de connexion. La double authentification par rôle se règle ici ; les autres valeurs
- * sont celles appliquées aujourd'hui par le serveur, affichées pour information.
+ * Règles de connexion valables pour tous les comptes (refonte Utilisateurs, lot 8, mig 708) :
+ * double authentification par rôle et délai pour la configurer, mot de passe et verrouillage,
+ * code PIN, déconnexion après inactivité. Valeurs par défaut = celles fixées jusqu'ici dans le code.
  */
 function SecurityPolicy({ roles }: { roles: { code: string; label: string; user_count: number }[] }) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const { data: policy } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy, retry: false });
-  const required = (policy?.requiredRoles ?? []).filter(c => roles.some(r => r.code === c));
+  const { data: mfa } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy, retry: false });
+  const { data: loaded, isError, error, refetch } = useQuery({ queryKey: ['security-policy'], queryFn: usersApi.securityPolicy, retry: false });
+  const [draft, setDraft] = useState<SecurityPolicyValues | null>(null);
+  useEffect(() => { if (loaded) setDraft(loaded.policy); }, [loaded]);
+  const required = (mfa?.requiredRoles ?? []).filter(c => roles.some(r => r.code === c));
   const label = (c: string) => roles.find(r => r.code === c)?.label ?? c;
+  const save = useMutation({
+    mutationFn: (p: SecurityPolicyValues) => usersApi.setSecurityPolicy(p),
+    onSuccess: () => { notify.success('Politique de sécurité enregistrée'); queryClient.invalidateQueries({ queryKey: ['security-policy'] }); },
+    onError: err => notify.error(errorMessage(err, 'Enregistrement refusé')),
+  });
+  if (isError) return <ErrorState error={error} title="La politique de sécurité n'a pas pu être chargée" onRetry={() => void refetch()} />;
+  if (!loaded || !draft) return <LoadingState />;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(loaded.policy);
+  const set = <K extends keyof SecurityPolicyValues>(k: K, v: number) => setDraft(d => (d ? { ...d, [k]: v } : d));
+  const range = (k: keyof SecurityPolicyValues) => loaded.limits[k] as { min: number; max: number };
+  const list = (k: keyof SecurityPolicyValues) => loaded.limits[k] as number[];
+  const num = (k: keyof SecurityPolicyValues, unit: string, aria: string) => {
+    const r = range(k);
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <input type="number" className="ds-input sm" style={{ width: 76 }} min={r.min} max={r.max} value={draft[k]} aria-label={aria}
+          onChange={e => set(k, Number(e.target.value))} />
+        <span style={{ color: 'var(--ds-muted)' }}>{unit}</span>
+      </span>
+    );
+  };
+  const outOfRange = (['passwordMinLength', 'lockoutThreshold', 'lockoutMinutes'] as const)
+    .some(k => !Number.isInteger(draft[k]) || draft[k] < range(k).min || draft[k] > range(k).max);
+
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <section style={{ display: 'grid', gap: 12 }}>
         <SectionHeader title="Double authentification">
-          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setOpen(true)}>Modifier</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setOpen(true)}>Modifier les rôles</button>
         </SectionHeader>
         <DataPanel label="Double authentification">
           <div className="usr-row">
@@ -162,19 +194,65 @@ function SecurityPolicy({ roles }: { roles: { code: string; label: string; user_
               {required.length ? required.map(c => <span key={c} className="kl-tag b">{label(c)}</span>) : <span style={{ color: 'var(--ds-muted)' }}>Aucun rôle</span>}
             </div>
           </div>
+          <div className="usr-row">
+            <div><b>Délai pour la configurer</b><p>Compté depuis la première connexion où elle est exigée. Après ce délai, la connexion passe directement par la configuration.</p></div>
+            <select className="ds-input sm" style={{ width: 'auto' }} aria-label="Délai pour configurer la double authentification" value={draft.mfaGraceDays} onChange={e => set('mfaGraceDays', Number(e.target.value))}>
+              {list('mfaGraceDays').map(n => <option key={n} value={n}>{n ? DAYS(n) : 'Dès la prochaine connexion'}</option>)}
+            </select>
+          </div>
           {!required.includes('admin') && (
             <div style={{ padding: '0 20px 16px' }}><Alert tone="warning">Le rôle Administrateur n'exige pas la double authentification.</Alert></div>
           )}
         </DataPanel>
       </section>
+
       <section style={{ display: 'grid', gap: 12 }}>
-        <SectionHeader title="Mot de passe et verrouillage" note="Valeurs appliquées par le serveur" />
+        <SectionHeader title="Mot de passe et verrouillage" />
         <DataPanel label="Mot de passe et verrouillage">
-          <div className="usr-row"><div><b>Mot de passe</b><p>Pour un nouveau compte ou un mot de passe défini par un administrateur.</p></div><span>12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial</span></div>
-          <div className="usr-row"><div><b>Verrouillage</b><p>Le compte se déverrouille seul à la fin du délai, ou depuis sa fiche.</p></div><span>Après 5 échecs, pendant 15 minutes</span></div>
-          <div className="usr-row"><div><b>Code PIN de caisse</b><p>Les codes plus courts sont signalés « à renouveler ».</p></div><span>6 à 10 chiffres</span></div>
+          <div className="usr-row">
+            <div><b>Longueur minimale du mot de passe</b><p>Avec majuscule, minuscule, chiffre et caractère spécial. Un mot de passe plus court est à changer à la prochaine connexion.</p></div>
+            {num('passwordMinLength', 'caractères', 'Longueur minimale du mot de passe')}
+          </div>
+          <div className="usr-row">
+            <div><b>Renouvellement</b><p>Passé ce délai, la personne choisit un nouveau mot de passe à sa connexion.</p></div>
+            <select className="ds-input sm" style={{ width: 'auto' }} aria-label="Renouvellement du mot de passe" value={draft.passwordMaxAgeDays} onChange={e => set('passwordMaxAgeDays', Number(e.target.value))}>
+              {list('passwordMaxAgeDays').map(n => <option key={n} value={n}>{n ? `Tous les ${n} jours` : 'Jamais'}</option>)}
+            </select>
+          </div>
+          <div className="usr-row">
+            <div><b>Verrouillage après des échecs</b><p>Mot de passe ou code PIN. Le compte se déverrouille seul après la durée choisie, ou depuis sa fiche.</p></div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {num('lockoutThreshold', 'échecs, pendant', 'Nombre d\'échecs avant verrouillage')}
+              {num('lockoutMinutes', 'min', 'Durée du verrouillage en minutes')}
+            </span>
+          </div>
+          <div className="usr-row">
+            <div><b>Code PIN de caisse</b><p>Pour la connexion rapide sur les postes partagés. Les codes plus courts sont signalés « à renouveler ».</p></div>
+            <select className="ds-input sm" style={{ width: 'auto' }} aria-label="Longueur minimale du code PIN" value={draft.pinMinLength} onChange={e => set('pinMinLength', Number(e.target.value))}>
+              {list('pinMinLength').map(n => <option key={n} value={n}>{n} chiffres minimum</option>)}
+            </select>
+          </div>
         </DataPanel>
       </section>
+
+      <section style={{ display: 'grid', gap: 12 }}>
+        <SectionHeader title="Sessions et inscription" />
+        <DataPanel label="Sessions et inscription">
+          <div className="usr-row">
+            <div><b>Déconnexion après inactivité</b><p>Un avertissement s'affiche deux minutes avant. Les sessions ouvertes se voient dans la fiche de chaque compte.</p></div>
+            <select className="ds-input sm" style={{ width: 'auto' }} aria-label="Déconnexion après inactivité" value={draft.idleMinutes} onChange={e => set('idleMinutes', Number(e.target.value))}>
+              {list('idleMinutes').map(n => <option key={n} value={n}>{IDLE_LABELS[n] ?? `${n} minutes`}</option>)}
+            </select>
+          </div>
+          <div className="usr-row">
+            <div><b>Inscription libre</b><p>Un compte se crée seulement depuis Utilisateurs, par une personne qui en a le droit.</p></div>
+            <span className="kl-tag x">Désactivée</span>
+          </div>
+        </DataPanel>
+      </section>
+
+      <FormFooter dirty={dirty} busy={save.isPending} disabled={!dirty || outOfRange}
+        onCancel={() => setDraft(loaded.policy)} onSubmit={() => save.mutate(draft)} />
       {open && <MfaPolicyModal onClose={() => setOpen(false)} />}
     </div>
   );

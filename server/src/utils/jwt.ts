@@ -2,7 +2,7 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { env } from '../config/env.js';
 
-interface TokenPayload {
+export interface TokenPayload {
   userId: string;
   // Role de base PRINCIPAL (admin-aware) : perimetre technique des routes.
   role: string;

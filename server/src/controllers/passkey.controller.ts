@@ -207,6 +207,6 @@ export const passkeyController = {
       const remembered = await mfaRepository.rememberDevice(user.id, deviceLabel(clientUserAgent(req)), clientIp(req));
       if (remembered) setDeviceCookie(res, [remembered.token, ...readDeviceTokens(req)], remembered.days);
     }
-    await issueSession(res, user, secondFactor ? !!t.mc : !!user.must_change_password);
+    await issueSession(res, user, secondFactor ? !!t.mc : !!user.must_change_password, 'passkey');
   },
 };

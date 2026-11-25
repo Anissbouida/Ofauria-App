@@ -333,6 +333,9 @@
  "DELETE /users/:id/permanent": [
   "admin"
  ],
+ "DELETE /users/:id/sessions/:jti": [
+  "admin"
+ ],
  "DELETE /users/approval-limits/:id": [
   "admin"
  ],
@@ -2788,6 +2791,9 @@
  "GET /users/:id/profile": [
   "admin"
  ],
+ "GET /users/:id/sessions": [
+  "admin"
+ ],
  "GET /users/access-overview": [
   "admin"
  ],
@@ -2822,6 +2828,9 @@
   "admin"
  ],
  "GET /users/security/mfa-policy": [
+  "admin"
+ ],
+ "GET /users/security/policy": [
   "admin"
  ],
  "GET /users/sod": [
@@ -2931,9 +2940,6 @@
  "POST /auth/passkeys/register/options": null,
  "POST /auth/passkeys/register/verify": null,
  "POST /auth/pin-login": null,
- "POST /auth/register": [
-  "admin"
- ],
  "POST /automation/jobs/:key/run": null,
  "POST /automation/mail/outbox/:id/:action": null,
  "POST /automation/mail/test": null,
@@ -5611,6 +5617,9 @@
   "admin"
  ],
  "PUT /users/security/mfa-policy": [
+  "admin"
+ ],
+ "PUT /users/security/policy": [
   "admin"
  ],
  "PUT /users/sod/:code": [
