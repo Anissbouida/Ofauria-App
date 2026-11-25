@@ -267,6 +267,13 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     const params = (catalog?.parameters ?? []).filter(p => p.step === step && mods.has(p.module as AppModule));
     const orphaned = Object.keys(data).filter(key => !key.startsWith('approval:') && !params.some(p => p.fields.some(f => `${p.key}:${f.name}` === key)));
     const byModule = [...new Set(params.map(p => p.module))];
+    // Le rythme propose l'horizon du plan directeur qui lui correspond (modifiable ensuite).
+    const RHYTHM_HORIZON: Record<string, number> = { artisanal: 3, industrial: 14, continuous: 28 };
+    const setField = (id: string, v: WizardData[string]) => {
+      if (id === 'production.rhythm:mode' && typeof v === 'string' && RHYTHM_HORIZON[v] && params.some(p => p.key === 'production.mrp_horizon'))
+        onChange({ ...data, [id]: v, 'production.mrp_horizon:days': String(RHYTHM_HORIZON[v]) });
+      else set(id, v);
+    };
     return <>
       {orphaned.length > 0 && <Alert tone="warning" icon={<TriangleAlert size={16} />}>Choix antérieurs pour des modules retirés : {orphaned.map(key =>
         <span key={key} style={{ display: 'block' }}>{key} : {String(data[key])} <button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => unset(key)}>Retirer du brouillon</button></span>)}</Alert>}
@@ -294,10 +301,11 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
           const title = <>{p.fields.length > 1 ? `${p.label} — ${f.label}` : p.label}{f.unit ? ` (${f.unit})` : ''} {draft && <Tag tone="o">Modifié</Tag>}</>;
           const control = !p.value ? <Tag tone="x">Indisponible</Tag>
             : f.type === 'boolean' ? <Switch label={f.label} checked={value === true} disabled={locked} onChange={v => set(id, v)} />
-            : f.type === 'enum' && (f.options?.length ?? 0) <= 4 ? <Segmented label={f.label} value={String(value ?? '')} options={f.options ?? []} disabled={locked} onChange={v => set(id, v)} />
+            : f.type === 'enum' && (f.options?.length ?? 0) <= 4 ? <Segmented label={f.label} value={String(value ?? '')} options={f.options ?? []} disabled={locked} onChange={v => setField(id, v)} />
             : f.type === 'enum' ? <select aria-label={f.label} className="ds-input" value={String(value ?? '')} disabled={locked} onChange={e => set(id, e.target.value)}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
             : <input aria-label={f.label} className="ds-input" style={{ width: 140 }} type={['number','integer','percent'].includes(f.type) ? 'number' : 'text'} min={f.min} max={f.max} step={f.type === 'integer' ? 1 : 'any'} disabled={locked} value={Array.isArray(value) ? value.join(', ') : String(value ?? '')} onChange={e => set(id, e.target.value)} />;
-          return <Row key={id} title={title} help={fi === 0 ? p.help : undefined}><span className="wz-control">{control}{draft && <button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => unset(id)}>Annuler</button>}</span></Row>;
+          const synced = id === 'production.mrp_horizon:days' && 'production.rhythm:mode' in data && draft;
+          return <Row key={id} title={title} help={fi === 0 ? <>{p.help}{synced && <> Proposé par le rythme choisi.</>}</> : undefined}><span className="wz-control">{control}{draft && <button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => unset(id)}>Annuler</button>}</span></Row>;
         }))}</div>)}
       {step === 'rules' && <>
         {(catalog?.approvalRules?.length ?? 0) > 0 && <div><h3 className="ds-subhead" style={{ marginBottom: 8 }}>Approbations</h3>

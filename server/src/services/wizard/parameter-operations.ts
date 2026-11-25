@@ -1,3 +1,4 @@
+import { WIZARD_HELP } from './parameter-definitions.js';
 import { WIZARD_PARAMETERS, wizardParameterField } from './parameter-definitions.js';
 import { readAll, write } from '../settings-center.js';
 import { validateParameter } from '../parameters-catalog.js';
@@ -7,7 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 export async function wizardParameters(){
   const values=await readAll();
-  return WIZARD_PARAMETERS.map(({step,module,def})=>({step,module,key:def.key,label:def.label,help:def.help,fields:def.fields,value:values.get(def.key)??null}));
+  return WIZARD_PARAMETERS.map(({step,module,def})=>({step,module,key:def.key,label:def.label,help:WIZARD_HELP[def.key]??def.help,fields:def.fields,value:values.get(def.key)??null}));
 }
 
 export function prepareParameterChanges(answers:WizardAnswers,catalog:Awaited<ReturnType<typeof wizardParameters>>){
