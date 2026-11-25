@@ -29,6 +29,7 @@ const HISTORY_LABELS: Record<string, string> = {
   role_INSERT: 'Rôle ajouté', role_DELETE: 'Rôle retiré', role_UPDATE: 'Rôle modifié',
   login_success: 'Connexion', login_failed: 'Échec de connexion', pin_login_success: 'Connexion par PIN', pin_login_failed: 'Échec du PIN',
   logout: 'Déconnexion', account_locked: 'Compte verrouillé', account_unlocked: 'Compte déverrouillé', token_revoked: 'Sessions fermées',
+  mfa_trusted_device: 'Connexion depuis un poste mémorisé',
   mfa_reset: 'Double authentification réinitialisée', mfa_requirement_changed: 'Exigence de double authentification modifiée',
   access_denied: 'Accès hors droits', user_deleted: 'Compte supprimé définitivement',
   invitation_sent: 'Invitation envoyée', invitation_accepted: 'Invitation acceptée',

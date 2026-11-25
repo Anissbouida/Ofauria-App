@@ -114,6 +114,8 @@ export const fr = {
   'auth.mfaTitle': 'Double authentification',
   'auth.mfaHelp': "Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de secours.",
   'auth.mfaCodeLabel': 'Code de double authentification',
+  'auth.mfaRemember': 'Mémoriser ce poste pendant {days} jours',
+  'auth.mfaRememberHint': 'Le code ne sera plus demandé sur cet appareil. À décocher sur un poste partagé.',
   'auth.pinIncorrect': 'Code PIN incorrect',
   'auth.invalidCode': 'Code invalide',
   'auth.serverUnreachable': 'Serveur injoignable — vérifie que le backend tourne (port 3001)',

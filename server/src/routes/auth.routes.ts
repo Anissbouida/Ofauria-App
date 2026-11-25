@@ -15,7 +15,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { z } from 'zod';
 
 const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(12) });
-const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(2000) });
+const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(2000), rememberDevice: z.boolean().optional() });
 const mfaDisableSchema = mfaCodeSchema.extend({ password: z.string().min(1).max(200) });
 const mfaEmptySchema = z.object({}).passthrough();
 import { ipKeyGenerator } from 'express-rate-limit';

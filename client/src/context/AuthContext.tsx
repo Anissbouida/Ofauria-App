@@ -12,8 +12,9 @@ const WARNING_BEFORE = 2; // Show warning 2 minutes before auto-logout
 interface AuthContextType {
   user: User | null;
   /** G6-01 : rend { mfaToken } quand un second facteur est exigé. */
-  login: (data: LoginRequest) => Promise<{ mfaToken?: string }>;
-  verifyMfa: (mfaToken: string, code: string) => Promise<void>;
+  login: (data: LoginRequest) => Promise<{ mfaToken?: string; trustedDeviceDays?: number }>;
+  /** rememberDevice : poste de confiance, code non redemandé pendant N jours (mig 702). */
+  verifyMfa: (mfaToken: string, code: string, rememberDevice?: boolean) => Promise<void>;
   mfaConfigured: () => void;
   loginWithPin: (userId: string, pinCode: string) => Promise<void>;
   /** G0-06 : le mot de passe vient d'être changé, l'obligation est levée. */
@@ -137,8 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Le backend pose le cookie HttpOnly. On garde le user en memoire,
     // pas de token stocke cote client.
     const result = await authApi.login(data);
-    const mfa = result as unknown as { mfaRequired?: boolean; mfaToken?: string };
-    if (mfa.mfaRequired) return { mfaToken: mfa.mfaToken };
+    const mfa = result as unknown as { mfaRequired?: boolean; mfaToken?: string; trustedDeviceDays?: number };
+    if (mfa.mfaRequired) return { mfaToken: mfa.mfaToken, trustedDeviceDays: mfa.trustedDeviceDays };
     if (IS_MOBILE_BUILD && result.token) {
       localStorage.setItem('ofauria_token', result.token);
     }
@@ -148,8 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {};
   };
 
-  const verifyMfa = async (mfaToken: string, code: string) => {
-    const result = await authApi.verifyMfa(mfaToken, code);
+  const verifyMfa = async (mfaToken: string, code: string, rememberDevice = false) => {
+    const result = await authApi.verifyMfa(mfaToken, code, rememberDevice);
     if (IS_MOBILE_BUILD && result.token) localStorage.setItem('ofauria_token', result.token);
     setUser(result.user as User);
     queryClient.clear();

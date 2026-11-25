@@ -97,6 +97,8 @@ export const ar = {
   'auth.mfaTitle': 'المصادقة الثنائية',
   'auth.mfaHelp': 'أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة، أو رمزًا احتياطيًا.',
   'auth.mfaCodeLabel': 'رمز المصادقة الثنائية',
+  'auth.mfaRemember': 'تذكّر هذا الجهاز لمدة {days} يومًا',
+  'auth.mfaRememberHint': 'لن يُطلب الرمز مرة أخرى على هذا الجهاز. ألغِ التحديد على جهاز مشترك.',
   'auth.pinIncorrect': 'رمز PIN غير صحيح',
   'auth.invalidCode': 'رمز غير صالح',
   'auth.serverUnreachable': 'تعذّر الوصول إلى الخادم. تحقّق من أنه قيد التشغيل.',

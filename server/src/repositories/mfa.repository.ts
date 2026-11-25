@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { getParameter } from '../services/module-parameters.service.js';
+import { createHash, randomBytes } from 'node:crypto';
 import { decryptSecret, encryptSecret, generateBackupCodes, generateSecret, hashBackupCode, otpauthUrl, verifyTotp } from '../services/totp.js';
 
 /**
@@ -74,5 +75,62 @@ export const mfaRepository = {
 
   async disable(userId: string) {
     await db.query(`UPDATE users SET totp_enabled = false, totp_enabled_at = NULL, totp_secret_enc = NULL, totp_backup_codes = '[]'::jsonb WHERE id = $1`, [userId]);
+    await this.forgetDevices(userId);
+  },
+
+  /* ── Postes de confiance (mig 702) : plus de code demandé sur ce poste pendant N jours ── */
+
+  /** Durée en jours (paramètre security.mfa.trustedDeviceDays, 14 par défaut, 0 = désactivé, 90 au plus). */
+  async trustedDeviceDays(): Promise<number> {
+    const v = await getParameter<{ trustedDeviceDays?: number }>('security.mfa');
+    const n = Number(v?.trustedDeviceDays);
+    return v?.trustedDeviceDays !== undefined && Number.isFinite(n) && n >= 0 ? Math.min(90, Math.floor(n)) : 14;
+  },
+
+  /** Mémorise le poste : rend le jeton à poser en cookie (seule son empreinte est conservée). */
+  async rememberDevice(userId: string, label: string | null, ip: string | null): Promise<{ token: string; days: number } | null> {
+    const days = await this.trustedDeviceDays();
+    if (!days) return null;
+    const token = randomBytes(32).toString('base64url');
+    await db.query(
+      `INSERT INTO mfa_trusted_devices (user_id, token_hash, label, ip, expires_at)
+       VALUES ($1, $2, $3, $4, now() + make_interval(days => $5::int))`,
+      [userId, hashDeviceToken(token), label?.slice(0, 200) ?? null, ip?.slice(0, 64) ?? null, days],
+    );
+    return { token, days };
+  },
+
+  /** Vrai si l'un des jetons du navigateur est un poste de confiance encore valable pour ce compte. */
+  async isTrustedDevice(userId: string, tokens: string[]): Promise<boolean> {
+    if (!tokens.length) return false;
+    const r = await db.query(
+      `UPDATE mfa_trusted_devices SET last_used_at = now()
+        WHERE user_id = $1 AND token_hash = ANY($2::text[]) AND revoked_at IS NULL AND expires_at > now()
+        RETURNING id`,
+      [userId, tokens.map(hashDeviceToken)],
+    );
+    return (r.rowCount ?? 0) > 0;
+  },
+
+  /** Oublie les postes de confiance du compte (le code sera redemandé) ; `keepTokens` : poste en cours épargné. */
+  async forgetDevices(userId: string, keepTokens: string[] = []): Promise<number> {
+    const r = await db.query(
+      `UPDATE mfa_trusted_devices SET revoked_at = now()
+        WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now() AND NOT (token_hash = ANY($2::text[]))`,
+      [userId, keepTokens.map(hashDeviceToken)],
+    );
+    return r.rowCount ?? 0;
+  },
+
+  /** Nombre de postes de confiance encore valables, par compte. */
+  async trustedDeviceCounts(): Promise<Map<string, number>> {
+    const r = await db.query(
+      `SELECT user_id, count(*)::int AS n FROM mfa_trusted_devices WHERE revoked_at IS NULL AND expires_at > now() GROUP BY user_id`,
+    );
+    return new Map(r.rows.map((x: { user_id: string; n: number }) => [x.user_id, x.n]));
   },
 };
+
+function hashDeviceToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}

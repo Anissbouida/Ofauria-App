@@ -21,6 +21,9 @@ export default function LoginPage() {
   tRef.current = t;
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  // Poste de confiance (mig 702) : coché par défaut, à décocher sur un poste partagé.
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [trustedDeviceDays, setTrustedDeviceDays] = useState(14);
   // G6-02 : fournisseurs d'entreprise configurés ; retour de connexion (?mfa= / ?sso_error=).
   const [ssoProviders, setSsoProviders] = useState<{ provider: string; label: string }[]>([]);
   useEffect(() => {
@@ -121,7 +124,10 @@ export default function LoginPage() {
     try {
       const r = await login({ email, password });
       // G6-01 : second facteur exigé → étape du code.
-      if (r?.mfaToken) setMfaToken(r.mfaToken);
+      if (r?.mfaToken) {
+        setMfaToken(r.mfaToken);
+        if (typeof r.trustedDeviceDays === 'number') setTrustedDeviceDays(r.trustedDeviceDays);
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; code?: string; message?: string };
       const status = axiosErr?.response?.status;
@@ -145,7 +151,7 @@ export default function LoginPage() {
     const submitCode = async (e: React.FormEvent) => {
       e.preventDefault();
       setLoading(true);
-      try { await verifyMfa(mfaToken, mfaCode.trim()); }
+      try { await verifyMfa(mfaToken, mfaCode.trim(), rememberDevice && trustedDeviceDays > 0); }
       catch (err: unknown) {
         const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
         notify.error(msg || t('auth.invalidCode'));
@@ -160,6 +166,15 @@ export default function LoginPage() {
           <form onSubmit={submitCode} className="space-y-4">
             <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
               aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+            {trustedDeviceDays > 0 && (
+              <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--ds-ink, inherit)' }}>
+                <input type="checkbox" className="mt-0.5" checked={rememberDevice} onChange={(e) => setRememberDevice(e.target.checked)} />
+                <span>
+                  {t('auth.mfaRemember', { days: trustedDeviceDays })}
+                  <span className="block text-xs" style={{ color: 'var(--ds-muted)' }}>{t('auth.mfaRememberHint')}</span>
+                </span>
+              </label>
+            )}
             <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? t('auth.verifying') : t('common.validate')}</button>
             <button type="button" className="text-sm w-full" style={{ color: 'var(--ds-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>{t('common.back')}</button>
           </form>

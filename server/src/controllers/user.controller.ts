@@ -77,9 +77,9 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const [users, allRoles, lastLogins, mfaRoles, invitations] = await Promise.all([
+    const [users, allRoles, lastLogins, mfaRoles, invitations, trustedDevices] = await Promise.all([
       userRepository.findAll(), userRepository.allUserRoles(), userRepository.lastLogins(), mfaRepository.requiredRoles(),
-      invitationRepository.openByUser(),
+      invitationRepository.openByUser(), mfaRepository.trustedDeviceCounts(),
     ]);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
@@ -100,6 +100,8 @@ export const userController = {
         storeId: u.store_id, createdAt: u.created_at,
         // Sécurité du compte (double authentification, verrouillage, dernière connexion).
         mfaEnabled: !!u.totp_enabled, mfaRequired: mfaRequiredByRole || mfaRequiredForUser, mfaRequiredByRole, mfaRequiredForUser,
+        // Postes de confiance encore valables : code non redemandé (mig 702).
+        mfaTrustedDevices: trustedDevices.get(u.id) ?? 0,
         lockedUntil: lockedUntil && new Date(lockedUntil).getTime() > now ? lockedUntil : null,
         failedLoginCount: (u as { failed_login_count?: number }).failed_login_count ?? 0,
         lastLoginAt: lastLogins.get(u.id) ?? null,
@@ -300,6 +302,8 @@ export const userController = {
     if (privilegeChange) {
       await userRepository.bumpTokenVersion(user.id);
     }
+    // Mot de passe remplacé ou compte désactivé → postes de confiance oubliés (mig 702).
+    if (isActive === false || !!password) await mfaRepository.forgetDevices(user.id);
 
     // OWASP A09-2 : audit trail.
     await authEventRepository.recordFromRequest(req, {
@@ -328,6 +332,7 @@ export const userController = {
     if (!(await guardAccountLoss(req, res, req.params.id, 'deactivate'))) return;
     // A07-5 : bump avant desactivation pour invalider les sessions actives.
     await userRepository.bumpTokenVersion(req.params.id);
+    await mfaRepository.forgetDevices(req.params.id);
     await userRepository.delete(req.params.id, req.user?.userId);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'user_updated',
@@ -426,9 +431,11 @@ export const userController = {
     const target = await userRepository.findById(req.params.id);
     if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
     await userRepository.bumpTokenVersion(target.id);
+    // Fermer les sessions oublie aussi les postes de confiance (appareil perdu ou volé, mig 702).
+    const forgottenDevices = await mfaRepository.forgetDevices(target.id);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'token_revoked', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,
-      details: { action: 'all_sessions' },
+      details: { action: 'all_sessions', forgottenDevices },
     });
     res.json({ success: true, data: null });
   },

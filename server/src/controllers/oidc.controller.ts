@@ -6,7 +6,8 @@ import { userIdentityRepository } from '../repositories/user-identity.repository
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { loginRoleContext } from '../services/access-rights.js';
 import { generateToken } from '../utils/jwt.js';
-import { setAuthCookie, signMfaToken } from './auth.controller.js';
+import { readDeviceTokens, setAuthCookie, signMfaToken } from './auth.controller.js';
+import { mfaRepository } from '../repositories/mfa.repository.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -50,7 +51,10 @@ export const oidcController = {
       details: { via: `oidc:${cfg.provider}`, ...(user ? {} : { reason: 'compte_inconnu' }) },
     });
     if (!user) { fail(res, 'compte_inconnu'); return; }
-    if (user.totp_enabled) { res.redirect(`${front()}/login?mfa=${encodeURIComponent(signMfaToken(user.id, !!user.must_change_password))}`); return; }
+    // Poste de confiance encore valable (mig 702) → pas de code sur ce poste.
+    if (user.totp_enabled && !(await mfaRepository.isTrustedDevice(user.id, readDeviceTokens(req)))) {
+      res.redirect(`${front()}/login?mfa=${encodeURIComponent(signMfaToken(user.id, !!user.must_change_password))}`); return;
+    }
     const roleCtx = await loginRoleContext(user.id);
     setAuthCookie(res, generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 }));
     res.redirect(`${front()}/`);

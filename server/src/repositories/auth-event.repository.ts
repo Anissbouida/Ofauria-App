@@ -28,6 +28,9 @@ export type AuthEventType =
   // G6-01 : second facteur.
   | 'mfa_success'
   | 'mfa_failed'
+  // Postes de confiance (mig 702) : code non redemandé sur un poste mémorisé / postes oubliés.
+  | 'mfa_trusted_device'
+  | 'mfa_devices_forgotten'
   | 'user_created'
   | 'user_updated'
   // Suppression définitive d'un compte sans historique (trace : e-mail + nom dans details).
@@ -59,7 +62,7 @@ export interface AuthEventInput {
   details?: Record<string, unknown>;
 }
 
-function clientIp(req: Request): string | null {
+export function clientIp(req: Request): string | null {
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string' && xff.length > 0) {
     return xff.split(',')[0].trim();
@@ -67,7 +70,7 @@ function clientIp(req: Request): string | null {
   return req.ip || req.socket?.remoteAddress || null;
 }
 
-function clientUserAgent(req: Request): string | null {
+export function clientUserAgent(req: Request): string | null {
   const ua = req.headers['user-agent'];
   return typeof ua === 'string' ? ua.slice(0, 500) : null;
 }

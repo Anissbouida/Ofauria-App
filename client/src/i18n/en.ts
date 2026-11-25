@@ -97,6 +97,8 @@ export const en = {
   'auth.mfaTitle': 'Two-factor authentication',
   'auth.mfaHelp': 'Enter the 6-digit code from your authenticator app, or a backup code.',
   'auth.mfaCodeLabel': 'Two-factor authentication code',
+  'auth.mfaRemember': 'Remember this device for {days} days',
+  'auth.mfaRememberHint': 'The code will not be asked again on this device. Untick on a shared computer.',
   'auth.pinIncorrect': 'Incorrect PIN',
   'auth.invalidCode': 'Invalid code',
   'auth.serverUnreachable': 'Server unreachable. Check that it is running.',

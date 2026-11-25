@@ -93,7 +93,7 @@ const ACTIONS: Record<AccountAction, ActionSpec> = {
   revoke: {
     call: u => usersApi.revokeSessions(u.id), done: 'Sessions fermées',
     confirm: u => ({ title: 'Fermer toutes les sessions ?', label: 'Fermer les sessions',
-      message: `${fullName(u)} sera déconnecté de tous ses appareils (caisse, ordinateur, téléphone) et devra se reconnecter.` }),
+      message: `${fullName(u)} sera déconnecté de tous ses appareils (caisse, ordinateur, téléphone) et devra se reconnecter.${u.mfaTrustedDevices > 0 ? ` Ses ${u.mfaTrustedDevices} poste${u.mfaTrustedDevices > 1 ? 's' : ''} mémorisé${u.mfaTrustedDevices > 1 ? 's' : ''} seront oubliés : le code de double authentification sera redemandé.` : ''}` }),
   },
   mustChange: {
     call: u => usersApi.setMustChangePassword(u.id, true), done: 'Changement de mot de passe imposé',
@@ -206,6 +206,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
           {u.mfaRequiredByRole ? 'Exigée par le rôle (bouton « Double authentification » de la liste).'
             : u.mfaRequiredForUser ? 'Exigée pour ce compte.'
             : u.mfaEnabled ? 'Activée par l\'utilisateur.' : 'Code à 6 chiffres d\'une application, en plus du mot de passe.'}
+          {u.mfaEnabled && u.mfaTrustedDevices > 0 && ` ${u.mfaTrustedDevices} poste${u.mfaTrustedDevices > 1 ? 's' : ''} mémorisé${u.mfaTrustedDevices > 1 ? 's' : ''} (code non redemandé).`}
           {self && u.mfaEnabled && ' Votre propre double authentification ne se réinitialise pas ici : demandez-le à un autre administrateur.'}
         </span>
       </Row>
@@ -226,7 +227,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
       {!self && (
         <Row title="Sessions ouvertes"
           actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy || !u.isActive} onClick={() => void run('revoke', u)}><LogOut size={13} /> Tout fermer</button>}>
-          Déconnecte le compte de tous ses appareils.
+          Déconnecte le compte de tous ses appareils et oublie ses postes mémorisés.
         </Row>
       )}
       {!self && (

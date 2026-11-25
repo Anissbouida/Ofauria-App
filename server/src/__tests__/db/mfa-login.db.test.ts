@@ -4,10 +4,13 @@
  *  - connexion : le mot de passe seul ne donne pas de session mais un jeton intermédiaire,
  *    inutilisable comme jeton de session ; code faux refusé ; code juste → session ;
  *  - un code de secours sert une seule fois ;
- *  - rôle soumis (admin) sans double authentification → configuration imposée.
+ *  - rôle soumis (admin) sans double authentification → configuration imposée ;
+ *  - poste de confiance (mig 702) : « Mémoriser ce poste » → plus de code sur ce navigateur,
+ *    jusqu'à l'oubli des postes (fermeture des sessions, réinitialisation…).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
 
@@ -32,7 +35,7 @@ describe.skipIf(!hasTestDb)('Double authentification (G6-01)', () => {
     userId = (await p().query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active) VALUES ($1, $2, 'Mfa', 'Test', 'manager', true) RETURNING id`,
       [email, await hashPassword(password)])).rows[0].id;
-    app = express(); app.use(express.json());
+    app = express(); app.use(express.json()); app.use(cookieParser());
     app.post('/login', (req, res) => authController.login(req as never, res));
     app.post('/mfa/verify', (req, res) => authController.mfaVerify(req as never, res));
   }, 60_000);
@@ -63,6 +66,31 @@ describe.skipIf(!hasTestDb)('Double authentification (G6-01)', () => {
     const ok = await request(app).post('/mfa/verify').send({ mfaToken, code: totp.totpAt(secret) });
     expect(ok.status).toBe(200);
     expect(jwtu.verifyToken(ok.body.data.token).userId).toBe(userId);
+  });
+
+  it('poste de confiance : code non redemandé sur ce poste, redemandé après oubli', async () => {
+    const first = await request(app).post('/login').send({ email, password });
+    expect(first.body.data.trustedDeviceDays).toBe(14);
+    const ok = await request(app).post('/mfa/verify').send({ mfaToken: first.body.data.mfaToken, code: totp.totpAt(secret), rememberDevice: true });
+    expect(ok.status).toBe(200);
+    const setCookie = ([] as string[]).concat(ok.headers['set-cookie'] ?? []).find(c => c.startsWith('kalum_mfa_device='));
+    expect(setCookie).toMatch(/HttpOnly/i);
+    const cookie = setCookie!.split(';')[0];
+    // Même poste : session directe, sans code.
+    const again = await request(app).post('/login').set('Cookie', cookie).send({ email, password });
+    expect(again.body.data.mfaRequired).toBeUndefined();
+    expect(jwtu.verifyToken(again.body.data.token).userId).toBe(userId);
+    // Le mot de passe reste exigé.
+    expect((await request(app).post('/login').set('Cookie', cookie).send({ email, password: 'faux' })).status).toBe(401);
+    // Autre poste (sans cookie) ou jeton inconnu : code exigé.
+    expect((await request(app).post('/login').send({ email, password })).body.data.mfaRequired).toBe(true);
+    expect((await request(app).post('/login').set('Cookie', 'kalum_mfa_device=' + 'x'.repeat(43)).send({ email, password })).body.data.mfaRequired).toBe(true);
+    // Seule l'empreinte est stockée.
+    const token = cookie.split('=')[1];
+    expect((await p().query(`SELECT count(*)::int AS n FROM mfa_trusted_devices WHERE token_hash = $1`, [token])).rows[0].n).toBe(0);
+    // Oubli des postes → code de nouveau exigé.
+    expect(await mfa.forgetDevices(userId)).toBe(1);
+    expect((await request(app).post('/login').set('Cookie', cookie).send({ email, password })).body.data.mfaRequired).toBe(true);
   });
 
   it('code de secours à usage unique ; rôle soumis sans double authentification', async () => {

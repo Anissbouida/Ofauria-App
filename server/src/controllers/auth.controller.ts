@@ -4,7 +4,7 @@ import { env } from '../config/env.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { loginRoleContext } from '../services/access-rights.js';
-import { authEventRepository } from '../repositories/auth-event.repository.js';
+import { authEventRepository, clientIp, clientUserAgent } from '../repositories/auth-event.repository.js';
 import { hashPassword, comparePassword, comparePin } from '../utils/hash.js';
 import { meetsPasswordPolicy } from '../validators/auth.validator.js';
 import { generateToken } from '../utils/jwt.js';
@@ -65,6 +65,42 @@ function clearAuthCookie(res: Response) {
     sameSite: 'strict',
     path: '/',
   });
+}
+
+/*
+ * Postes de confiance (mig 702) : après un code valide et « Mémoriser ce poste », le navigateur
+ * garde un jeton aléatoire (cookie HttpOnly) ; la double authentification n'est plus demandée
+ * sur ce poste pendant la durée paramétrée. Plusieurs comptes peuvent partager un même poste :
+ * le cookie porte jusqu'à 5 jetons. SameSite=Lax pour qu'il accompagne aussi le retour de la
+ * connexion d'entreprise (redirection depuis le fournisseur) ; il n'ouvre rien à lui seul.
+ */
+const DEVICE_COOKIE_NAME = 'kalum_mfa_device';
+const DEVICE_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+const MAX_DEVICE_TOKENS = 5;
+
+export function readDeviceTokens(req: { cookies?: Record<string, string> }): string[] {
+  const raw = String(req.cookies?.[DEVICE_COOKIE_NAME] ?? '');
+  return raw.split('.').filter(t => DEVICE_TOKEN_RE.test(t)).slice(0, MAX_DEVICE_TOKENS);
+}
+
+function setDeviceCookie(res: Response, tokens: string[], days: number) {
+  res.cookie(DEVICE_COOKIE_NAME, tokens.slice(0, MAX_DEVICE_TOKENS).join('.'), {
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: days * 24 * 60 * 60 * 1000,
+  });
+}
+
+/** Libellé lisible du poste (navigateur · système) à partir de l'agent utilisateur. */
+function deviceLabel(ua: string | null): string | null {
+  if (!ua) return null;
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navigateur';
+  const os = /Windows/.test(ua) ? 'Windows' : /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android'
+    : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'système inconnu';
+  return `${browser} · ${os}`;
 }
 
 export const authController = {
@@ -140,7 +176,15 @@ export const authController = {
     // G6-01 : double authentification activée → code exigé avant d'ouvrir la session.
     // Le jeton intermédiaire est signé avec une clé distincte : il n'ouvre aucune route.
     if (user.totp_enabled) {
-      res.json({ success: true, data: { mfaRequired: true, mfaToken: signMfaToken(user.id, mustChange) } });
+      // Poste de confiance encore valable (mig 702) → pas de code sur ce poste.
+      if (await mfaRepository.isTrustedDevice(user.id, readDeviceTokens(req))) {
+        await authEventRepository.recordFromRequest(req, {
+          eventType: 'mfa_trusted_device', userId: user.id, email: user.email, success: true,
+        });
+        await issueSession(res, user, mustChange);
+        return;
+      }
+      res.json({ success: true, data: { mfaRequired: true, mfaToken: signMfaToken(user.id, mustChange), trustedDeviceDays: await mfaRepository.trustedDeviceDays() } });
       return;
     }
     await issueSession(res, user, mustChange);
@@ -148,7 +192,7 @@ export const authController = {
 
   /** G6-01 : second facteur — code de l'application ou code de secours. */
   async mfaVerify(req: AuthRequest, res: Response) {
-    const { mfaToken, code } = req.body as { mfaToken: string; code: string };
+    const { mfaToken, code, rememberDevice } = req.body as { mfaToken: string; code: string; rememberDevice?: boolean };
     const claim = readMfaToken(mfaToken);
     if (!claim) { res.status(401).json({ success: false, error: { message: 'Session de connexion expirée, recommencez' } }); return; }
     const user = await userRepository.findById(claim.uid);
@@ -159,6 +203,10 @@ export const authController = {
       ...(r.usedBackup ? { details: { backupCode: true } } : {}),
     });
     if (!r.ok) { res.status(401).json({ success: false, error: { message: 'Code invalide' } }); return; }
+    if (rememberDevice === true) {
+      const remembered = await mfaRepository.rememberDevice(user.id, deviceLabel(clientUserAgent(req)), clientIp(req));
+      if (remembered) setDeviceCookie(res, [remembered.token, ...readDeviceTokens(req)], remembered.days);
+    }
     await issueSession(res, user, claim.mc);
   },
 
@@ -216,6 +264,8 @@ export const authController = {
     await userRepository.update(user.id, { passwordHash: await hashPassword(newPassword), mustChangePassword: false }, user.id);
     // Les jetons déjà émis deviennent invalides ; on en réémet un pour cette session.
     const tokenVersion = await userRepository.bumpTokenVersion(user.id);
+    // Postes de confiance oubliés, sauf celui d'où le mot de passe est changé (mig 702).
+    await mfaRepository.forgetDevices(user.id, readDeviceTokens(req));
     await authEventRepository.recordFromRequest(req, {
       eventType: 'user_updated', userId: user.id, targetUserId: user.id, email: user.email, success: true,
       details: { changed: ['passwordHash'], self: true },
