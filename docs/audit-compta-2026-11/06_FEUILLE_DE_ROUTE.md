@@ -115,7 +115,7 @@ Ordre conseillé : E d'abord, parce que F, G, H et K ajoutent des schémas et qu
 | C-06 | Paie comptabilisée sous condition | P0 | B | À valider | | |
 | C-07 | File d'écritures non rejouée | P0 | A | Corrigé pour la file ; fidélité et production à convertir | 5543cbed | 2026-11-25, tests |
 | C-08 | Triggers désactivables | P0 | A, C | Surveillance livrée ; rôle PostgreSQL (étape 20) à faire | 8acbec2c | 2026-11-25, tests |
-| C-09 | Séparation des tâches | P0 | C | À faire | | |
+| C-09 | Séparation des tâches | P0 | C | Partiel : droits fins, approbation OD (règle désactivée), RIB fournisseur, audit du paramétrage ; RIB salariés et filtre de rôle des écrans restent | voir 07 | 2026-11-25, tests |
 | C-10 | Deux comptabilités | P0 | D | À faire | | |
 | C-11 | Redatage silencieux | P0 | A | Corrigé (date conservée, tracé, politique) | 14ce9913 | 2026-11-25, tests |
 | C-12 | Tests manquants | P0 | A | Partiel : 4 des 7 fichiers prévus | 8acbec2c | 2026-11-25 |

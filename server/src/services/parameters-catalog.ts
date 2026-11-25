@@ -594,6 +594,25 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'payment.rib_change_control', domain: 'accounting', section: 'business',
+    label: 'Changement du RIB d\'un fournisseur',
+    help: 'Le RIB d\'un fournisseur déjà pourvu d\'un RIB est le premier outil d\'une fraude au virement. Soumis à approbation, le nouveau RIB ne sert qu\'une fois approuvé ; le premier RIB saisi s\'applique sans approbation.',
+    fields: [{ name: 'mode', label: 'Changement de RIB', type: 'enum', options: [
+      { value: 'approval', label: 'Soumettre à approbation (le RIB actuel reste en place jusque-là)' },
+      { value: 'off', label: 'Appliquer tout de suite' },
+    ] }],
+    defaults: { mode: 'approval' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'payment.rib_freeze_days', domain: 'accounting', section: 'business',
+    label: 'Gel des paiements après un changement de RIB',
+    help: 'Une campagne de paiement refuse un fournisseur dont le RIB a changé depuis moins de ce nombre de jours. 0 = pas de gel.',
+    fields: [{ name: 'days', label: 'Jours de gel', type: 'number', unit: 'jours', min: 0, max: 30 }],
+    defaults: { days: 0 },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'ledger.closed_period_policy', domain: 'accounting', section: 'business',
     label: 'Pièce datée d\'une période fermée',
     help: 'Que faire quand la période de la pièce est fermée : l\'écriture est passée au premier jour de la période ouverte (la date de la pièce est conservée et le redatage est tracé), ou la pièce est refusée et part dans « À comptabiliser ».',

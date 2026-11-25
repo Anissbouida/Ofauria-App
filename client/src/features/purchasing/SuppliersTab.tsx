@@ -518,7 +518,14 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
       await cf.save(supplier?.id ?? (saved as { id?: string })?.id);
       return saved;
     },
-    onSuccess: () => { notify.success(supplier ? 'Fournisseur modifié' : 'Fournisseur créé'); onSaved(); },
+    onSuccess: (saved) => {
+      notify.success(supplier ? 'Fournisseur modifié' : 'Fournisseur créé');
+      // Plan compta, étape 22 : le changement de RIB attend l'approbation d'un autre utilisateur.
+      if ((saved as { rib_pending_approval?: boolean } | null)?.rib_pending_approval) {
+        notify.warning('Le nouveau RIB attend l\'approbation d\'un administrateur : le RIB actuel reste utilisé pour les virements en attendant.');
+      }
+      onSaved();
+    },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { error?: { field?: string; message?: string; details?: Record<string, string[]> } } } };
       const details = err.response?.data?.error?.details;

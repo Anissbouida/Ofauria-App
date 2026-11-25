@@ -114,7 +114,9 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
       await manualEntriesApi.updateDraft(draft.id, payload());
       return manualEntriesApi.post(draft.id);
     },
-    onSuccess: (r) => done(`Écriture ${r.entry_number} comptabilisée`),
+    onSuccess: (r) => done(r.pending_approval
+      ? 'Écriture envoyée pour approbation : elle sera comptabilisée par l\'approbateur'
+      : `Écriture ${r.entry_number} comptabilisée`),
     onError: (e) => notify.error(apiErrorMessage(e, 'Comptabilisation impossible')),
   });
   const busy = save.isPending || post.isPending;

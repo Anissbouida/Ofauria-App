@@ -360,7 +360,7 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
   };
   const postM = useMutation({
     mutationFn: () => manualEntriesApi.post(id),
-    onSuccess: (r) => { refresh(); notify.success(`Écriture ${r.entry_number} comptabilisée`); },
+    onSuccess: (r) => { refresh(); notify.success(r.pending_approval ? 'Écriture envoyée pour approbation : elle sera comptabilisée par l\'approbateur' : `Écriture ${r.entry_number} comptabilisée`); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Comptabilisation impossible')),
   });
   const deleteM = useMutation({

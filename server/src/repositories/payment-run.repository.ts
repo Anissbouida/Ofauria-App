@@ -4,6 +4,7 @@ import { approvalService } from '../services/approval.service.js';
 import { formatRib, normalizeRib, ribKeyValid, type TransferLine } from '../services/salary-transfer.js';
 import { buildBankTransferFile, normalizeTransferFormat, GENERIC_TRANSFER_FORMAT, TRANSFER_COLUMNS, type TransferFormat } from '../services/bank-transfer-format.js';
 import { enqueueEmail } from '../services/mailer.js';
+import { getParameter } from '../services/module-parameters.service.js';
 import { currencySymbol, companyCurrency } from '../services/currency.js';
 
 /**
@@ -124,7 +125,7 @@ export const paymentRunRepository = {
       const ids = input.lines.map(l => l.invoiceId);
       if (new Set(ids).size !== ids.length) throw bad('Une facture apparaît deux fois');
       const invoices = new Map((await db.query(
-        `SELECT i.id, i.invoice_number, i.supplier_id, s.rib, s.bank_name,
+        `SELECT i.id, i.invoice_number, i.supplier_id, s.rib, s.bank_name, s.name AS supplier_name, s.rib_changed_at,
                 ROUND(i.total_amount - COALESCE(i.paid_amount, 0), 2)::float8 AS remaining, (${PAYABLE}) AS payable
            FROM invoices i JOIN suppliers s ON s.id = i.supplier_id
           WHERE i.id = ANY($1) FOR UPDATE OF i`, [ids])).rows.map(r => [r.id as string, r]));
@@ -132,9 +133,14 @@ export const paymentRunRepository = {
         `SELECT l.invoice_id, r.run_number FROM payment_run_lines l JOIN payment_runs r ON r.id = l.run_id
           WHERE l.invoice_id = ANY($1) AND l.status = 'pending' AND r.status IN ${OPEN}`, [ids])).rows.map(r => [r.invoice_id as string, r.run_number as string]));
 
+      // Plan compta, étape 22 : gel après un changement de RIB (payment.rib_freeze_days ; 0 = pas de gel).
+      const freezeDays = Number((await getParameter<{ days?: number }>('payment.rib_freeze_days'))?.days ?? 0);
       for (const l of input.lines) {
         const inv = invoices.get(l.invoiceId);
         if (!inv) throw bad('Facture introuvable');
+        if (freezeDays > 0 && inv.rib_changed_at && Date.now() - new Date(inv.rib_changed_at).getTime() < freezeDays * 86_400_000) {
+          throw conflict(`Le RIB de ${inv.supplier_name} a changé le ${new Date(inv.rib_changed_at).toISOString().slice(0, 10)} : paiement gelé ${freezeDays} jour(s) après un changement de RIB`);
+        }
         if (!inv.payable) throw conflict(`La facture ${inv.invoice_number} n'est pas payable (non validée, soldée, en litige, bloquée ou en devise)`);
         if (taken.has(l.invoiceId)) throw conflict(`La facture ${inv.invoice_number} est déjà dans la campagne ${taken.get(l.invoiceId)}`);
         const amount = round2(Number(l.amount));
