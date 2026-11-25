@@ -239,7 +239,7 @@ export default function ConfigurationWizard() {
         ['roles', 'Rôles', rolesToCreate.map(t => t.label).join(', ') || 'Aucun rôle à créer'],
       ] as const).filter(r => steps.some(s => s.key === r[0])).map(r => <tr key={r[0]}><td className="ds-strong">{r[1]}</td><td>{r[2]}</td><td className="ds-actions"><button type="button" className="odoo-btn-link" disabled={busy} onClick={() => go(r[0])}>Modifier</button></td></tr>)}
     </tbody></table></div>
-    {preview.data?.impact && <div><h3 className="ds-subhead">Analyse d’impact sur la configuration active</h3><WizardImpact impact={preview.data.impact} /></div>}
+    {preview.data?.impact && <WizardImpact impact={preview.data.impact} />}
     {changeSet.data?.operations.some(o => o.execution === 'pending') && <Alert tone="info">Préparé dans le brouillon, sans effet à l’activation pour l’instant : {[...new Set(changeSet.data.operations.filter(o => o.execution === 'pending').map(o => stepLabel(o.step)))].join(', ')}.</Alert>}
     {changeSet.data?.simulation && <Alert tone="success" icon={<Check size={16} />}>{changeSet.data.simulation.note}</Alert>}
   </>;
