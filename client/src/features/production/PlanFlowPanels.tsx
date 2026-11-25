@@ -5,6 +5,7 @@ import api from '../../api/client';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import './production.css';
 
 /**
@@ -23,6 +24,7 @@ type Load = {
 };
 
 export function EquipmentLoadPanel({ planId }: { planId: string }) {
+  const PT = useProdTerms();
   const { data = [] } = useQuery({
     queryKey: ['plan-capacity', planId],
     queryFn: () => api.get('/production/capacity', { params: { plan: planId } }).then(r => r.data.data as Load[]),
@@ -36,7 +38,7 @@ export function EquipmentLoadPanel({ planId }: { planId: string }) {
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
         {saturated.length > 0 && (
           <StatusBanner tone="warning" icon={Flame} title={`${saturated.length} équipement(s) saturé(s) ce jour-là`}>
-            Les fournées planifiées dépassent la capacité : réduisez des quantités ou déplacez un ordre sur une autre journée.
+            Le nombre de {PT.batchesLc} planifié dépasse la capacité : réduisez des quantités ou déplacez un ordre sur une autre journée.
           </StatusBanner>
         )}
         <table className="odoo-table ds-dense">
@@ -48,7 +50,7 @@ export function EquipmentLoadPanel({ planId }: { planId: string }) {
               <tr key={e.equipementId}>
                 <td className="ds-strong">{e.name}</td>
                 <td className="ds-num">{fr(e.planLoad)} {u}</td>
-                <td className="ds-num" title={e.lines.map(l => `${l.label} : ${fr(l.batches)} fournée(s), ${fr(l.load)} ${u}`).join('\n')}>{fr(e.load)} {u}</td>
+                <td className="ds-num" title={e.lines.map(l => `${l.label} : ${fr(l.batches)} ${PT.batchLc}(s), ${fr(l.load)} ${u}`).join('\n')}>{fr(e.load)} {u}</td>
                 <td className="ds-num">{e.capacity === null ? <span className="ds-muted">non renseignée</span> : `${fr(e.capacity)} ${u}`}</td>
                 <td className="ds-num" style={{ color: e.overloaded ? 'var(--ds-danger, #b91c1c)' : undefined, fontWeight: e.overloaded ? 600 : undefined }}>
                   {pct === null ? '—' : `${pct} %`}
@@ -68,6 +70,7 @@ type Returnable = {
 };
 
 export function MaterialReturnPanel({ bonId, planId, closed }: { bonId: string; planId: string; closed: boolean }) {
+  const PT = useProdTerms();
   const qc = useQueryClient();
   const key = ['bon-returns', bonId];
   const { data } = useQuery({ queryKey: key, queryFn: () => api.get(`/bons-sortie/${bonId}/returns`).then(r => r.data.data as Returnable) });
@@ -132,7 +135,7 @@ export function MaterialReturnPanel({ bonId, planId, closed }: { bonId: string; 
             </table>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
               Motif
-              <input className="ds-input" value={reason} maxLength={500} placeholder="Article annulé, fournée réduite, reste de sac…"
+              <input className="ds-input" value={reason} maxLength={500} placeholder={`Article annulé, réduction de ${PT.batchLc}, reste de sac…`}
                 onChange={e => setReason(e.target.value)} />
             </label>
             {tooMuch && <span style={{ fontSize: 13, color: 'var(--ds-danger, #b91c1c)' }}>On ne peut pas rendre plus que ce qui est encore sorti.</span>}

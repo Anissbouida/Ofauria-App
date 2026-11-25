@@ -174,7 +174,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
               <p className="ds-field-hint" style={{ marginTop: 4 }}>
                 {compoParPiece
                   ? 'Les quantités décrivent UNE pièce (entremets individuel, monoportion…). Coût/pièce = somme des composants.'
-                  : 'Les quantités décrivent TOUTE la fournée (cadre/plaque découpé). Coût/pièce = total ÷ rendement.'}
+                  : `Les quantités sont saisies par ${tBatch.toLowerCase()}, en entier (cadre/plaque découpé). Coût/pièce = total ÷ rendement.`}
                 {' '}Ce choix se fait maintenant et n'apparaît plus pendant la composition.
               </p>
             </div>

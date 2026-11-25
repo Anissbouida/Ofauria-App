@@ -8,12 +8,14 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
+import { useReferentiel } from '../../hooks/useReferentiel';
 import '../sales/ListTemplate';
 import './stock.css';
 import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, TableFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { HeaderActions } from './StockUi';
 
+// Secours si le référentiel n'est pas encore chargé ; la liste vient de stock_location_types (mig 699).
 const TYPE_LABELS: Record<string, string> = {
   sec: 'Sec', positif: 'Froid positif', negatif: 'Froid négatif',
   pesage: 'Pesage', vitrine: 'Vitrine', labo: 'Labo',
@@ -33,6 +35,8 @@ const emptyForm: StockLocationInput = {
 
 export default function EmplacementsTab() {
   const qc = useQueryClient();
+  const types = useReferentiel('stock_location_types');
+  const typeLabel = (code: string) => types.map[code]?.label ?? TYPE_LABELS[code] ?? code;
   const confirm = useConfirm();
   const [editing, setEditing] = useState<StockLocation | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -98,7 +102,7 @@ export default function EmplacementsTab() {
                 <tr key={l.id}>
                   <td><span className="ds-ref">{l.code}</span></td>
                   <td className="ds-strong">{l.name}</td>
-                  <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{TYPE_LABELS[l.type] || l.type}</span></td>
+                  <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{typeLabel(l.type)}</span></td>
                   <td>{l.role ? (STOCK_LOCATION_ROLES as Record<string, { label: string }>)[l.role]?.label ?? l.role : '—'}
                     {l.role_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }} title="Emplacement utilisé par défaut pour ce rôle">Par défaut</span>}</td>
                   <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>
@@ -157,6 +161,14 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
   };
   // Erreurs affichées sous les champs après une première tentative d'enregistrement.
   const [tried, setTried] = useState(false);
+  // Types actifs du référentiel (secteur de la société) ; le type déjà enregistré reste proposé.
+  const refTypes = useReferentiel('stock_location_types');
+  const typeOptions = (current: string): [string, string][] => {
+    const list: [string, string][] = refTypes.entries.length
+      ? refTypes.entries.map(e => [e.code, e.label])
+      : Object.entries(TYPE_LABELS);
+    return list.some(([k]) => k === current) || !current ? list : [[current, refTypes.map[current]?.label ?? TYPE_LABELS[current] ?? current], ...list];
+  };
   const inp = 'ds-input';
   return (
     <Modal title={initial ? 'Modifier l\'emplacement' : 'Nouvel emplacement'} onClose={onCancel} locked={saving} width={512}
@@ -168,7 +180,7 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
             <input id="loc-name" value={f.name} onChange={e => set({ name: e.target.value })} className={inp} placeholder="Chambre négative" aria-invalid={tried && !f.name.trim() || undefined} /></FormField>
           <FormField label="Type" htmlFor="loc-type">
             <select id="loc-type" value={f.type} onChange={e => set({ type: e.target.value, ...(initial ? {} : { role: roleOfLocationType(e.target.value) }) })} className={inp}>
-              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {typeOptions(f.type).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select></FormField>
           {/* Étape 8 multi-industries : le rôle dit à quoi sert l'emplacement (réception, pesée, vente…). */}
           <FormField label="Rôle" htmlFor="loc-role" hint={(STOCK_LOCATION_ROLES as Record<string, { help: string }>)[f.role ?? roleOfLocationType(f.type)]?.help}>

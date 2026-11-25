@@ -7,7 +7,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Users, CalendarOff, ChevronLeft, ChevronRight, Moon } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
-import { ROLE_LABELS, SHIFT_SHORT_LABELS } from '@ofauria/shared';
+import { SHIFT_SHORT_LABELS } from '@ofauria/shared';
+import { useEmployeeRoleLabel } from '../../../hooks/useReferentiel';
 import type { ShiftCode } from '@ofauria/shared';
 import { ATTENDANCE_STATUS, MONTH_NAMES, LEAVE_TYPE_LABELS, shiftTag, amount } from '../shared';
 import OvertimeQuotaPanel from './OvertimeQuotaPanel';
@@ -77,7 +78,8 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
   const getEmployeeMonthlySummary = (empId: string) => recap?.rows.find(r => r.employeeId === empId) ?? EMPTY;
   const baseDays = recap?.baseDays ?? 26;
 
-  const role = (emp: Record<string, any>) => ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role;
+  const fnLabel = useEmployeeRoleLabel();
+  const role = (emp: Record<string, any>) => fnLabel(emp.role);
   const dim = (v: number) => (v > 0 ? undefined : 'var(--ds-muted)');
   // États communs aux deux vues : aucun salarié actif, ou recherche sans résultat.
   const listState = activeEmployees.length === 0 ? <EmptyPanel icon={Users}>Aucun employé actif</EmptyPanel>

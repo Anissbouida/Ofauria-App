@@ -411,7 +411,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   });
 
   const roleChoices = roles.length
-    ? roles.filter(r => r.is_active || roleCodes.includes(r.code)).map(r => [r.code, r.label] as const)
+    ? roles.filter(r => (r.is_active && r.available !== false) || roleCodes.includes(r.code)).map(r => [r.code, r.label] as const)
     : Object.entries(ROLE_LABELS);
   const toggleRole = (code: string) => {
     const next = roleCodes.includes(code) ? roleCodes.filter(c => c !== code) : [...roleCodes, code];

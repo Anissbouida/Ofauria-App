@@ -23,6 +23,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from '../sales/SalesPageShell';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, LoadingState, Modal, Segmented, TableFooter, Toolbar } from '../../components/ds';
@@ -76,7 +77,7 @@ function Centers({ creating: showForm, onCreatingChange: setShowForm }: { creati
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
-        <EmptyState icon={Wrench} title="Aucun poste de travail" text="Créez un poste (pétrin, four, façonnage…) avec son coût horaire."
+        <EmptyState icon={Wrench} title="Aucun poste de travail" text="Créez un poste (préparation, machine, finition…) avec son coût horaire."
           action={<button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} aria-hidden="true" /> Nouveau poste</button>} />
       ) : (
       <DataPanel label="Postes de travail" footer={<TableFooter note={`${rows.length} poste${rows.length > 1 ? 's' : ''}`} />}>
@@ -149,6 +150,7 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
 }
 
 function Routings({ creating, onCreatingChange }: { creating: boolean; onCreatingChange: (v: boolean) => void }) {
+  const PT = useProdTerms();
   const qc = useQueryClient();
   const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['routings'], queryFn: routingsApi.list });
   const [editingId, setEditing] = useState<string | null>(null);
@@ -163,7 +165,7 @@ function Routings({ creating, onCreatingChange }: { creating: boolean; onCreatin
       ) : (
       <DataPanel label="Gammes" footer={<TableFooter note={`${rows.length} gamme${rows.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
-          <thead><tr><th>Gamme</th><th>Produit associé</th><th className="ds-num">Fournée (unités)</th><th className="ds-num">Opérations</th><th className="ds-num">Durée (min)</th><th className="ds-num">Coût de main-d'œuvre standard ({currencySymbol()})</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Gamme</th><th>Produit associé</th><th className="ds-num">{PT.batch} (unités)</th><th className="ds-num">Opérations</th><th className="ds-num">Durée (min)</th><th className="ds-num">Coût de main-d'œuvre standard ({currencySymbol()})</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(r.id)}>
@@ -189,6 +191,7 @@ function Routings({ creating, onCreatingChange }: { creating: boolean; onCreatin
 }
 
 export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: { id: string | null; onClose: () => void; onSaved: () => void; recipeId?: string; defaultName?: string }) {
+  const PT = useProdTerms();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: existing } = useQuery({ queryKey: ['routing', id], queryFn: () => routingsApi.getById(id!), enabled: !!id });
@@ -251,12 +254,12 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
           <FormSection title="Identité de la gamme">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
             <FormField label="Nom de la gamme" htmlFor="rt-name" required>
-              <input id="rt-name" type="text" className="ds-input" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. : fabrication baguette" />
+              <input id="rt-name" type="text" className="ds-input" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. : fabrication standard" />
             </FormField>
             <FormField label="Produit associé" hint="Facultatif.">
               <SearchSelect options={productOptions} value={productId} onChange={setProductId} placeholder="Associer un produit" width="100%" ariaLabel="Produit associé" />
             </FormField>
-            <FormField label="Taille de fournée" htmlFor="rt-batch" hint="Unités produites par un passage (sert au calcul de la charge).">
+            <FormField label={`Taille de ${PT.batchLc}`} htmlFor="rt-batch" hint="Unités produites par un passage (sert au calcul de la charge).">
               <div style={{ position: 'relative' }}>
                 <input id="rt-batch" type="number" step="0.001" min="0" className="ds-input" value={batchSize} onChange={e => setBatchSize(e.target.value)} placeholder="1" style={{ paddingRight: 56 }} />
                 <span style={suffix}>unités</span>

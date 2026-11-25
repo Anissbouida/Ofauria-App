@@ -29,7 +29,10 @@ export const roleRepository = {
     const r = await db.query(
       `SELECT r.code, r.label, r.description, r.base_role, r.is_system, r.is_active, r.updated_at,
               ${userCount} AS user_count,
-              (SELECT count(*)::int FROM role_permissions p WHERE p.role_code = r.code AND p.can_view) AS module_count
+              (SELECT count(*)::int FROM role_permissions p WHERE p.role_code = r.code AND p.can_view) AS module_count,
+              -- Mig 699 : rôle propre à un autre secteur (Viennoiserie, Beldi…) : masqué des choix,
+              -- sauf s'il a déjà des titulaires.
+              (cardinality(r.sectors) = 0 OR r.sectors && fn_active_sector_lineage() OR ${userCount} > 0) AS available
          FROM roles r
         ORDER BY r.is_system DESC, r.label`,
     );

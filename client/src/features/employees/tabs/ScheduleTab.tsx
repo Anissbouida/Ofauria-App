@@ -8,7 +8,8 @@ import {
   Users, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Copy, Eraser, Save, Sparkles, Printer,
 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
-import { ROLE_LABELS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
+import { SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
+import { useEmployeeRoleLabel } from '../../../hooks/useReferentiel';
 import type { ShiftCode } from '@ofauria/shared';
 import { LEAVE_TYPE_LABELS, shiftStyle } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
@@ -49,6 +50,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
   const [weekOffset, setWeekOffset] = useState(0);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const confirm = useConfirm();
+  const fnLabel = useEmployeeRoleLabel();
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
@@ -94,7 +96,9 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
       if (role === 'cashier' || role === 'saleswoman') {
         return { key: 'sales_floor', label: 'Caissière & Vendeuse' };
       }
-      return { key: role, label: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role };
+      // Fonction hors des groupes connus (référentiel de l'entreprise) ou absente : son propre groupe,
+      // jamais masquée.
+      return { key: role || '_none', label: fnLabel(role) || 'Sans fonction' };
     };
     const map = new Map<string, { label: string; rows: WeekRow[] }>();
     for (const r of rows) {
@@ -106,7 +110,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
     return Array.from(map.entries())
       .map(([key, { label, rows: list }]) => ({ role: key, label, rows: list }))
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
-  }, [rows]);
+  }, [rows, fnLabel]);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const toggleGroup = (role: string) =>
@@ -291,7 +295,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
     const bodyHtml = groupedRows.map(group => {
       const groupHeader = `<tr class="group"><td colspan="${days.length + 1}">${escapeHtml(group.label)} (${group.rows.length})</td></tr>`;
       const rowsHtml = group.rows.map(row => {
-        const empCell = `<td class="emp"><div class="name">${escapeHtml(row.firstName)} ${escapeHtml(row.lastName)}</div><div class="role">${escapeHtml(ROLE_LABELS[row.role as keyof typeof ROLE_LABELS] ?? row.role)}</div></td>`;
+        const empCell = `<td class="emp"><div class="name">${escapeHtml(row.firstName)} ${escapeHtml(row.lastName)}</div><div class="role">${escapeHtml(fnLabel(row.role))}</div></td>`;
         const cells = days.map(d => {
           const dateStr = format(d, 'yyyy-MM-dd');
           const leave = row.leaveDays?.[dateStr];
@@ -315,7 +319,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
     }).join('');
 
     const subtitle = `${format(weekStart, 'dd MMM yyyy', { locale: fr })} — ${format(weekEnd, 'dd MMM yyyy', { locale: fr })}` +
-      (roleFilter !== 'all' ? ` · Filtre : ${ROLE_LABELS[roleFilter as keyof typeof ROLE_LABELS] ?? roleFilter}` : '');
+      (roleFilter !== 'all' ? ` · Filtre : ${fnLabel(roleFilter)}` : '');
 
     const html = `<!doctype html>
 <html lang="fr">
@@ -445,7 +449,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
           )}
         </div>
         <SearchSelect
-          options={allRoles.map(r => ({ id: r, label: ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r }))}
+          options={allRoles.map(r => ({ id: r, label: fnLabel(r) || 'Sans fonction' }))}
           value={roleFilter === 'all' ? '' : roleFilter}
           onChange={id => setRoleFilter(id || 'all')}
           placeholder="Toutes catégories"
@@ -504,7 +508,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                 <td style={{ position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 4 }}>
                   <div className="ds-strong">{row.firstName} {row.lastName}</div>
                   <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
-                    {ROLE_LABELS[row.role as keyof typeof ROLE_LABELS] ?? row.role}
+                    {fnLabel(row.role)}
                     {row.defaultShiftCode && (
                       <span style={{ marginLeft: 4 }}>· par défaut : {SHIFT_SHORT_LABELS[row.defaultShiftCode]}</span>
                     )}

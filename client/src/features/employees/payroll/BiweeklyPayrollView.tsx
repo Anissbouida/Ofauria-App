@@ -26,7 +26,7 @@ const PAY_STAGES: Array<{ key: string; label: string; hint: string; icon: Lucide
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage, openPeriodMessage, OPEN_PERIOD_CONFIRM, amount as fmt } from '../shared';
-import { ROLE_LABELS } from '@ofauria/shared';
+import { useEmployeeRoleLabel } from '../../../hooks/useReferentiel';
 
 /* ═══════════════════════ BIWEEKLY PAYROLL VIEW (quinzaine) ═══════════════════════ */
 /**
@@ -102,6 +102,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
   const [stageFilter, setStageFilter] = useState<PayStage | null>(null);
   const confirm = useConfirm();
   const isAdmin = useAuth().user?.role === 'admin';
+  const fnLabel = useEmployeeRoleLabel();
   const [payTarget, setPayTarget] = useState<{ row: BiweeklyPayrollRow; method: string } | null>(null);
 
   const generateMutation = useMutation({
@@ -275,7 +276,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                 return (
                   <tr key={r.employee_id}>
                     <td className="ds-strong">{who}</td>
-                    <td>{ROLE_LABELS[r.role as keyof typeof ROLE_LABELS] ?? r.role}</td>
+                    <td>{fnLabel(r.role)}</td>
                     <td className="ds-num">
                       {r.monthly_salary ? n2(r.monthly_salary) : <StatusTag tone="blocked" label="Non défini" />}
                     </td>

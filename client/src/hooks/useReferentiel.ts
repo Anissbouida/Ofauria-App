@@ -1,4 +1,6 @@
+import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ROLE_LABELS } from '@ofauria/shared';
 import { referentielApi } from '../api/referentiel.api';
 
 export interface RefEntry {
@@ -26,14 +28,28 @@ export function useReferentiel(tableId: string, enabled = true) {
   });
 
   // API returns either { table, entries } or a plain array depending on endpoint
-  const raw = Array.isArray(data) ? data : (data as Record<string, any>)?.entries ?? [];
-  const entries = (raw as RefEntry[]).filter(e => e.is_active !== false);
-  const map = Object.fromEntries(entries.map(e => [e.code, e]));
+  // Mémoïsé sur `data` : `map` reste stable entre deux rendus (dépendance de useMemo/useCallback).
+  const { entries, map } = useMemo(() => {
+    const raw = Array.isArray(data) ? data : (data as Record<string, any>)?.entries ?? [];
+    const list = (raw as RefEntry[]).filter(e => e.is_active !== false);
+    return { entries: list, map: Object.fromEntries(list.map(e => [e.code, e])) as Record<string, RefEntry> };
+  }, [data]);
 
   const getLabel = (code: string) => map[code]?.label || code;
   const getColor = (code: string) => map[code]?.color || undefined;
 
   return { entries, map, getLabel, getColor, isLoading };
+}
+
+/**
+ * Libellé de la FONCTION d'un employé (employees.role) : référentiel `employee_roles` d'abord
+ * (liste propre à l'entreprise et à son secteur), puis libellés historiques, puis le code brut.
+ * Ne pas utiliser pour un rôle d'accès utilisateur (users.role).
+ */
+export function useEmployeeRoleLabel() {
+  const { map } = useReferentiel('employee_roles');
+  return useCallback((code?: string | null) =>
+    !code ? '' : map[code]?.label || ROLE_LABELS[code as keyof typeof ROLE_LABELS] || code, [map]);
 }
 
 /**

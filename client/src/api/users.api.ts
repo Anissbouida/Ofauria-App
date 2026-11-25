@@ -36,6 +36,8 @@ export interface RoleRow {
   base_role: string;
   is_system: boolean;
   is_active: boolean;
+  /** Mig 699 : faux pour un rôle d'un autre secteur sans titulaire (masqué des choix). */
+  available?: boolean;
   user_count: number;
   module_count: number;
 }

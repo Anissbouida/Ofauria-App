@@ -66,7 +66,7 @@ function Dot({ color }: { color: string }) {
 }
 
 export default function ControlePage() {
-  const { hasModule } = usePermissions();
+  const { hasModule, hasFeature } = usePermissions();
   const approvalsCount = useApprovalsCount();
   // Rubriques standard (ModuleShell) : chaque domaine contrôlé est un écran de travail ;
   // la boîte d'approbation et ses circuits vivent ailleurs (renvois).
@@ -75,7 +75,8 @@ export default function ControlePage() {
     { key: 'achats', label: 'Achats & réception', icon: Truck, section: 'operations' },
     { key: 'production', label: 'Production', icon: Factory, section: 'operations' },
     { key: 'pertes', label: 'Pertes', icon: Trash2, section: 'operations' },
-    { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations' },
+    // HACCP : registres d'hygiène alimentaire, seulement avec la capacité (secteurs alimentaires).
+    { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations', hidden: !hasFeature('haccp') },
     { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren, section: 'operations' },
     // SAV (mig 357) : réclamations clients, saisies ici ou depuis la caisse.
     { key: 'sav', label: 'Réclamations clients', icon: MessageSquareWarning, section: 'operations' },

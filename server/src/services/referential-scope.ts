@@ -96,17 +96,17 @@ export async function refScopePreview(sectors: string[], specializations: string
           used AS (SELECT fn_ref_entries_in_use(ARRAY(
                      SELECT re.id FROM ref_entries re
                       WHERE re.activation = 'auto' AND re.is_active
-                        AND NOT fn_ref_applicable(re.sectors, re.specializations, (SELECT lineage FROM ctx), (SELECT codes FROM sp)))) AS ids)
+                        AND NOT fn_ref_applicable(re.sectors, re.specializations, re.excluded_sectors, (SELECT lineage FROM ctx), (SELECT codes FROM sp)))) AS ids)
      SELECT rt.id AS table_id, rt.label, rt.description, rt.label_overrides,
             (SELECT lineage FROM ctx) AS lineage,
             COALESCE(array_agg(re.label ORDER BY re.display_order, re.label)
               FILTER (WHERE re.activation = 'auto' AND NOT re.is_active
-                        AND fn_ref_applicable(re.sectors, re.specializations, (SELECT lineage FROM ctx), (SELECT codes FROM sp))), '{}') AS activated,
+                        AND fn_ref_applicable(re.sectors, re.specializations, re.excluded_sectors, (SELECT lineage FROM ctx), (SELECT codes FROM sp))), '{}') AS activated,
             COALESCE(array_agg(re.label ORDER BY re.display_order, re.label)
               FILTER (WHERE re.activation = 'auto' AND re.is_active AND NOT (re.id = ANY((SELECT ids FROM used)::uuid[]))
-                        AND NOT fn_ref_applicable(re.sectors, re.specializations, (SELECT lineage FROM ctx), (SELECT codes FROM sp))), '{}') AS deactivated,
+                        AND NOT fn_ref_applicable(re.sectors, re.specializations, re.excluded_sectors, (SELECT lineage FROM ctx), (SELECT codes FROM sp))), '{}') AS deactivated,
             count(*) FILTER (WHERE CASE re.activation WHEN 'forced_on' THEN true WHEN 'forced_off' THEN false
-                        ELSE fn_ref_applicable(re.sectors, re.specializations, (SELECT lineage FROM ctx), (SELECT codes FROM sp))
+                        ELSE fn_ref_applicable(re.sectors, re.specializations, re.excluded_sectors, (SELECT lineage FROM ctx), (SELECT codes FROM sp))
                              OR (re.is_active AND re.id = ANY((SELECT ids FROM used)::uuid[])) END)::int AS active_after
        FROM ref_tables rt JOIN ref_entries re ON re.table_id = rt.id
       WHERE rt.source = 'ref_entries'

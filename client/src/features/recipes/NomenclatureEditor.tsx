@@ -535,7 +535,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     mutationFn: async () => {
       if (!formatId) throw new Error('Aucun format sélectionné');
       if (enKg && !(rendementKgNum != null && rendementKgNum > 0)) {
-        throw new Error('Saisis le rendement en kg de la fournée.');
+        throw new Error(`Saisis le rendement en kg par ${bLc}.`);
       }
       if (badQtyRows.length) {
         throw new Error(`Quantité nulle, négative ou manquante : ${[...new Set(badQtyRows.map(lineName))].join(', ')}. Saisis une quantité supérieure à 0 ou supprime la ligne.`);
@@ -694,7 +694,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 }} />
             )}
             {pp != null ? (
-              <div className={`fx-note${pp >= 1 ? ' bad' : ''}`} style={{ textAlign: 'right' }} title="Fournées de la recette de base consommées par pièce">
+              <div className={`fx-note${pp >= 1 ? ' bad' : ''}`} style={{ textAlign: 'right' }} title={`Nombre de ${PT.batchesLc} de la recette de base consommé par pièce`}>
                 {pp >= 1 && <AlertTriangle size={10} aria-hidden="true" />}{' '}
                 {pp >= 1 ? `${pp.toFixed(pp >= 10 ? 0 : 1)} ${bLc}/pièce` : `≈ ${Math.round(pp * 100)} % ${bLc}/pièce`}
               </div>
@@ -725,7 +725,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {/* Mig 678 : quantité par fournée commencée (vanille par cuve, décor par cadre). */}
             {r.type === 'ingredient' && (
               <button type="button" onClick={() => setRow(r.key, { fixe: !r.fixe })} aria-pressed={r.fixe === true}
-                className="fx-icon" title={r.fixe ? 'Quantité fixe par fournée (cliquer pour la rendre proportionnelle)' : 'Proportionnelle au nombre de pièces (cliquer pour la fixer par fournée)'}
+                className="fx-icon" title={r.fixe ? `Quantité fixe par ${bLc} (cliquer pour la rendre proportionnelle)` : `Proportionnelle au nombre de pièces (cliquer pour la fixer par ${bLc})`}
                 style={{ fontSize: 11, fontWeight: 600, width: 'auto', padding: '0 4px', color: r.fixe ? 'var(--ds-primary, #2563eb)' : 'var(--ds-muted)' }}>
                 {r.fixe ? 'Fixe' : 'Prop.'}
               </button>
@@ -826,7 +826,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                     ) : (
                       <select aria-label="Unité du rendement" value={rendementUnite}
                         onChange={(e) => setRendementUnite(e.target.value === 'kg' ? 'kg' : 'unit')}
-                        title="Rendement d'une fournée : en pièces, ou en kilos pour un article vendu au poids">
+                        title={`Rendement par ${bLc} : en pièces, ou en kilos pour un article vendu au poids`}>
                         <option value="unit">pièces / {bLc}</option>
                         <option value="kg">kg / {bLc}</option>
                       </select>
@@ -893,7 +893,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <div className="fx-field">
                   <span className="fx-label">
                     Quantités saisies
-                    <span title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé), à diviser par le rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…).\n\nCe mode se choisit à la création de la fiche ; pour le corriger, modifiez l’identité de la fiche.'}
+                    <span title={`Par ${bLc} : quantités pour tout le lot (cadre/plaque découpé), à diviser par le rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…).\n\nCe mode se choisit à la création de la fiche ; pour le corriger, modifiez l’identité de la fiche.`}
                       style={{ display: 'inline-flex', cursor: 'help', color: 'var(--ds-muted)' }}>
                       <HelpCircle size={12} aria-hidden="true" />
                     </span>

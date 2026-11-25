@@ -25,12 +25,25 @@ import RoleActionMatrix from './RoleActionMatrix';
 // Clés historiques (fusion Stock) masquées ; constante absente de certaines versions de shared.
 const LEGACY = (shared as unknown as { LEGACY_MODULE_KEYS?: ReadonlySet<string> }).LEGACY_MODULE_KEYS ?? new Set<string>();
 const MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY.has(m) && m !== 'users');
+// Libellés de secours ; ceux du secteur viennent de la table des rôles (mig 699 : « Boulanger »
+// devient « Opérateur de production » hors boulangerie, le code ne change pas).
 const BASE_ROLES: [string, string][] = [
   ['manager', 'Gérant'], ['cashier', 'Caissier'], ['saleswoman', 'Vendeuse'], ['baker', 'Boulanger'],
   ['pastry_chef', 'Pâtissier'], ['viennoiserie', 'Viennoiserie'], ['beldi_sale', 'Beldi & Salé'], ['magasinier', 'Magasinier'],
 ];
 const ACTIONS = [['canView', 'Voir'], ['canCreate', 'Créer'], ['canEdit', 'Modifier'], ['canDelete', 'Supprimer']] as const;
 type Flag = typeof ACTIONS[number][0];
+
+function baseRoleLabel(roles: RoleRow[], code: string): string {
+  return roles.find(r => r.code === code && r.is_system)?.label ?? BASE_ROLES.find(b => b[0] === code)?.[1] ?? code;
+}
+
+/** Rôles de base proposés : ceux du secteur (et celui déjà choisi). */
+function baseRoleChoices(roles: RoleRow[], current: string): [string, string][] {
+  return BASE_ROLES
+    .filter(([c]) => c === current || roles.find(r => r.code === c)?.available !== false)
+    .map(([c]) => [c, baseRoleLabel(roles, c)]);
+}
 
 function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
@@ -76,7 +89,7 @@ export default function RolesPanel() {
                     <span className="ds-strong">{r.label}</span>
                     {r.is_system && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Système</span>}
                   </td>
-                  <td>{r.is_system ? '—' : (BASE_ROLES.find(b => b[0] === r.base_role)?.[1] ?? r.base_role)}</td>
+                  <td>{r.is_system ? '—' : baseRoleLabel(roles, r.base_role)}</td>
                   <td className="ds-num">{r.code === 'admin' ? 'Tous' : r.module_count}</td>
                   <td className="ds-num">{r.user_count}</td>
                   <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Actif' : 'Désactivé'} /></td>
@@ -176,7 +189,7 @@ function CreateRoleForm({ roles, onDone, from }: { roles: RoleRow[]; onDone: (co
         <div style={{ width: 190 }}>
           <FormField label="Rôle de base" htmlFor="role-base" required>
             <select id="role-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
-              {BASE_ROLES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+              {baseRoleChoices(roles, baseRole).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
             </select>
           </FormField>
         </div>

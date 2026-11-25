@@ -1,4 +1,5 @@
 import { usePermissions } from '../../context/PermissionsContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -414,6 +415,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   const { user } = useAuth();
   const ws = useWorkshops();
   const { sectorLabel } = usePermissions();
+  const PT = useProdTerms();
   const [planDate, setPlanDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [type, setType] = useState<'daily' | 'weekly'>('daily');
   // En-tête d'ordre (M2-01 / M2-02) : type d'ordre (le défaut si vide) et priorité.
@@ -631,8 +633,8 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
       const adj = (plan.lot_adjustments || []) as { requested: number; planned: number; batches: number; surplus: number }[];
       if (adj.length > 0) {
         notify.warning(adj.length === 1
-          ? `Quantité arrondie à la fournée : ${adj[0].requested} demandé → ${adj[0].planned} prévu (${adj[0].batches} fournées, +${adj[0].surplus}).`
-          : `${adj.length} lignes arrondies à la fournée entière : l'excédent figure sur chaque ligne du plan.`);
+          ? `Quantité arrondie par ${PT.batchLc} : ${adj[0].requested} demandé → ${adj[0].planned} prévu (${adj[0].batches} ${PT.batchesLc}, +${adj[0].surplus}).`
+          : `${adj.length} lignes arrondies à un nombre entier de ${PT.batchesLc} : l'excédent figure sur chaque ligne du plan.`);
       }
       onCreated(plan.id as string);
     },
@@ -853,9 +855,9 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                               {showLots && (
                                 <div className="text-[11px] px-1 pt-0.5" role="status"
                                   style={{ color: sized.overMax ? 'var(--ds-danger)' : sized.adjusted ? 'var(--ds-warning, #b45309)' : 'var(--ds-muted)' }}>
-                                  {sized.batches} {sized.batches > 1 ? 'fournées' : 'fournée'}
+                                  {sized.batches} {sized.batches > 1 ? PT.batchesLc : PT.batchLc}
                                   {sized.adjusted && <> · <strong>{sized.planned}</strong> prévues (+{sized.surplus} d'excédent)</>}
-                                  {sized.overMax && <> · au-delà du maximum de {parseFloat(f.lot_max as string)} fournées</>}
+                                  {sized.overMax && <> · au-delà du maximum de {parseFloat(f.lot_max as string)} {PT.batchesLc}</>}
                                 </div>
                               )}
                               </div>

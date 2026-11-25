@@ -50,7 +50,8 @@ export async function unknownCodes(table: ProcessRefTable, values: (string | nul
 
 /** Types d'étape « point critique » : l'étape ne se clôture pas sans relevé. */
 export async function ccpStepTypes(): Promise<Set<string>> {
-  const fromTypes = (await processRefs('production_step_types')).filter(e => e.metadata.ccp === true).map(e => e.code);
+  // Mig 698 : un type d'étape inactif (autre secteur) n'est pas un point critique de la société.
+  const fromTypes = (await processRefs('production_step_types')).filter(e => e.isActive && e.metadata.ccp === true).map(e => e.code);
   // M7-03 : un CCP se déclare aussi comme ligne bloquante du plan de contrôle sur un type d'étape.
   const fromPlan = (await db.query(
     `SELECT DISTINCT step_type_code FROM quality_control_plan_lines WHERE is_active AND is_blocking AND step_type_code IS NOT NULL`)).rows

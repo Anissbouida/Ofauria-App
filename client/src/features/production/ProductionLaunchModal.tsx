@@ -1056,7 +1056,7 @@ export default function ProductionLaunchModal({
                   <div className="px-5 py-3 bg-violet-50 border-b border-violet-200 flex items-center gap-2">
                     <Layers size={18} className="text-violet-600" />
                     <span className="font-bold text-violet-800">Nomenclature ({composition.length})</span>
-                    {recipeData.pieces_par_fournee && <span className="text-sm text-violet-700 ml-2">pour une fournée de {recipeData.pieces_par_fournee as number} pièce(s)</span>}
+                    {recipeData.pieces_par_fournee && <span className="text-sm text-violet-700 ml-2">pour {recipeData.pieces_par_fournee as number} pièce(s) par {T.batchLc}</span>}
                   </div>
                   <div className="divide-y divide-gray-100">
                     {composition.map((c, idx) => (
@@ -1201,7 +1201,7 @@ export default function ProductionLaunchModal({
               <div className="px-3 py-2 bg-violet-50 border-b border-violet-100 flex items-center gap-2">
                 <Layers size={13} className="text-violet-600" />
                 <span className="font-semibold text-violet-800 text-xs ">Nomenclature ({composition.length})</span>
-                {recipeData.pieces_par_fournee && <span className="text-[11px] text-violet-700 ml-1">· fournée de {recipeData.pieces_par_fournee as number} p.</span>}
+                {recipeData.pieces_par_fournee && <span className="text-[11px] text-violet-700 ml-1">· {T.batchLc} de {recipeData.pieces_par_fournee as number} p.</span>}
               </div>
               <div className="divide-y divide-gray-50">
                 {composition.map((c, idx) => (

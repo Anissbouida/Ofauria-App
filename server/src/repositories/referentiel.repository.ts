@@ -44,7 +44,7 @@ export const refEntryRepository = {
     const filter = includeInactive ? '' : ' AND re.is_active = true';
     const result = await db.query(
       `SELECT re.*,
-              fn_ref_applicable(re.sectors, re.specializations, fn_active_sector_lineage(),
+              fn_ref_applicable(re.sectors, re.specializations, re.excluded_sectors, fn_active_sector_lineage(),
                 fn_active_specializations()) AS applicable
          FROM ref_entries re
        WHERE re.table_id = $1${filter}
@@ -143,7 +143,7 @@ export const refEntryRepository = {
   async followSector(tableId: string, id: string) {
     const result = await db.query(
       `UPDATE ref_entries SET activation = 'auto', updated_at = NOW(),
-              is_active = fn_ref_applicable(sectors, specializations, fn_active_sector_lineage(),
+              is_active = fn_ref_applicable(sectors, specializations, excluded_sectors, fn_active_sector_lineage(),
                             fn_active_specializations())
        WHERE table_id = $1 AND id = $2 AND origin = 'system' RETURNING *`,
       [tableId, id]

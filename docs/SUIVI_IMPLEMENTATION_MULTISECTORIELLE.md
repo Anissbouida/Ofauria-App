@@ -167,4 +167,4 @@ Détail : [`AUDIT_REFERENTIELS_SECTORIELS.md`](AUDIT_REFERENTIELS_SECTORIELS.md)
 | Écrans | Paramètres › Référentiel (bandeau du secteur, étiquettes, catalogue des autres secteurs) ; étape Révision de l'assistant (listes proposées et retirées) |
 | Tests | `referentiels-sectoriels.db.test.ts` : 12 cas, dont l'aller-retour BTP → boulangerie sans écart |
 
-Reste : rôles d'accès boulangers dans `shared`, énumérations serveur qui doublent un référentiel, vocabulaire « fournée » en dur, contenants de production posés pour toute société (liste complète au § 5 de l'audit).
+Suite le même jour (mig 699) : exclusions par profil (valeurs propres à l'agroalimentaire), contenants et équipements livrés rattachés au secteur, libellés par secteur de la catégorie « Ingrédients » et des rôles de base, listes figées en base (contrats, congés, emplacements) remplacées par le référentiel, vocabulaire « fournée » et fonctions des employés dans les écrans, allergènes et HACCP sous capacité. Ce qui reste volontairement est au § 5 de l'audit.

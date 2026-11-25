@@ -940,7 +940,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     ))}</tbody>
                   </table>
                 </div>
-                <PanelNote>Charge = nombre de fournées × durées de gamme. Capacité définie dans Production › Postes et gammes.</PanelNote>
+                <PanelNote>Charge = nombre de {T.batchesLc} × durées de gamme. Capacité définie dans Production › Postes et gammes.</PanelNote>
               </>
             )}
           </>

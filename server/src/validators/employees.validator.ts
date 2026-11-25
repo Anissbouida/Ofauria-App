@@ -59,7 +59,8 @@ export const createEmployeeSchema = z.object({
   city: z.string().max(100).nullable().optional(),
   birthDate: dateStrOrEmpty,
   cnssNumber: z.string().max(50).nullable().optional(),
-  contractType: z.enum(['cdi', 'cdd', 'stage', 'interim', 'saisonnier']).nullable().optional(),
+  // Mig 699 : code du référentiel contract_types (contrôlé en base), plus de liste figée.
+  contractType: z.string().regex(/^[a-z0-9_]{1,40}$/, 'Type de contrat invalide').nullable().optional(),
   // Contrat initial cree avec l'employe (lot 4).
   category: z.enum(['cadre', 'employe', 'ouvrier']).optional(),
   jobTitle: z.string().max(120).nullable().optional(),
@@ -131,9 +132,8 @@ export const bulkAttendanceSchema = z.object({
 // fraude/fausse comptabilite.
 // 'annual' est le code du referentiel (conge paye) : absent de l'ancien enum,
 // toute demande de conge annuel etait refusee (400). 'paid' = ancien alias.
-export const leaveTypeSchema = z.enum([
-  'annual', 'paid', 'unpaid', 'sick', 'maternity', 'paternity', 'exceptional', 'other',
-]);
+// Mig 699 : tout code du référentiel leave_types est accepté (contrôle en base).
+export const leaveTypeSchema = z.string().regex(/^[a-z0-9_]{1,40}$/, 'Type de congé invalide');
 
 export const createLeaveSchema = z.object({
   employeeId: z.string().guid('employeeId invalide'),
@@ -377,7 +377,8 @@ export const leaveAdjustmentSchema = z.object({
 });
 
 // Contrats (lot 4, mig 322)
-const contractType = z.enum(['cdi', 'cdd', 'stage', 'interim', 'saisonnier']);
+// Mig 699 : code du référentiel contract_types (contrôlé en base).
+const contractType = z.string().regex(/^[a-z0-9_]{1,40}$/, 'Type de contrat invalide');
 const contractCategory = z.enum(['cadre', 'employe', 'ouvrier']);
 const contractChanges = {
   contractType: contractType.optional(),

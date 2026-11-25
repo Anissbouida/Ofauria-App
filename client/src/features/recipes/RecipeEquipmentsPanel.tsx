@@ -6,6 +6,7 @@ import { recipesApi } from '../../api/recipes.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import '../production/production.css';
 
 /**
@@ -21,6 +22,7 @@ const UNIT: Record<string, string> = { plaque: 'plaque(s)', contenant: 'contenan
 
 export default function RecipeEquipmentsPanel({ recipeId, readOnly }: { recipeId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
+  const bLc = useProdTerms().batchLc;
   const key = ['recipe-equipements', recipeId];
   const { data: saved } = useQuery({ queryKey: key, queryFn: () => api.get(`/recipes/${recipeId}/equipements`).then(r => r.data.data as Saved[]) });
   const { data: equipments = [] } = useQuery({
@@ -59,7 +61,7 @@ export default function RecipeEquipmentsPanel({ recipeId, readOnly }: { recipeId
         </span>}
         {rows.length > 0 && (
           <table className="odoo-table ds-dense">
-            <thead><tr><th>Équipement</th><th>Format</th><th className="ds-num">Charge par fournée</th><th>Capacité de l'équipement</th>{!readOnly && <th />}</tr></thead>
+            <thead><tr><th>Équipement</th><th>Format</th><th className="ds-num">Charge par {bLc}</th><th>Capacité de l'équipement</th>{!readOnly && <th />}</tr></thead>
             <tbody>{rows.map((r, i) => {
               const eq = eqById.get(r.equipementId);
               const unit = eq?.capacite_unite ? UNIT[eq.capacite_unite] : null;
@@ -85,7 +87,7 @@ export default function RecipeEquipmentsPanel({ recipeId, readOnly }: { recipeId
                     {readOnly ? `${r.charge} ${unit ?? ''}` : (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <input className="ds-input sm" style={{ width: 70, textAlign: 'right' }} inputMode="decimal" value={r.charge}
-                          aria-label={`Charge par fournée de la ligne ${i + 1}`} onChange={e => edit(i, { charge: e.target.value })} />
+                          aria-label={`Charge par ${bLc} de la ligne ${i + 1}`} onChange={e => edit(i, { charge: e.target.value })} />
                         <span className="ds-muted" style={{ fontSize: 12 }}>{unit ?? ''}</span>
                       </span>
                     )}

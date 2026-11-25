@@ -5,7 +5,8 @@ export interface StockLocation {
   store_id: string | null;
   code: string;
   name: string;
-  type: 'sec' | 'positif' | 'negatif' | 'pesage' | 'vitrine' | 'labo';
+  /** Code du référentiel stock_location_types (mig 699). */
+  type: string;
   parent_id: string | null;
   equipement_id: string | null;
   temp_min: number | string | null;

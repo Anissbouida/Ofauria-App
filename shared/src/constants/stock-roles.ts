@@ -23,10 +23,10 @@ export const STOCK_LOCATION_ROLE_KEYS = Object.keys(STOCK_LOCATION_ROLES) as Sto
 export function roleOfLocationType(type: string): StockLocationRole {
   switch (type) {
     case 'pesage': return 'en_cours_ouvert';
-    case 'labo': return 'atelier';
+    case 'labo': case 'magasin_atelier': return 'atelier';
     case 'positif': return 'froid_positif';
     case 'negatif': return 'froid_negatif';
-    case 'vitrine': return 'vente';
+    case 'vitrine': case 'rayon': return 'vente';
     default: return 'reserve';
   }
 }

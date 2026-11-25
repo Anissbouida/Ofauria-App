@@ -73,19 +73,30 @@ données, sans code.
 | Packs de départ et spécialités : valeurs créées sans rattachement | rattachées à leur profil ou à leur spécialité |
 | Sélecteur des catégories de production | ne propose que les catégories actives |
 
-## 5. Reste à faire
+## 5. Suite (migration 699)
 
-- **Rôles d'accès** (`ROLES`, `ROLE_GROUPS`, `ROLE_LABELS` dans `shared`) : toujours les rôles boulangers ; plannings, pointage et paies hebdomadaires affichent ces libellés au lieu du référentiel des fonctions.
-- **Énumérations serveur qui doublent un référentiel** : unité et cycle de vente d'un article, types de contrat et de congé, familles de perte, types d'emplacement, équipements HACCP.
-- **Vocabulaire « fournée »** écrit en dur dans une dizaine d'écrans de production.
-- **Contenants de production** (104 lignes) posés par les migrations pour toute société : ils gardent actives les valeurs boulangères qu'ils utilisent (sans effet visible quand le module Production est inactif).
-- **Profil Agroalimentaire** : aucune fonction propre (une valeur rattachée à ce profil serait héritée par la boulangerie, dont les listes ne doivent pas changer).
-- **Catégories de dépenses** : le libellé « Ingrédients » du niveau 2 reste boulanger ; pas de catégories de dépenses propres aux autres secteurs.
-- **Motifs de perte et de rebut** (« Brûlé / trop cuit »…) laissés communs : leurs codes sont utilisés par les traitements.
-- Allergènes et HACCP affichés sans condition de capacité.
+| Constat de 698 | Traitement |
+|---|---|
+| Profil Agroalimentaire sans fonction propre (héritée par la boulangerie) | colonne `excluded_sectors` : « agroalimentaire sauf boulangerie ». Fonctions (responsable HACCP, conducteur de ligne…), équipements (autoclave, ligne de conditionnement), étape « Pasteurisation » (point critique). Une boulangerie qui exerce aussi une activité visée par la valeur la retrouve |
+| Contenants (104) et équipements (fours, pétrin, laminoir) posés pour toute société | rattachés à la boulangerie, désactivés ailleurs sauf s'ils sont utilisés ; une ligne de données inactive ne retient plus une valeur de référentiel |
+| Catégorie de dépense « Ingrédients » | libellé par secteur (Matériaux, Matières et composants, Marchandises…), sans écraser un libellé saisi ; nouvelle branche « Matériel de production » (machines, engins de chantier, véhicules, manutention) ; « Matériel cuisine » réservé aux métiers de bouche |
+| Rôles d'accès boulangers | libellés par secteur des rôles de base (Boulanger → Opérateur de production, Pâtissier → Chef de production, Vendeuse → Vendeur) ; Viennoiserie et Beldi masqués des choix hors boulangerie (sauf titulaires). Codes et gardes de routes inchangés |
+| Énumérations qui figeaient les types de contrat, de congé et d'emplacement | contrôles CHECK remplacés par un contrôle sur le référentiel (déclencheur commun) ; nouveau référentiel « Types d'emplacement » (quai, dépôt de chantier, magasin d'atelier, rayon…) |
+| Motifs de perte de la vente au comptoir | Brûlé, invendu fin de journée, invendu vitrine, DLV dépassée rattachés aux métiers de bouche |
+| Vocabulaire « fournée » écrit en dur | terme du secteur dans les écrans de production et de nomenclature (une dizaine de phrases reformulées pour s'accorder avec un terme masculin) |
+| Plannings, pointage, paies hebdomadaires et quinzaine | fonction de l'employé lue dans le référentiel ; un employé sans fonction n'empêche plus l'affichage du planning |
+| Allergènes et HACCP affichés sans condition | soumis aux capacités « Allergènes » et « HACCP » |
+
+**Laissé volontairement**
+
+- Unité et cycle de vente d'un article : leurs codes pilotent des calculs (vente au poids, à la personne, date limite) ; le référentiel ne porte que les libellés.
+- Familles de perte (`loss_types`) : contrainte CHECK conservée, les traitements s'appuient sur ces codes.
+- `ROLES` / `ROLE_GROUPS` dans `shared` : les codes techniques restent (gardes de routes) ; seuls les libellés et la disponibilité suivent le secteur.
+- En-tête de l'application : le libellé du rôle de l'utilisateur connecté vient encore de `ROLE_LABELS`.
+- Placeholders d'exemple (« Farine T55 », « Croissant ») dans une vingtaine de formulaires et modèles d'import.
 
 ## 6. Validation
 
-`server/src/__tests__/db/referentiels-sectoriels.db.test.ts` (12 cas) : cohérence du catalogue, les
+`server/src/__tests__/db/referentiels-sectoriels.db.test.ts` (17 cas, dont 5 pour la mig 699) : cohérence du catalogue, les
 13 profils, BTP, aller-retour boulangerie sans écart, choix manuels conservés, valeur utilisée
 protégée, plusieurs activités, spécialités, héritage, tables natives, aperçu sans écriture.

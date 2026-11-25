@@ -137,7 +137,9 @@ describe('Schémas stock (plan pilote, étape 3)', () => {
     const loc = { code: 'CF1', name: 'Chambre froide', type: 'positif', parentId: null, equipementId: null, tempMin: 0, tempMax: 4, capaciteUnite: null, capaciteValeur: null };
     ok(S.stockLocationCreateSchema, loc);
     ok(S.stockLocationUpdateSchema, { tempMin: null });
-    ko(S.stockLocationCreateSchema, { ...loc, type: 'garage' });
+    // Mig 699 : le type est un code du référentiel stock_location_types, contrôlé en base ;
+    // le schéma ne refuse plus qu'un code mal formé.
+    ko(S.stockLocationCreateSchema, { ...loc, type: 'Garage !' });
     ko(S.stockLocationCreateSchema, { ...loc, tempMin: Number.NaN });
   });
 });

@@ -18,6 +18,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { currencySymbol, money } from '../../utils/money';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { usePermissions } from '../../context/PermissionsContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { analyticCostApi, type StandardCostDetail } from '../../api/analytic-cost.api';
 import { LOW_MARK, SITUATION } from './StandardCostsPage';
 import '../production/production.css';
@@ -67,6 +68,7 @@ export default function StandardCostDetailPage() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { sectorLabel } = usePermissions();
+  const bLc = useProdTerms().batchLc;
   const { can, isLoading: permLoading } = useActionPermissions();
   // Coûts et marges : gérant (comptabilité analytique), qui valide aussi le coût de référence.
   const allowed = can('production.production_cout.analytique');
@@ -204,9 +206,9 @@ export default function StandardCostDetailPage() {
         )}
 
         <KpiGrid label="Coût standard">
-          <KpiCard label={`Coût de production ${lot ? 'par fournée' : 'par pièce'}`} value={money(s.coutProduction * f)} sub="valeur du stock de produits finis" />
-          <KpiCard label={`Coût de revient complet ${lot ? 'par fournée' : 'par pièce'}`} value={money(s.coutRevient * f)} sub="avec administration et commercial" />
-          <KpiCard label={`Prix de vente HT ${lot ? 'par fournée' : 'par pièce'}`} value={s.priceHt != null ? money(s.priceHt * f) : '—'} sub="prix catalogue, fixé dans Produits" />
+          <KpiCard label={`Coût de production ${lot ? `par ${bLc}` : 'par pièce'}`} value={money(s.coutProduction * f)} sub="valeur du stock de produits finis" />
+          <KpiCard label={`Coût de revient complet ${lot ? `par ${bLc}` : 'par pièce'}`} value={money(s.coutRevient * f)} sub="avec administration et commercial" />
+          <KpiCard label={`Prix de vente HT ${lot ? `par ${bLc}` : 'par pièce'}`} value={s.priceHt != null ? money(s.priceHt * f) : '—'} sub="prix catalogue, fixé dans Produits" />
           <KpiCard label="Taux de marque" value={s.tauxMarque != null ? `${s.tauxMarque.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'}
             sub="(prix − coût de revient) ÷ prix" tone={lowMark ? 'orange' : undefined} />
         </KpiGrid>
@@ -222,7 +224,7 @@ export default function StandardCostDetailPage() {
               )}
               {pieces > 1 && (
                 <Segmented label="Afficher les montants" value={mode} onChange={setMode}
-                  options={[{ key: 'piece', label: 'Par pièce' }, { key: 'lot', label: `Par fournée (${pieces} pièces)` }]} />
+                  options={[{ key: 'piece', label: 'Par pièce' }, { key: 'lot', label: `Par ${bLc} (${pieces} pièces)` }]} />
               )}
             </SectionHeader>
             <DataPanel label="Décomposition du coût">
@@ -230,7 +232,7 @@ export default function StandardCostDetailPage() {
                 <thead>
                   <tr>
                     <th>Poste</th><th>Ce qu'il contient</th><th>Calcul</th>
-                    <th className="ds-num">{`Montant par ${lot ? 'fournée' : 'pièce'} (${sym})`}</th>
+                    <th className="ds-num">{`Montant par ${lot ? bLc : 'pièce'} (${sym})`}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -274,9 +276,9 @@ export default function StandardCostDetailPage() {
                   <thead>
                     <tr>
                       <th>Ingrédient</th>
-                      <th className="ds-num">{lot ? 'Quantité par fournée' : 'Quantité par pièce'}</th>
+                      <th className="ds-num">{lot ? `Quantité par ${bLc}` : 'Quantité par pièce'}</th>
                       <th className="ds-num">Prix unitaire retenu</th>
-                      <th className="ds-num">{`Montant par ${lot ? 'fournée' : 'pièce'} (${sym})`}</th>
+                      <th className="ds-num">{`Montant par ${lot ? bLc : 'pièce'} (${sym})`}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -301,7 +303,7 @@ export default function StandardCostDetailPage() {
               <dl className="pd-cost-dl">
                 <dt>Fiche technique</dt>
                 <dd><Link to={`/recipes/${recipeId}/nomenclature`}>{s.recipeName ?? name}{s.recipeVersion ? `, version ${s.recipeVersion}` : ''}</Link></dd>
-                <dt>Format</dt><dd>{s.pieces ? `${s.pieces} pièce${s.pieces > 1 ? 's' : ''} par fournée` : '—'}</dd>
+                <dt>Format</dt><dd>{s.pieces ? `${s.pieces} pièce${s.pieces > 1 ? 's' : ''} par ${bLc}` : '—'}</dd>
                 <dt>Prix des matières</dt><dd>lot en cours de chaque ingrédient (premier périmé, premier sorti)</dd>
                 <dt>Charges</dt><dd>centres d'analyse de {monthLabel(s.month)}, à la capacité normale</dd>
               </dl>

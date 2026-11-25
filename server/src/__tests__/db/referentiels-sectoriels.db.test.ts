@@ -75,13 +75,13 @@ describe.skipIf(!hasTestDb)('Référentiels sectoriels (mig 698)', () => {
         const stray = await q(
           `SELECT table_id || ':' || code AS k FROM ref_entries
             WHERE activation = 'auto' AND is_active
-              AND NOT fn_ref_applicable(sectors, specializations, fn_active_sector_lineage(), fn_active_specializations())
+              AND NOT fn_ref_applicable(sectors, specializations, excluded_sectors, fn_active_sector_lineage(), fn_active_specializations())
               AND NOT (id = ANY(fn_ref_entries_in_use(ARRAY(SELECT id FROM ref_entries WHERE is_active))))`);
         expect(stray.rows.map(r => r.k), `valeurs étrangères actives pour ${code}`).toEqual([]);
         const missing = await q(
           `SELECT table_id || ':' || code AS k FROM ref_entries
             WHERE activation = 'auto' AND NOT is_active
-              AND fn_ref_applicable(sectors, specializations, fn_active_sector_lineage(), fn_active_specializations())`);
+              AND fn_ref_applicable(sectors, specializations, excluded_sectors, fn_active_sector_lineage(), fn_active_specializations())`);
         expect(missing.rows.map(r => r.k), `valeurs du secteur inactives pour ${code}`).toEqual([]);
         // Le profil apporte bien des valeurs à lui (pas seulement le tronc commun).
         const own = await q(
@@ -256,6 +256,83 @@ describe.skipIf(!hasTestDb)('Référentiels sectoriels (mig 698)', () => {
     const specs = (await testPool().query(`SELECT code FROM company_specializations`)).rows.map(r => r.code as string);
     const same = await scope.refScopePreview(['boulangerie'], specs);
     expect([same.activated, same.deactivated]).toEqual([0, 0]);
+  });
+
+  // ─── Mig 699 ─────────────────────────────────────────────────────────────────────────
+  it('exclusions : l\'agroalimentaire a ses valeurs, la boulangerie ne les reçoit pas', async () => {
+    await sandbox(async q => {
+      const bakery = await active(q, 'employee_roles');
+      expect(bakery).not.toContain('responsable_haccp');
+      expect(bakery).not.toContain('operateur');
+      await setSector(q, 'agroalimentaire');
+      expect(await active(q, 'employee_roles')).toEqual(expect.arrayContaining(['responsable_haccp', 'operateur', 'conducteur_ligne']));
+      expect(await active(q, 'production_step_types')).toContain('pasteurisation');
+      // Boulangerie + fabrication : la valeur visée aussi par la fabrication revient.
+      await setSector(q, 'boulangerie', ['fabrication']);
+      const both = await active(q, 'employee_roles');
+      expect(both).toContain('operateur');
+      expect(both).not.toContain('responsable_haccp');
+    });
+  });
+
+  it('libellés par secteur : catégorie « Ingrédients » et rôles de base, sans écraser un libellé saisi', async () => {
+    await sandbox(async q => {
+      const name = async () => (await q(`SELECT name FROM expense_categories WHERE id = '20000000-0000-0000-0000-000000000004'`)).rows[0].name;
+      const role = async (c: string) => (await q(`SELECT label FROM roles WHERE code = $1`, [c])).rows[0].label;
+      expect(await name()).toBe('Ingrédients');
+      expect(await role('baker')).toBe('Boulanger');
+      await setSector(q, 'btp');
+      expect(await name()).toBe('Matériaux');
+      expect([await role('baker'), await role('pastry_chef'), await role('saleswoman')]).toEqual(['Opérateur de production', 'Chef de production', 'Vendeur']);
+      const choices = (await q(`SELECT code FROM roles WHERE cardinality(sectors) > 0 AND NOT (sectors && fn_active_sector_lineage())`)).rows.map(r => r.code);
+      expect(choices).toEqual(expect.arrayContaining(['viennoiserie', 'beldi_sale']));
+      // Libellé modifié par la société : conservé à chaque changement.
+      await q(`UPDATE roles SET label = 'Chef d''équipe atelier' WHERE code = 'baker'`);
+      await setSector(q, 'boulangerie');
+      expect(await role('baker')).toBe('Chef d\'équipe atelier');
+      expect(await name()).toBe('Ingrédients');
+    });
+  });
+
+  it('contenants et équipements livrés : retirés hors boulangerie sauf s\'ils sont utilisés', async () => {
+    await sandbox(async q => {
+      await setSector(q, 'btp');
+      const stray = await q(
+        `SELECT c.nom FROM production_contenants c WHERE c.is_active AND c.sectors && ARRAY['boulangerie']
+            AND NOT (c.id = ANY(fn_ref_fk_used_ids('production_contenants'::regclass, ARRAY(SELECT id FROM production_contenants))))`);
+      expect(stray.rows.map(r => r.nom)).toEqual([]);
+      const eq = await q(
+        `SELECT e.nom FROM production_equipements e WHERE e.is_active AND e.sectors && ARRAY['boulangerie']
+            AND NOT (e.id = ANY(fn_ref_fk_used_ids('production_equipements'::regclass, ARRAY(SELECT id FROM production_equipements))))`);
+      expect(eq.rows.map(r => r.nom)).toEqual([]);
+    });
+  });
+
+  it('listes figées en base remplacées par le référentiel : valeur ajoutée acceptée, inconnue refusée', async () => {
+    await sandbox(async q => {
+      await q(`INSERT INTO ref_entries (table_id, code, label, origin) VALUES ('contract_types', 'chantier_test', 'Contrat de chantier', 'company')`);
+      await q(`INSERT INTO ref_entries (table_id, code, label, origin) VALUES ('stock_location_types', 'quai_test', 'Quai test', 'company')`);
+      const emp = (await q(`SELECT id FROM employees LIMIT 1`)).rows[0];
+      if (emp) {
+        await q(`UPDATE employees SET contract_type = 'chantier_test' WHERE id = $1`, [emp.id]);
+        await expect(q(`UPDATE employees SET contract_type = 'inconnu_xyz' WHERE id = $1`, [emp.id])).rejects.toThrow(/absente du référentiel/);
+      }
+    });
+    await sandbox(async q => {
+      await q(`INSERT INTO ref_entries (table_id, code, label, origin) VALUES ('stock_location_types', 'quai_test', 'Quai test', 'company')`);
+      await q(`INSERT INTO stock_locations (code, name, type) VALUES ('QT-698', 'Quai test', 'quai_test')`);
+      await expect(q(`INSERT INTO stock_locations (code, name, type) VALUES ('QX-698', 'Inconnu', 'inconnu_xyz')`)).rejects.toThrow(/absente du référentiel/);
+    });
+  });
+
+  it('types d\'emplacement : quai et dépôt de chantier en BTP, labo et pesage en boulangerie', async () => {
+    await sandbox(async q => {
+      expect(await active(q, 'stock_location_types')).toEqual(expect.arrayContaining(['sec', 'labo', 'pesage', 'vitrine']));
+      await setSector(q, 'btp');
+      const btp = await active(q, 'stock_location_types');
+      expect(btp).toContain('depot_chantier');
+      expect(btp).not.toContain('labo');
+    });
   });
 
   const q0: Q = (sql, params) => testPool().query(sql, params);

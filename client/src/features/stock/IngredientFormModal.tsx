@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Package, Edit3, X, Save, Tag, Boxes, ShieldAlert, Info } from 'lucide-react';
 import { suppliersApi } from '../../api/accounting.api';
 import { referentielApi } from '../../api/referentiel.api';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useExtraUnits } from '../../hooks/useReferentiel';
 import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import SearchSelect, { type SearchSelectOption } from '../../components/ui/SearchSelect';
@@ -67,6 +68,9 @@ interface Props {
 export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable, costFromLots = false }: Props) {
   const ing = ingredient || {};
   const { ingredient: ingTerm, ingredientLc: ingTermLc } = useProdTerms();
+  // Allergènes : seulement si la capacité réglementaire est active pour le secteur.
+  const { hasFeature } = usePermissions();
+  const showAllergens = hasFeature('allergenes');
   const extraUnits = useExtraUnits(UNITS.map(u => u.value));
   const [form, setForm] = useState({
     name: (ing.name as string) || initialName || '',
@@ -334,7 +338,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             </Section>}
 
             {/* ── Allergenes ── */}
-            {!consumable && <Section icon={<ShieldAlert size={13} />} title="Allergènes"
+            {!consumable && showAllergens && <Section icon={<ShieldAlert size={13} />} title="Allergènes"
               aside={form.allergens.length ? `${form.allergens.length} sélectionné${form.allergens.length > 1 ? 's' : ''}` : 'Aucun'}>
               <AllergenSelector value={form.allergens} onChange={allergens => set('allergens', allergens)} />
             </Section>}

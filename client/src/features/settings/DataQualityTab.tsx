@@ -9,6 +9,7 @@ import IngredientMergeCard from './IngredientMergeCard';
 import FormatWeightsGrid from './FormatWeightsGrid';
 import AllergenGrid from './AllergenGrid';
 import { SettingsTabs } from './SettingsPrimitives';
+import { usePermissions } from '../../context/PermissionsContext';
 import { DataPanel, LoadingState } from '../../components/ds';
 import { useProdTerms } from '../../hooks/useProdTerms';
 
@@ -54,6 +55,7 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
 
 export default function DataQualityTab() {
   const { ingredients } = useProdTerms();
+  const { hasFeature } = usePermissions();
   const { data, isLoading } = useQuery({ queryKey: ['data-quality'], queryFn: settingsApi.dataQuality });
   const [open, setOpen] = useState<string | null>(null);
 
@@ -127,7 +129,7 @@ export default function DataQualityTab() {
         { key: 'controls', label: 'Contrôles', content: controls },
         { key: 'duplicates', label: `${ingredients} en double`, content: <IngredientMergeCard /> },
         { key: 'weights', label: 'Poids des formats', content: <FormatWeightsGrid /> },
-        { key: 'allergens', label: 'Allergènes', content: <AllergenGrid /> },
+        ...(hasFeature('allergenes') ? [{ key: 'allergens', label: 'Allergènes', content: <AllergenGrid /> }] : []),
       ]} />
     </div>
   );

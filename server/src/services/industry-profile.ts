@@ -43,7 +43,8 @@ const CHAR_TYPES = ['mesure', 'oui_non', 'visuel'];
 const FREQUENCIES = ['chaque_lot', 'un_sur_n', 'par_quantite'];
 export const EMPTY_LAYERS: ProfileLayers = { order_types: [], policies: [], print_templates: [] };
 /** Types d'emplacement acceptés par stock_locations (mig 424). */
-const LOCATION_TYPES = ['sec', 'positif', 'negatif', 'pesage', 'vitrine', 'labo'];
+// Mig 699 : types d'emplacement = référentiel stock_location_types (contrôlé en base à l'écriture).
+const LOCATION_TYPE = /^[a-z0-9_]{1,30}$/;
 const numOrNull = (v: unknown) => { const n = Number(v); return v === null || v === undefined || v === '' || !Number.isFinite(n) ? null : n; };
 
 type Runner = { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> };
@@ -145,7 +146,7 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
   for (const l of Array.isArray(raw.locations) ? raw.locations.slice(0, 50) : []) {
     if (!isObj(l)) continue;
     const code = str(l.code, 30)?.toUpperCase(); const name = str(l.name, 120); const type = String(l.type ?? '');
-    if (!code || !/^[A-Z0-9_-]{1,30}$/.test(code) || !name || !LOCATION_TYPES.includes(type) || seenLoc.has(code)) { warnings.push(`Emplacement ignoré : ${String(l.code)}`); continue; }
+    if (!code || !/^[A-Z0-9_-]{1,30}$/.test(code) || !name || !LOCATION_TYPE.test(String(type)) || seenLoc.has(code)) { warnings.push(`Emplacement ignoré : ${String(l.code)}`); continue; }
     seenLoc.add(code);
     // Étape 8 : rôle de l'emplacement (déduit du type par la base s'il est absent ou inconnu).
     const role = typeof l.role === 'string' && (STOCK_LOCATION_ROLE_KEYS as string[]).includes(l.role) ? l.role : null;
