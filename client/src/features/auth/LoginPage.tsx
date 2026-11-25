@@ -28,6 +28,8 @@ export default function LoginPage() {
   const [mfaMethods, setMfaMethods] = useState<{ totp: boolean; passkey: boolean }>({ totp: true, passkey: true });
   const canPasskey = passkeysSupported();
   const [passkeyBusy, setPasskeyBusy] = useState(false);
+  /** Après une connexion par mot de passe : AppLayout propose d'ajouter une passkey s'il n'y en a aucune. */
+  const suggestPasskey = () => { if (canPasskey) { try { sessionStorage.setItem('kalum_passkey_suggest', '1'); } catch { /* rien */ } } };
   /** Connexion par passkey : sans mfaToken = sans mot de passe, avec = second facteur. */
   const passkeySignIn = async (token?: string) => {
     setPasskeyBusy(true);
@@ -139,6 +141,8 @@ export default function LoginPage() {
     try {
       const r = await login({ email, password });
       // G6-01 : second facteur exigé → étape du code.
+      // Connecté directement (sans second facteur ou poste mémorisé) : proposer une passkey.
+      if (!r?.mfaToken) suggestPasskey();
       if (r?.mfaToken) {
         setMfaToken(r.mfaToken);
         if (typeof r.trustedDeviceDays === 'number') setTrustedDeviceDays(r.trustedDeviceDays);
@@ -171,7 +175,7 @@ export default function LoginPage() {
       try {
         await verifyMfa(mfaToken, mfaCode.trim(), rememberDevice && trustedDeviceDays > 0);
         // Connecté par code : proposer une fois d'ajouter une passkey (AppLayout).
-        if (canPasskey && !mfaMethods.passkey) { try { sessionStorage.setItem('kalum_passkey_suggest', '1'); } catch { /* rien */ } }
+        suggestPasskey();
       }
       catch (err: unknown) {
         const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
@@ -263,6 +267,7 @@ export default function LoginPage() {
                 onClick={() => void passkeySignIn()}>
                 <Fingerprint size={18} /> {passkeyBusy ? t('auth.verifying') : t('auth.signInWithPasskey')}
               </button>
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--ds-muted)' }}>{t('auth.passkeyFirstTime')}</p>
             </>
           )}
 

@@ -104,6 +104,7 @@ export const en = {
   'auth.orEnterCode': 'or enter the code',
   'auth.or': 'or',
   'auth.signInWithPasskey': 'Sign in with a passkey',
+  'auth.passkeyFirstTime': 'First time? Sign in with your password, then create your passkey (account menu, “My passkeys”).',
   'auth.passkeyFailed': 'Passkey sign-in failed',
   'auth.mfaRemember': 'Remember this device for {days} days',
   'auth.mfaRememberHint': 'The code will not be asked again on this device. Untick on a shared computer.',

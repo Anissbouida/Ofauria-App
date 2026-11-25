@@ -121,6 +121,7 @@ export const fr = {
   'auth.orEnterCode': 'ou saisissez le code',
   'auth.or': 'ou',
   'auth.signInWithPasskey': 'Se connecter avec une passkey',
+  'auth.passkeyFirstTime': 'Première fois ? Connectez-vous avec votre mot de passe, puis créez votre passkey (menu de votre compte, « Mes passkeys »).',
   'auth.passkeyFailed': 'Connexion par passkey impossible',
   'auth.mfaRemember': 'Mémoriser ce poste pendant {days} jours',
   'auth.mfaRememberHint': 'Le code ne sera plus demandé sur cet appareil. À décocher sur un poste partagé.',

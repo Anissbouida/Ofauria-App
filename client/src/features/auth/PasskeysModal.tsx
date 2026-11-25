@@ -119,20 +119,21 @@ export default function PasskeysModal({ onClose }: { onClose: () => void }) {
 }
 
 /** Proposition unique après une connexion par code : ajouter une passkey sur cet appareil. */
-export function PasskeySuggestModal({ onClose }: { onClose: () => void }) {
+export function PasskeySuggestModal({ onClose, onNever }: { onClose: () => void; onNever?: () => void }) {
   const [busy, setBusy] = useState(false);
   const add = async () => { setBusy(true); try { if (await addPasskeyHere()) onClose(); } finally { setBusy(false); } };
   return (
     <Modal icon={Fingerprint} subtitle="Sécurité de mon compte" title="Ne plus saisir de code ?" width={480} onClose={onClose} locked={busy}
       footer={
         <>
+          {onNever && <button type="button" className="odoo-btn-secondary" onClick={onNever} disabled={busy} style={{ marginInlineEnd: 'auto' }}>Ne plus proposer</button>}
           <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Plus tard</button>
           <button type="button" className="odoo-btn-primary" onClick={() => void add()} disabled={busy}><Fingerprint size={14} /> Ajouter une passkey</button>
         </>
       }>
       <p style={{ fontSize: 14, margin: 0 }}>
-        Ajoutez une passkey sur cet appareil : la prochaine fois, connectez-vous avec Face ID, Touch ID ou votre empreinte,
-        sans mot de passe ni code. Vous la retrouverez dans le menu de votre compte, « Mes passkeys ».
+        Créez une passkey sur cet appareil : la prochaine fois, cliquez sur « Se connecter avec une passkey » et validez avec
+        Touch ID, Face ID ou votre empreinte, sans mot de passe ni code. Vous la retrouverez dans le menu de votre compte, « Mes passkeys ».
       </p>
     </Modal>
   );

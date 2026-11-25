@@ -4,6 +4,7 @@ import { useInterfacePreferences } from '../../api/interface-preferences.api';
 import { useState, useRef, useEffect } from 'react';
 import MfaSetup from '../../features/auth/MfaSetup';
 import { PasskeySuggestModal } from '../../features/auth/PasskeysModal';
+import { authApi } from '../../api/auth.api';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import './apple-look.css';
 import { useAuth } from '../../context/AuthContext';
@@ -44,11 +45,22 @@ export function CountBadge({ count }: { count: number }) {
 
 /** Après une connexion par code (LoginPage) : proposer une fois d'ajouter une passkey (mig 705). */
 function PasskeySuggestGate() {
-  const [open, setOpen] = useState(() => {
-    try { return sessionStorage.getItem('kalum_passkey_suggest') === '1'; } catch { return false; }
-  });
+  const { user } = useAuth();
+  const offKey = `kalum_passkey_suggest_off_${user?.id ?? ''}`;
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let flagged = false;
+    try { flagged = sessionStorage.getItem('kalum_passkey_suggest') === '1' && localStorage.getItem(offKey) !== '1'; } catch { /* rien */ }
+    if (!flagged) return;
+    // Seulement si le compte n'a encore aucune passkey.
+    authApi.passkeys().then(list => setOpen(list.length === 0)).catch(() => setOpen(false));
+  }, [offKey]);
   if (!open) return null;
-  return <PasskeySuggestModal onClose={() => { try { sessionStorage.removeItem('kalum_passkey_suggest'); } catch { /* rien */ } setOpen(false); }} />;
+  const close = (never: boolean) => {
+    try { sessionStorage.removeItem('kalum_passkey_suggest'); if (never) localStorage.setItem(offKey, '1'); } catch { /* rien */ }
+    setOpen(false);
+  };
+  return <PasskeySuggestModal onClose={() => close(false)} onNever={() => close(true)} />;
 }
 
 function TimeoutWarningModal() {

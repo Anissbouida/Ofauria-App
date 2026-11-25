@@ -104,6 +104,7 @@ export const ar = {
   'auth.orEnterCode': 'أو أدخل الرمز',
   'auth.or': 'أو',
   'auth.signInWithPasskey': 'تسجيل الدخول بمفتاح المرور',
+  'auth.passkeyFirstTime': 'أول مرة؟ سجّل الدخول بكلمة المرور، ثم أنشئ مفتاح المرور (قائمة حسابك، «مفاتيح المرور»).',
   'auth.passkeyFailed': 'تعذّر تسجيل الدخول بمفتاح المرور',
   'auth.mfaRemember': 'تذكّر هذا الجهاز لمدة {days} يومًا',
   'auth.mfaRememberHint': 'لن يُطلب الرمز مرة أخرى على هذا الجهاز. ألغِ التحديد على جهاز مشترك.',
