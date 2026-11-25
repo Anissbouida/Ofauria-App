@@ -42,6 +42,8 @@ export const productionContenantRepository = {
     diametre_cm?: number | null;
     type_decoupe?: string | null;
     nb_pieces_decoupe?: number | null;
+    nb_empreintes?: number | null; capacite_qty?: number | null; capacite_unit?: string | null;
+    portion_longueur_cm?: number | null; portion_largeur_cm?: number | null; bordure_cm?: number | null;
   }) {
     // Quantité + unité saisie ; poids_kg est tenu par le déclencheur (mig 557).
     const poids = pickQtyUnit(data.poids_qty, data.poids_unit, data.poids_kg, 'kg') ?? { qty: null, unit: 'kg' as WeightUnit };
@@ -58,7 +60,14 @@ export const productionContenantRepository = {
        data.longueur_cm ?? null, data.largeur_cm ?? null, data.profondeur_cm ?? null,
        data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null, poids.unit]
     );
-    return result.rows[0];
+    // Mig 674 : empreintes, capacité, découpe.
+    const extra = await db.query(
+      `UPDATE production_contenants SET nb_empreintes = $2, capacite_qty = $3, capacite_unit = $4,
+              portion_longueur_cm = $5, portion_largeur_cm = $6, bordure_cm = $7
+        WHERE id = $1 RETURNING *, quantite_nette_cible, ${POIDS_UNIT}`,
+      [result.rows[0].id, data.nb_empreintes ?? null, data.capacite_qty ?? null, data.capacite_unit ?? null,
+       data.portion_longueur_cm ?? null, data.portion_largeur_cm ?? null, data.bordure_cm ?? null]);
+    return extra.rows[0] ?? result.rows[0];
   },
 
   async updateContenant(id: string, data: Record<string, unknown>) {
@@ -78,6 +87,8 @@ export const productionContenantRepository = {
       diametre_cm: 'diametre_cm',
       type_decoupe: 'type_decoupe',
       nb_pieces_decoupe: 'nb_pieces_decoupe',
+      nb_empreintes: 'nb_empreintes', capacite_qty: 'capacite_qty', capacite_unit: 'capacite_unit',
+      portion_longueur_cm: 'portion_longueur_cm', portion_largeur_cm: 'portion_largeur_cm', bordure_cm: 'bordure_cm',
     };
 
     const fields: string[] = [];

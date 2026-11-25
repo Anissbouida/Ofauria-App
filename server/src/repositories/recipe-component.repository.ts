@@ -13,6 +13,7 @@ export interface ComponentInput {
   ordre: number;
   /** Mig 265 (audit A5) : perte % par ligne (0-99.99), defaut 0. */
   pertePct?: number | null;
+  quantiteFixe?: boolean;
   /** Mig 634/635 : part en % de la formule (fiche en mode « pourcentage »). */
   pct?: number | null;
 }
@@ -212,7 +213,7 @@ export const recipeComponentRepository = {
               COALESCE(cc.conversion_ok, true) AS conversion_ok,
               COALESCE(ing.unit::text, br.yield_unit, pk.unit) AS target_unit,
               -- Mig 265 (audit A5) : perte % ligne, majoration matiere consommee.
-              c.perte_pct, c.pct
+              c.perte_pct, c.pct, c.quantite_fixe
        FROM recipe_format_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
@@ -303,10 +304,10 @@ export const recipeComponentRepository = {
         const unite = fromPct ? (ref.unit || c.unite) : c.unite;
         await client.query(
           `INSERT INTO recipe_format_components
-             (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+             (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by, quantite_fixe)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [formatId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null, c.sourcePackagingId ?? null,
-           quantite, unite, c.ordre, c.pertePct ?? 0, fromPct ? c.pct : null, userId ?? null]
+           quantite, unite, c.ordre, c.pertePct ?? 0, fromPct ? c.pct : null, userId ?? null, c.quantiteFixe === true && !!c.sourceIngredientId]
         );
       }
 
@@ -670,8 +671,8 @@ export const recipeComponentRepository = {
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [newId]);
       await client.query(
         `INSERT INTO recipe_format_components
-           (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by)
-         SELECT $1, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, $3
+           (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by, quantite_fixe)
+         SELECT $1, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, $3, quantite_fixe
          FROM recipe_format_components WHERE format_id = $2`,
         [newId, fromFormatId, userId ?? null]
       );

@@ -18,7 +18,7 @@ import { Alert, LoadingState } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import '../production/production.css';
 interface SourceOpt { type: 'recipe' | 'ingredient' | 'packaging'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
-interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 'packaging'; sourceId: string; quantite: string; unite: string; pertePct?: string; /** Étape 10c : part en % du lot de référence (mode pourcentage). */ pct?: string }
+interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 'packaging'; sourceId: string; quantite: string; unite: string; pertePct?: string; /** Mig 674 : quantité par fournée entière. */ fixe?: boolean; /** Étape 10c : part en % du lot de référence (mode pourcentage). */ pct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
@@ -61,7 +61,7 @@ interface EditableFields {
 }
 /** Empreinte stable de l'etat editable (lignes + champs), comparee a la reference. */
 function signature(rows: Row[], f: EditableFields): string {
-  return JSON.stringify([rows.map((r) => [r.role, r.type, r.sourceId, r.quantite, r.unite, r.pertePct ?? '0']), f]);
+  return JSON.stringify([rows.map((r) => [r.role, r.type, r.sourceId, r.quantite, r.unite, r.pertePct ?? '0', r.fixe === true]), f]);
 }
 
 function SourcePicker({ options, value, onPick }: {
@@ -290,6 +290,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       // Mig 265 (audit A5) : perte % ligne, conservee dans l'etat pour ne pas
       // etre remise a 0 a la sauvegarde suivante. UI dediee en P2.
       pertePct: c.perte_pct != null ? String(parseFloat(String(c.perte_pct))) : '0',
+      fixe: (c as { quantite_fixe?: boolean }).quantite_fixe === true,
       pct: c.pct != null ? String(parseFloat(String(c.pct))) : '',
     }));
     const nextFields: EditableFields = {
@@ -555,6 +556,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           pct: pctMode && r.type !== 'packaging' && r.pct && parseFloat(r.pct.replace(',', '.')) > 0 ? parseFloat(r.pct.replace(',', '.')) : null,
           quantite: parseFloat(r.quantite), unite: r.unite, ordre: i,
           pertePct: Number.isFinite(perte) && perte > 0 ? perte : 0,
+          quantiteFixe: r.type === 'ingredient' && r.fixe === true,
         };
       });
       const saved = await recipesApi.saveFormatComponents(recipeId, formatId, {
@@ -719,7 +721,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             title="Perte sur cette ligne (%) : majore la matière consommée (mig 265)"
             className="ds-input sm" style={{ textAlign: 'right' }}
             value={r.pertePct ?? ''} onChange={(e) => setRow(r.key, { pertePct: e.target.value })} placeholder="0" />
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+            {/* Mig 674 : quantité par fournée commencée (vanille par cuve, décor par cadre). */}
+            {r.type === 'ingredient' && (
+              <button type="button" onClick={() => setRow(r.key, { fixe: !r.fixe })} aria-pressed={r.fixe === true}
+                className="fx-icon" title={r.fixe ? 'Quantité fixe par fournée (cliquer pour la rendre proportionnelle)' : 'Proportionnelle au nombre de pièces (cliquer pour la fixer par fournée)'}
+                style={{ fontSize: 11, fontWeight: 600, width: 'auto', padding: '0 4px', color: r.fixe ? 'var(--ds-primary, #2563eb)' : 'var(--ds-muted)' }}>
+                {r.fixe ? 'Fixe' : 'Prop.'}
+              </button>
+            )}
             <button type="button" onClick={() => delRow(r.key)} className="fx-icon danger" aria-label={`Retirer ${src?.name ?? 'la ligne'}`}><Trash2 size={15} aria-hidden="true" /></button>
           </div>
         </div>

@@ -51,6 +51,8 @@ interface Contenant {
   diametre_cm?: string | null;
   type_decoupe?: string | null;
   nb_pieces_decoupe?: number | null;
+  nb_empreintes?: number | null; capacite_qty?: string | number | null; capacite_unit?: string | null;
+  portion_longueur_cm?: string | number | null; portion_largeur_cm?: string | number | null; bordure_cm?: string | number | null;
 }
 
 interface LinkedRecipe {
@@ -560,6 +562,13 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [diametreCm, setDiametreCm] = useState(contenant?.diametre_cm || '');
   const [typeDecoupe, setTypeDecoupe] = useState(contenant?.type_decoupe || '');
   const [nbPiecesDecoupe, setNbPiecesDecoupe] = useState(contenant?.nb_pieces_decoupe?.toString() || '');
+  // Mig 674 : empreintes, contenance, découpe calculée.
+  const [nbEmpreintes, setNbEmpreintes] = useState(contenant?.nb_empreintes?.toString() || '');
+  const [capaciteQty, setCapaciteQty] = useState(contenant?.capacite_qty != null ? String(parseFloat(String(contenant.capacite_qty))) : '');
+  const [capaciteUnit, setCapaciteUnit] = useState(contenant?.capacite_unit || 'kg');
+  const [portionL, setPortionL] = useState(contenant?.portion_longueur_cm != null ? String(parseFloat(String(contenant.portion_longueur_cm))) : '');
+  const [portionl, setPortionl] = useState(contenant?.portion_largeur_cm != null ? String(parseFloat(String(contenant.portion_largeur_cm))) : '');
+  const [bordure, setBordure] = useState(contenant?.bordure_cm != null ? String(parseFloat(String(contenant.bordure_cm))) : '');
   // M3-04 : poids du format en quantité + unité saisie (420 g reste 420 g).
   const [poids, setPoids] = useState<{ qty: number; unit: WeightUnit }>(
     () => readWeight(contenant?.poids_qty, contenant?.poids_unit, contenant?.poids_kg, 'kg') ?? { qty: 0, unit: 'kg' });
@@ -602,6 +611,12 @@ function ContenantForm({ contenant, onClose, onSaved }: {
       diametre_cm: diametreCm ? parseFloat(diametreCm) : null,
       type_decoupe: typeDecoupe || null,
       nb_pieces_decoupe: nbPiecesDecoupe ? parseInt(nbPiecesDecoupe, 10) : null,
+      nb_empreintes: nbEmpreintes ? parseInt(nbEmpreintes, 10) : null,
+      capacite_qty: capaciteQty ? parseFloat(capaciteQty.replace(',', '.')) : null,
+      capacite_unit: capaciteQty ? capaciteUnit : null,
+      portion_longueur_cm: portionL ? parseFloat(portionL.replace(',', '.')) : null,
+      portion_largeur_cm: portionl ? parseFloat(portionl.replace(',', '.')) : null,
+      bordure_cm: bordure ? parseFloat(bordure.replace(',', '.')) : null,
       poids_qty: poids.qty > 0 ? poids.qty : null,
       poids_unit: poids.unit,
     });
@@ -753,6 +768,53 @@ function ContenantForm({ contenant, onClose, onSaved }: {
                 <input type="number" step="1" min="1"
                   value={nbPiecesDecoupe} onChange={e => setNbPiecesDecoupe(e.target.value)}
                   placeholder="20" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+            </div>
+            {/* Mig 674 : découpe calculée — portion et bordure ; le chef garde la main sur le nombre retenu. */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={LABEL}>Portion — longueur (cm)</label>
+                <input type="number" step="any" min="0" value={portionL} onChange={e => setPortionL(e.target.value)} placeholder="10" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+              <div>
+                <label className={LABEL}>Portion — largeur (cm)</label>
+                <input type="number" step="any" min="0" value={portionl} onChange={e => setPortionl(e.target.value)} placeholder="5" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+              <div>
+                <label className={LABEL}>Bordure perdue (cm)</label>
+                <input type="number" step="any" min="0" value={bordure} onChange={e => setBordure(e.target.value)} placeholder="1" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+            </div>
+            {(() => {
+              const L = parseFloat(longueurCm), l = parseFloat(largeurCm), pL = parseFloat(portionL.replace(',', '.')), pl = parseFloat(portionl.replace(',', '.'));
+              const b = parseFloat(bordure.replace(',', '.')) || 0;
+              if (!(L > 0 && l > 0 && pL > 0 && pl > 0)) return null;
+              const n = Math.floor(Math.max(L - 2 * b, 0) / pL + 1e-9) * Math.floor(Math.max(l - 2 * b, 0) / pl + 1e-9);
+              const n2 = Math.floor(Math.max(L - 2 * b, 0) / pl + 1e-9) * Math.floor(Math.max(l - 2 * b, 0) / pL + 1e-9);
+              const best = Math.max(n, n2);
+              return (
+                <div className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>Découpe proposée : <strong>{best} portions</strong> ({L - 2 * b} × {l - 2 * b} cm utiles)</span>
+                  {String(best) !== nbPiecesDecoupe && (
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setNbPiecesDecoupe(String(best))}>Reprendre ce nombre</button>
+                  )}
+                </div>
+              );
+            })()}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={LABEL}>Nombre d'empreintes</label>
+                <input type="number" step="1" min="1" value={nbEmpreintes} onChange={e => setNbEmpreintes(e.target.value)} placeholder="Plaque à empreintes" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+              <div>
+                <label className={LABEL}>Contenance</label>
+                <input type="number" step="any" min="0" value={capaciteQty} onChange={e => setCapaciteQty(e.target.value)} placeholder="Moule, cuve" className={`${FIELD} text-right tabular-nums`} />
+              </div>
+              <div>
+                <label className={LABEL}>Unité de contenance</label>
+                <select value={capaciteUnit} onChange={e => setCapaciteUnit(e.target.value)} className={FIELD}>
+                  <option value="kg">kg</option><option value="g">g</option><option value="l">l</option><option value="ml">ml</option>
+                </select>
               </div>
             </div>
             {/* Apercu format libelle */}

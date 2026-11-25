@@ -350,3 +350,17 @@ describe('collectIngredientNeedsForUnits — conversion absente', () => {
     expect(warnings.some(w => w.includes('Besoin non calculé pour la préparation'))).toBe(true);
   });
 });
+
+// Mig 674 : composant fixe par fournée commencée.
+describe('collectIngredientNeedsForUnits — composant fixe', () => {
+  it('vanille fixe par fournée : 2,5 fournées → 3 gousses ; le lait suit la fraction', async () => {
+    const client = makeClient({
+      recipes: { r1: composeRecipe('r1', 'Crème', { pieces_par_fournee: 10 }) },
+      components: { r1: [ingComponent('lait', 2), { ...ingComponent('vanille', 1), quantite_fixe: true }] },
+      formatComponents: {}, formats: {}, legacyIngredients: {}, legacySubs: {},
+    });
+    const { acc } = await needsFor(client, 'r1', 25);   // 25 pièces / 10 par fournée = 2,5 fournées
+    expect(acc.get('lait')).toBeCloseTo(5);
+    expect(acc.get('vanille')).toBe(3);
+  });
+});

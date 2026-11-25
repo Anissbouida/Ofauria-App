@@ -33,6 +33,9 @@ export interface CompositionIngredient {
    *  (ex. : « 3 unit » d'une matière stockée au kilo, sans poids de pièce) : le besoin
    *  n'est pas chiffrable, qtyPerBatch vaut 0 et l'appelant remonte un avertissement. */
   conversionImpossible: boolean;
+  /** Mig 674 : quantité par fournée entière (vanille par cuve, décor par cadre), arrondie à
+   *  la fournée supérieure au lieu de suivre la fraction de fournée. */
+  fixed: boolean;
 }
 
 export interface CompositionSubRecipe {
@@ -151,6 +154,7 @@ export async function getCompositionForNeeds(
             unitEntered: r.unit_entered,
             conversionUncertain: r.conv_incertaine === true,
             conversionImpossible: q === null,
+            fixed: r.quantite_fixe === true,
           };
         }),
         subRecipes: rows.filter(r => r.source_recipe_id).map(r => {
@@ -223,7 +227,7 @@ function componentQuery(table: string, keyColumn: string): string {
   return `
     SELECT c.source_recipe_id, c.source_ingredient_id,
            ing.name AS ingredient_name, ing.unit AS ingredient_unit,
-           c.quantite AS qty_entered, c.unite AS unit_entered, c.perte_pct,
+           c.quantite AS qty_entered, c.unite AS unit_entered, c.perte_pct, c.quantite_fixe,
            (c.quantite * fn_convert_factor(c.unite, ing.unit::text, 'ingredient', ing.id))
              / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0) AS qty_ing_base,
            (((lower(c.unite) IN ('mg','g','kg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
@@ -299,7 +303,8 @@ async function walk(
         `Conversion poids/volume impossible pour "${ing.name}" (recette en ${ing.unitEntered}, stock en ${ing.unit}) : renseigner la masse volumique (densité) de l'ingrédient. Quantité prise telle quelle.`
       );
     }
-    addNeed(ing.ingredientId, ing.qtyPerBatch * batches);
+    // Mig 674 : composant fixe = par fournée commencée (2,3 fournées → 3 fois la quantité).
+    addNeed(ing.ingredientId, ing.qtyPerBatch * (ing.fixed ? Math.ceil(batches - 1e-9) : batches));
   }
   for (const sub of comp.subRecipes) {
     if (opts.skipSubRecipe && opts.skipSubRecipe(sub.subRecipeId)) continue;

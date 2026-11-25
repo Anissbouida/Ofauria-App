@@ -47,6 +47,13 @@ export const createContenantSchema = z.object({
   diametre_cm: z.number().positive().nullable().optional(),
   type_decoupe: z.string().max(30).nullable().optional(),
   nb_pieces_decoupe: z.number().int().positive().nullable().optional(),
+  // Mig 674 : plaques à empreintes, contenance, découpe calculée.
+  nb_empreintes: z.number().int().positive().max(1000).nullable().optional(),
+  capacite_qty: z.number().positive().nullable().optional(),
+  capacite_unit: z.string().max(10).nullable().optional(),
+  portion_longueur_cm: z.number().positive().max(500).nullable().optional(),
+  portion_largeur_cm: z.number().positive().max(500).nullable().optional(),
+  bordure_cm: z.number().min(0).max(100).nullable().optional(),
 });
 
 export const updateContenantSchema = createContenantSchema.partial();

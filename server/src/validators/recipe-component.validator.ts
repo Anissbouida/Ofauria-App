@@ -18,6 +18,8 @@ const componentSchema = z
     // Mig 265 (audit A5) : perte % par ligne, defaut 0. Majore la matiere brute
     // (qty_brute = qty / (1 - pertePct/100)) cote cout et cote besoins.
     pertePct: z.number().min(0).max(99.99).nullable().optional(),
+    // Mig 674 : quantité par fournée entière (non proportionnelle au nombre de pièces).
+    quantiteFixe: z.boolean().optional(),
   })
   .refine(
     (c) => [c.sourceRecipeId, c.sourceIngredientId, c.sourcePackagingId].filter(Boolean).length === 1,
