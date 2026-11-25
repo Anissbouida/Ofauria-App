@@ -200,3 +200,15 @@ Validation : `manques-par-article.db.test.ts` (3 tests : attente de A pendant qu
 
 Validation : `preparations-par-article.db.test.ts` (4 tests : A 0,5 kg/pièce et B 0,1 kg/pièce reçoivent 5 kg et 1 kg de crème, C sans crème rien ; coût ; traçabilité du lait).
 Reprise : plans parents à un seul article. Limite : le partage suit le besoin de chaque article ; une préparation n'est pas pesée séparément par article.
+
+## 11. Lots 4 et 6 de l'audit (2026-11-24, mig 673)
+
+| Constat | Fait | Validation |
+|---|---|---|
+| C-10 DLC des préparations | Durée de conservation sur la fiche de préparation (Informations › Modifier, en heures) ; chaque lot fabriqué reçoit sa date limite ; un lot périmé n'est plus compté disponible ni consommé | `audit-patisserie-lot4.db.test.ts` |
+| C-06 Mutualisation | Un besoin de préparation rejoint le plan de la même préparation déjà prévu le même jour (même atelier, même établissement, encore en brouillon) ; quantité recalculée et arrondie à la fournée ; retirer un plan le ramène aux autres ; produit, chaque plan parent reçoit sa part | idem |
+| C-13 Clôture sans bon | Les matières d'une préparation servie par un plan fils ou par le stock ne sortent plus une seconde fois | non-régression |
+| C-14 Écriture de production | Une seule écriture par plan (verrou + vérification dans la transaction, rejeu de la file compris) | non-régression |
+| C-11 MRP | Besoins matière calculés par le moteur de la confirmation (format, composition par pièce, pertes) | non-régression MRP |
+
+Non faits : C-31 (détection récursive des préparations imbriquées), C-26 (gel complet de la configuration), lot 5 (empreintes, capacité des moules, géométrie de découpe, composant fixe par fournée), lot 7 (capacité des équipements, retour matière, séparation des tâches). Les durées de conservation des fiches de dev sont vides : à saisir par le chef.
