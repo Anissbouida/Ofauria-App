@@ -80,7 +80,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     keywords: 'entreprise rib banque iban pays raison sociale ice if rc patente cnss',
     fields: [...LEGAL, 'Comptes bancaires'] },
   { key: 'sector', group: 'Activité et modules', section: 'company', label: 'Secteur et modules', icon: Layers,
-    description: 'Choisir le métier, puis activer ou désactiver chaque module et ses options',
+    description: 'Voir le métier configuré, activer ou désactiver chaque module et ses options',
     keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services activer desactiver options fonctionnalites',
     fields: ["Secteur d'activité", 'Ventes et caisse', 'Catalogue, achats et stock', 'Production', 'Gestion', 'Socle'] },
   { key: 'stores', group: 'Mon entreprise', auditTable: 'stores', section: 'stores', label: 'Établissements', icon: Store,
