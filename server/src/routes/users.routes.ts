@@ -32,7 +32,9 @@ const router = Router();
 // Roles editables et mode de controle des droits (mig 330) : declares avant /:id.
 router.get('/roles', authenticate, can('users.view'), asyncHandler(roleController.list));
 router.post('/roles', authenticate, can('users.roles'), validate(createRoleSchema), asyncHandler(roleController.create));
+router.get('/roles/templates', authenticate, can('users.view'), asyncHandler(roleController.templates));
 router.get('/roles/:code/permissions', authenticate, can('users.view'), asyncHandler(roleController.permissions));
+router.get('/roles/:code/profile', authenticate, can('users.view'), asyncHandler(roleController.profile));
 router.put('/roles/:code/permissions', authenticate, can('users.permissions'), validate(permissionsSchema), asyncHandler(roleController.setPermissions));
 router.put('/roles/:code', authenticate, can('users.roles'), validate(updateRoleSchema), asyncHandler(roleController.update));
 router.delete('/roles/:code', authenticate, can('users.delete'), asyncHandler(roleController.remove));

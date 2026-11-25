@@ -1,97 +1,298 @@
 import { useEffect, useState } from 'react';
-import { LoadingPanel, HrHeaderActions } from '../employees/ui';
-import { DataPanel, TableFooter, SectionHeader, FormField, FormFooter, ErrorState } from '../../components/ds';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Check } from 'lucide-react';
-import * as shared from '@ofauria/shared';
+import { useNavigate } from 'react-router-dom';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, ShieldCheck, ShieldAlert, Eye, Check, Copy, FolderOpen } from 'lucide-react';
+import { MODULE_LABELS, APPROVAL_DOC_TYPES, type AppModule } from '@ofauria/shared';
+import { HrHeaderActions } from '../employees/ui';
 import {
-  APP_MODULES, MODULE_LABELS, MODULE_VERBS, BUSINESS_VERB_LABELS, DATA_SCOPES, DATA_SCOPE_LABELS,
-  type AppModule, type DataScope, type BusinessVerb,
-} from '@ofauria/shared';
-import { rolesApi, type RoleRow, type RolePermission } from '../../api/users.api';
+  DataPanel, TableFooter, ErrorState, LoadingState, Toolbar, SearchBar, Modal, FormField, NoResultState, Alert,
+} from '../../components/ds';
+import { FilterChips } from '../sales/ListTemplate';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { rolesApi, usersApi, type RoleRow, type RolePermission, type RoleProfile } from '../../api/users.api';
+import { settingsApi } from '../../api/settings.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { currencySymbol } from '../../utils/money';
+import { ORIGIN, ROLE_MODULES, accessSummary, permOf } from './roleAccess';
+import './users.css';
 
 /**
- * Rôles éditables et contrôle des droits côté serveur (audit Paramètres, lot 3, mig 330).
- * Un rôle créé s'appuie sur un rôle de base (périmètre technique : écrans et
- * filtres) et a ses propres droits par module. Les droits d'un utilisateur
- * (bouton Permissions) restent des exceptions qui remplacent ceux du rôle.
+ * Rôles (refonte Utilisateurs, lot 4) : liste avec l'origine de chaque rôle (système, modèle du
+ * secteur, personnalisé), recherche, comparaison de deux à quatre rôles et création. Les droits
+ * se règlent dans la fiche du rôle (page /users/roles/:code).
  */
 
-// Clés historiques (fusion Stock) masquées ; constante absente de certaines versions de shared.
-const LEGACY = (shared as unknown as { LEGACY_MODULE_KEYS?: ReadonlySet<string> }).LEGACY_MODULE_KEYS ?? new Set<string>();
-const MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY.has(m) && m !== 'users');
-// Rôles de base : tous les rôles système actifs, sauf l'administrateur (mig 637). Libellés de
-// la table des rôles (mig 699 : « Boulanger » devient « Opérateur de production » hors
-// boulangerie, le code ne change pas).
-const ACTIONS = [['canView', 'Voir'], ['canCreate', 'Créer'], ['canEdit', 'Modifier'], ['canDelete', 'Supprimer']] as const;
-type Flag = typeof ACTIONS[number][0];
+type OriginFilter = '' | 'system' | 'custom' | 'template' | 'inactive';
+const originOf = (r: RoleRow) => r.origin ?? (r.is_system ? 'system' : 'custom');
 
-function baseRoleLabel(roles: RoleRow[], code: string): string {
-  return roles.find(r => r.code === code && r.is_system)?.label ?? code;
-}
-
-/** Rôles de base proposés : ceux du secteur (et celui déjà choisi). */
-function baseRoleChoices(roles: RoleRow[], current: string): [string, string][] {
-  return roles
-    .filter(r => r.is_system && r.code !== 'admin' && (r.code === current || (r.is_active !== false && r.available !== false)))
-    .map(r => [r.code, r.label] as [string, string]);
-}
-
-function errorMessage(err: unknown, fallback: string) {
+export function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
   const er = e?.response?.data?.error;
   return typeof er === 'string' ? er : er?.message || fallback;
 }
 
+/** Rôles de base proposés : rôles système actifs du secteur (et celui déjà choisi), administrateur exclu. */
+export function baseRoleChoices(roles: RoleRow[], current: string): [string, string][] {
+  return roles
+    .filter(r => r.is_system && r.code !== 'admin' && (r.code === current || (r.is_active !== false && r.available !== false)))
+    .map(r => [r.code, r.label] as [string, string]);
+}
+
 export default function RolesPanel() {
-  const [selected, setSelected] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  // Duplication (M2-07) : le formulaire de création, prérempli depuis le rôle choisi.
-  const [duplicateOf, setDuplicateOf] = useState<RoleRow | null>(null);
+  const navigate = useNavigate();
+  const [filter, setFilter] = useState<OriginFilter>('');
+  const [q, setQ] = useState('');
+  const [view, setView] = useState<'list' | 'compare'>('list');
+  const [creating, setCreating] = useState<{ copyOf?: RoleRow } | null>(null);
   const { data: roles = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
-  const current = roles.find(r => r.code === selected) ?? null;
+  const { data: mfa } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy, retry: false });
+  const open = (code: string) => navigate(`/users/roles/${code}`);
+
+  const count = (f: OriginFilter) => roles.filter(r => (f === 'inactive' ? !r.is_active : r.is_active && (!f || originOf(r) === f))).length;
+  const needle = q.trim().toLowerCase();
+  const rows = roles.filter(r => (filter === 'inactive' ? !r.is_active : (r.is_active || filter === '') && (!filter || originOf(r) === filter))
+    && (!needle || r.label.toLowerCase().includes(needle) || (r.description ?? '').toLowerCase().includes(needle) || r.code.includes(needle)));
+  const empty = roles.filter(r => r.is_active && r.user_count === 0).length;
+  const baseLabel = (c: string) => roles.find(r => r.code === c)?.label ?? c;
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      {/* Contrôle des droits : Contrôles internes ; matrice par action : Rapports › Droits par rôle (refonte 2026-11). */}
-      {/* Action principale de la vue, à droite du fil d'Ariane. */}
+    <div style={{ display: 'grid', gap: 'var(--ds-s4)' }}>
       <HrHeaderActions>
-        <button type="button" className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" className="odoo-btn-primary" onClick={() => setCreating({})} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} aria-hidden="true" /> Nouveau rôle
         </button>
       </HrHeaderActions>
-      <SectionHeader title="Rôles" note="Cliquer sur un rôle pour régler ses droits" />
-      {(creating || duplicateOf) && <CreateRoleForm key={duplicateOf?.code ?? 'new'} roles={roles} from={duplicateOf}
-        onDone={(code) => { setCreating(false); setDuplicateOf(null); if (code) setSelected(code); }} />}
-      {isLoading ? <LoadingPanel /> : isError ? <DataPanel label="Rôles"><ErrorState bare error={error} onRetry={() => void refetch()} /></DataPanel> : (
-        <DataPanel label="Rôles" footer={<TableFooter note={`${roles.length} rôle${roles.length > 1 ? 's' : ''}`} />}>
-          <table className="odoo-table">
-            <thead><tr><th>Rôle</th><th>Rôle de base</th><th className="ds-num">Modules</th><th className="ds-num">Utilisateurs</th><th>Statut</th></tr></thead>
-            <tbody>
-              {roles.map(r => (
-                <tr key={r.code} className={r.code === selected ? 'ds-selected' : undefined} aria-selected={r.code === selected}
-                  onClick={() => { setSelected(r.code); setCreating(false); }} style={{ cursor: 'pointer' }}>
-                  <td>
-                    <span className="ds-strong">{r.label}</span>
-                    {r.is_system && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Système</span>}
-                  </td>
-                  <td>{r.is_system ? '—' : baseRoleLabel(roles, r.base_role)}</td>
-                  <td className="ds-num">{r.code === 'admin' ? 'Tous' : r.module_count}</td>
-                  <td className="ds-num">{r.user_count}</td>
-                  <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Actif' : 'Désactivé'} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataPanel>
-      )}
-      {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)}
-        onDuplicate={() => { setDuplicateOf(current); setCreating(false); }} />}
+      <FilterChips label="Origine" value={filter} onChange={k => setFilter(k as OriginFilter)} chips={[
+        { key: '', label: 'Tous', count: roles.filter(r => r.is_active).length },
+        { key: 'system', label: 'Système', count: count('system') },
+        { key: 'custom', label: 'Personnalisés', count: count('custom') },
+        { key: 'template', label: 'Modèles du secteur', count: count('template') },
+        { key: 'inactive', label: 'Désactivés', count: count('inactive') },
+      ]} />
+      <Toolbar>
+        <SearchBar value={q} onChange={setQ} placeholder="Rechercher un rôle…" />
+        <span className="ds-grow" />
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" className={view === 'list' ? 'active' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}>Liste</button>
+          <button type="button" className={view === 'compare' ? 'active' : ''} aria-pressed={view === 'compare'} onClick={() => setView('compare')}>Comparer</button>
+        </div>
+      </Toolbar>
+      {isLoading ? <LoadingState /> : isError ? <DataPanel label="Rôles"><ErrorState bare error={error} onRetry={() => void refetch()} /></DataPanel>
+        : view === 'compare' ? <CompareRoles roles={roles.filter(r => r.is_active)} />
+        : (
+          <DataPanel label="Rôles" footer={<TableFooter note={`${rows.length} rôle${rows.length > 1 ? 's' : ''}${empty ? ` · ${empty} sans titulaire` : ''}`} />}>
+            {rows.length === 0 ? <NoResultState onReset={() => { setQ(''); setFilter(''); }} /> : (
+              <div className="ds-scroll">
+                <table className="odoo-table">
+                  <thead><tr><th>Rôle</th><th>Origine</th><th>Rôle de base</th><th className="ds-num">Comptes</th><th className="ds-num">Modules</th><th>2FA</th><th>Statut</th><th className="ds-actions" aria-label="Actions" /></tr></thead>
+                  <tbody>
+                    {rows.map(r => {
+                      const o = ORIGIN[originOf(r)];
+                      return (
+                        <tr key={r.code} onClick={() => open(r.code)} style={{ cursor: 'pointer' }}>
+                          <td>
+                            <span className="ds-strong">{r.label}</span>
+                            {r.description && <span className="usr-sub">{r.description}</span>}
+                          </td>
+                          <td><span className={`kl-tag ${o.tag}`}>{o.label}</span></td>
+                          <td>{r.is_system ? <span style={{ color: 'var(--ds-muted)' }}>—</span> : baseLabel(r.base_role)}</td>
+                          <td className="ds-num">{r.user_count}{r.inactive_user_count ? <span className="usr-sub" title="Comptes désactivés qui gardent ce rôle">+{r.inactive_user_count} désactivé{r.inactive_user_count > 1 ? 's' : ''}</span> : null}</td>
+                          <td className="ds-num">{r.code === 'admin' ? 'Tous' : r.module_count}</td>
+                          <td>{mfa?.requiredRoles?.includes(r.code) ? <span className="kl-tag g">Exigée</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                          <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Actif' : 'Désactivé'} /></td>
+                          <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(r.code)} aria-label={`Ouvrir le rôle ${r.label}`}>Ouvrir</button>
+                            <RowMenu label={`Autres actions pour ${r.label}`} items={[
+                              { label: 'Ouvrir la fiche', icon: FolderOpen, onSelect: () => open(r.code) },
+                              ...(r.code !== 'admin' ? [{ label: 'Dupliquer', icon: Copy, onSelect: () => setCreating({ copyOf: r }) }] : []),
+                            ]} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </DataPanel>
+        )}
+      {creating && <NewRoleModal roles={roles} copyOf={creating.copyOf} onClose={() => setCreating(null)} onCreated={code => { setCreating(null); open(code); }} />}
     </div>
+  );
+}
+
+/* ── Comparaison de deux à quatre rôles ── */
+function CompareRoles({ roles }: { roles: RoleRow[] }) {
+  const initial = roles.filter(r => r.code !== 'admin').sort((a, b) => b.user_count - a.user_count).slice(0, 3).map(r => r.code);
+  const [picked, setPicked] = useState<string[]>(initial);
+  const { data: sector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
+  const active = new Set(sector?.current?.modules ?? []);
+  const toggle = (c: string) => setPicked(p => (p.includes(c) ? p.filter(x => x !== c) : p.length >= 4 ? p : [...p, c]));
+  const perms = useQueries({ queries: picked.map(c => ({ queryKey: ['role-permissions', c], queryFn: () => rolesApi.permissions(c), enabled: c !== 'admin' })) });
+  const profiles = useQueries({ queries: picked.map(c => ({ queryKey: ['role-profile', c], queryFn: () => rolesApi.profile(c) })) });
+  const label = (c: string) => roles.find(r => r.code === c)?.label ?? c;
+  const cell = (i: number, mod: string) => (picked[i] === 'admin' ? 'Complet' : accessSummary(permOf(perms[i]?.data as RolePermission[] | undefined, mod)));
+  const modules = ROLE_MODULES.filter(m => (active.size === 0 || active.has(m)) && picked.some((_, i) => cell(i, m)));
+  const prof = (i: number) => profiles[i]?.data as RoleProfile | undefined;
+  const docTypes = [...new Set(picked.flatMap((_, i) => prof(i)?.approvalLimits.map(l => l.documentType) ?? []))];
+  const docLabel = (d: string) => (APPROVAL_DOC_TYPES as Record<string, { label: string }>)[d]?.label ?? d;
+  const muted = <span style={{ color: 'var(--ds-muted)' }}>—</span>;
+  const loading = perms.some(q => q.isLoading) || profiles.some(q => q.isLoading);
+
+  return (
+    <DataPanel label="Comparer des rôles" footer={<TableFooter note="Les écarts entre rôles se lisent ligne par ligne." />}>
+      <div className="usr-pad" style={{ paddingBottom: 0 }}>
+        <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Choisissez de deux à quatre rôles.</div>
+        <div className="prj-chips" role="group" aria-label="Rôles comparés">
+          {roles.map(r => {
+            const on = picked.includes(r.code);
+            return (
+              <button key={r.code} type="button" aria-pressed={on} disabled={!on && picked.length >= 4}
+                className={`prj-chip${on ? ' active' : ''}`} onClick={() => toggle(r.code)}>
+                {on && <Check size={13} aria-hidden="true" />} {r.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {picked.length < 2 ? <div className="usr-pad"><Alert tone="info">Choisissez au moins deux rôles.</Alert></div>
+        : loading ? <LoadingState /> : (
+          <div className="ds-scroll">
+            <table className="odoo-table">
+              <thead><tr><th>Module</th>{picked.map(c => <th key={c}>{label(c)}</th>)}</tr></thead>
+              <tbody>
+                {modules.map(m => (
+                  <tr key={m}>
+                    <td className="ds-strong">{MODULE_LABELS[m as AppModule] ?? m}</td>
+                    {picked.map((c, i) => <td key={c}>{cell(i, m) ?? muted}</td>)}
+                  </tr>
+                ))}
+                <tr className="ds-group"><td colSpan={picked.length + 1}><b>Contrôles</b></td></tr>
+                <tr>
+                  <td className="ds-strong">Double authentification</td>
+                  {picked.map((c, i) => <td key={c}>{prof(i)?.mfaRequired ? <span className="kl-tag g">Exigée</span> : <span style={{ color: 'var(--ds-muted)' }}>Non exigée</span>}</td>)}
+                </tr>
+                {docTypes.map(d => (
+                  <tr key={d}>
+                    <td className="ds-strong">Plafond {docLabel(d).toLowerCase()}</td>
+                    {picked.map((c, i) => {
+                      const l = prof(i)?.approvalLimits.find(x => x.documentType === d);
+                      return <td key={c} className="ds-num" style={{ textAlign: 'left' }}>{l ? `${l.maxAmount.toLocaleString('fr-FR')} ${currencySymbol()}` : muted}</td>;
+                    })}
+                  </tr>
+                ))}
+                <tr>
+                  <td className="ds-strong">Incompatible avec</td>
+                  {picked.map((c, i) => {
+                    const inc = prof(i)?.sod.incompatibleWith ?? [];
+                    return <td key={c}>{inc.length ? inc.map(x => x.label).join(', ') : muted}</td>;
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+    </DataPanel>
+  );
+}
+
+/* ── Nouveau rôle : depuis un modèle du secteur, en copiant un rôle, ou vide ── */
+type Start = 'template' | 'copy' | 'empty';
+export function NewRoleModal({ roles, copyOf, onClose, onCreated }: { roles: RoleRow[]; copyOf?: RoleRow; onClose: () => void; onCreated: (code: string) => void }) {
+  const queryClient = useQueryClient();
+  const { data: templates = [], isLoading: tplLoading } = useQuery({ queryKey: ['role-templates'], queryFn: rolesApi.templates, retry: false });
+  const [start, setStart] = useState<Start>('copy');
+  const [label, setLabel] = useState(copyOf ? `${copyOf.label} (copie)` : '');
+  const [template, setTemplate] = useState('');
+  const [copyFrom, setCopyFrom] = useState(copyOf && copyOf.code !== 'admin' ? copyOf.code : '');
+  const [baseRole, setBaseRole] = useState(copyOf && copyOf.base_role !== 'admin' ? copyOf.base_role : 'cashier');
+  const tpl = templates.find(t => t.code === template);
+  // Premier affichage sans copie demandée : le modèle du secteur est proposé s'il y en a.
+  useEffect(() => { if (!copyOf && templates.length && !template) { setStart('template'); setTemplate(templates[0].code); setLabel(l => l || templates[0].label); } }, [templates.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const copySource = roles.find(r => r.code === copyFrom);
+  const create = useMutation({
+    mutationFn: () => rolesApi.create(start === 'template'
+      ? { label: label.trim(), template }
+      : start === 'empty' ? { label: label.trim(), baseRole, empty: true }
+      : { label: label.trim(), baseRole, copyFrom: copyFrom || undefined }),
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['role-templates'] });
+      notify.success(`Rôle « ${r.label} » créé`);
+      onCreated(r.code);
+    },
+    onError: (err) => notify.error(errorMessage(err, 'Création refusée')),
+  });
+  const invalid = label.trim().length < 2 ? 'Libellé requis (2 caractères au moins)'
+    : start === 'template' && !template ? 'Choisissez un modèle' : null;
+  const card = (k: Start, title: string, text: string, disabled = false) => (
+    <button type="button" className={`usr-card${start === k ? ' on' : ''}`} aria-pressed={start === k} disabled={disabled}
+      style={disabled ? { opacity: .55, cursor: 'not-allowed' } : undefined}
+      onClick={() => { setStart(k); if (k === 'template' && tpl) setLabel(tpl.label); }}>
+      <b>{title}{start === k && <Check size={15} aria-hidden="true" style={{ marginLeft: 'auto', color: 'var(--ds-accent)' }} />}</b>
+      <small>{text}</small>
+    </button>
+  );
+
+  return (
+    <Modal title="Nouveau rôle" subtitle="Les droits se règlent ensuite dans la fiche du rôle." onClose={onClose} width={680} locked={create.isPending}
+      footer={(
+        <div className="ds-form-foot">
+          <span className="ds-grow" style={{ color: 'var(--ds-muted)', fontSize: 13 }}>{invalid ?? ''}</span>
+          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+          <button type="button" className="odoo-btn-primary" disabled={!!invalid || create.isPending} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>
+            {create.isPending ? 'Création…' : 'Créer le rôle'}
+          </button>
+        </div>
+      )}>
+      <div style={{ display: 'grid', gap: 'var(--ds-s4)' }}>
+        <FormField label="Libellé" htmlFor="nr-label" required>
+          <input id="nr-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} autoFocus />
+        </FormField>
+        <fieldset className="ds-fieldset">
+          <legend>Partir de</legend>
+          <div className="usr-cards">
+            {card('template', 'Un modèle du secteur', tplLoading ? 'Chargement…' : templates.length ? templates.slice(0, 3).map(t => t.label).join(', ') + (templates.length > 3 ? '…' : '') : 'Tous les modèles du secteur existent déjà.', !templates.length)}
+            {card('copy', 'Copier un rôle', 'Reprend tous ses droits, sauf Administrateur.')}
+            {card('empty', 'Rôle vide', 'Aucun droit au départ.')}
+          </div>
+        </fieldset>
+        <div className="ds-form-grid">
+          {start === 'template' && (
+            <FormField label="Modèle" htmlFor="nr-tpl" hint={tpl ? `${tpl.description ?? ''}${tpl.homeRoute && tpl.homeRoute !== '/' ? ` · page d'accueil ${tpl.homeRoute}` : ''}` : undefined}>
+              <select id="nr-tpl" className="ds-input" value={template} onChange={e => { setTemplate(e.target.value); const t = templates.find(x => x.code === e.target.value); if (t) setLabel(t.label); }}>
+                {templates.map(t => <option key={t.code} value={t.code}>{t.label}{t.sectorCode ? '' : ' (commun à tous les secteurs)'}</option>)}
+              </select>
+            </FormField>
+          )}
+          {start === 'copy' && (
+            <FormField label="Rôle à copier" htmlFor="nr-copy">
+              <select id="nr-copy" className="ds-input" value={copyFrom} onChange={e => {
+                setCopyFrom(e.target.value);
+                const src = roles.find(r => r.code === e.target.value);
+                if (src && src.base_role !== 'admin') setBaseRole(src.base_role);
+              }}>
+                <option value="">Son rôle de base</option>
+                {roles.filter(r => r.code !== 'admin' && r.is_active).map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+              </select>
+            </FormField>
+          )}
+          {start !== 'template' && (
+            <FormField label="Rôle de base" htmlFor="nr-base" required hint="Fixe ce que l'application montre et filtre (écrans de caisse, magasin…).">
+              <select id="nr-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
+                {baseRoleChoices(roles, baseRole).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+              </select>
+            </FormField>
+          )}
+        </div>
+        {start === 'copy' && copySource && copySource.base_role !== baseRole && (
+          <Alert tone="info">Les droits sont copiés de « {copySource.label} » ; le rôle de base choisi fixe seulement les écrans et filtres.</Alert>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -157,203 +358,3 @@ export function SecurityModePanel() {
   );
 }
 
-function CreateRoleForm({ roles, onDone, from }: { roles: RoleRow[]; onDone: (code?: string) => void; from?: RoleRow | null }) {
-  const queryClient = useQueryClient();
-  const [label, setLabel] = useState(from ? `${from.label} (copie)` : '');
-  const [baseRole, setBaseRole] = useState(from && from.base_role !== 'admin' ? from.base_role : 'cashier');
-  const [copyFrom, setCopyFrom] = useState(from && from.code !== 'admin' ? from.code : '');
-  const create = useMutation({
-    mutationFn: () => rolesApi.create({ label, baseRole, copyFrom: copyFrom || undefined }),
-    onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ['roles'] }); notify.success(`Rôle « ${r.label} » créé`); onDone(r.code); },
-    onError: (err) => notify.error(errorMessage(err, 'Création refusée')),
-  });
-  return (
-    <section className="ds-panel" aria-label="Nouveau rôle" style={{ padding: 16, display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div style={{ flex: '1 1 220px' }}>
-          <FormField label="Libellé" htmlFor="role-label" required hint="2 caractères au moins.">
-            <input id="role-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} />
-          </FormField>
-        </div>
-        <div style={{ width: 190 }}>
-          <FormField label="Rôle de base" htmlFor="role-base" required>
-            <select id="role-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
-              {baseRoleChoices(roles, baseRole).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
-            </select>
-          </FormField>
-        </div>
-        <div style={{ width: 210 }}>
-          <FormField label="Copier les droits de" htmlFor="role-copy">
-            <select id="role-copy" className="ds-input" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
-              <option value="">Son rôle de base</option>
-              {roles.filter(r => r.code !== 'admin').map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
-            </select>
-          </FormField>
-        </div>
-      </div>
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
-        Le rôle de base fixe ce que l'application montre et filtre (écrans de caisse, catégories des chefs, magasin).
-        Les droits par module se règlent ensuite dans le tableau du rôle.
-      </p>
-      <FormFooter onCancel={() => onDone()} submitLabel="Créer le rôle" busy={create.isPending}
-        disabled={label.trim().length < 2} onSubmit={() => create.mutate()} />
-    </section>
-  );
-}
-
-function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted: () => void; onDuplicate: () => void }) {
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const { data: saved, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['role-permissions', role.code], queryFn: () => rolesApi.permissions(role.code), enabled: role.code !== 'admin',
-  });
-  const [perms, setPerms] = useState<Record<string, RolePermission>>({});
-  useEffect(() => {
-    if (!saved) return;
-    const m: Record<string, RolePermission> = {};
-    for (const mod of MODULES) {
-      const s = saved.find(p => p.module === mod || ((shared as unknown as { MODULE_ALIASES?: Record<string, string[]> }).MODULE_ALIASES?.[mod] ?? []).includes(p.module));
-      m[mod] = {
-        module: mod,
-        canView: !!s?.canView, canCreate: !!s?.canCreate, canEdit: !!s?.canEdit, canDelete: !!s?.canDelete,
-        verbs: s?.verbs ?? [], scope: (s?.scope as DataScope) ?? 'store',
-        config: s?.config ?? {},
-      };
-    }
-    setPerms(m);
-  }, [saved]);
-
-  const save = useMutation({
-    mutationFn: () => rolesApi.setPermissions(role.code, Object.values(perms).filter(p => p.canView)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['role-permissions', role.code] });
-      queryClient.invalidateQueries({ queryKey: ['roles'] });
-      notify.success(`Droits du rôle « ${role.label} » enregistrés`);
-    },
-    onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
-  });
-  const toggleActive = useMutation({
-    mutationFn: () => rolesApi.update(role.code, { isActive: !role.is_active }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
-    onError: (err) => notify.error(errorMessage(err, 'Erreur')),
-  });
-  const remove = useMutation({
-    mutationFn: () => rolesApi.remove(role.code),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['roles'] }); notify.success('Rôle supprimé'); onDeleted(); },
-    onError: (err) => notify.error(errorMessage(err, 'Suppression refusée')),
-  });
-
-  const toggle = (mod: string, f: Flag) => {
-    const p = { ...perms[mod], [f]: !perms[mod][f] };
-    if (f === 'canView' && !p.canView) { p.canCreate = false; p.canEdit = false; p.canDelete = false; p.verbs = []; }
-    if (f !== 'canView' && p[f]) p.canView = true;
-    setPerms({ ...perms, [mod]: p });
-  };
-  const setScope = (mod: string, scope: DataScope) => setPerms({ ...perms, [mod]: { ...perms[mod], scope } });
-  const toggleVerb = (mod: string, verb: BusinessVerb) => {
-    const cur = perms[mod].verbs ?? [];
-    const verbs = cur.includes(verb) ? cur.filter(v => v !== verb) : [...cur, verb];
-    setPerms({ ...perms, [mod]: { ...perms[mod], verbs } });
-  };
-  const verbsFor = (mod: string) => (MODULE_VERBS[mod as AppModule] ?? []) as BusinessVerb[];
-  const sameSet = (a: string[] = [], b: string[] = []) => [...a].sort().join(',') === [...b].sort().join(',');
-  const dirty = !!saved && MODULES.some(mod => {
-    const s = saved.find(p => p.module === mod);
-    const c = perms[mod];
-    if (!c) return false;
-    if (ACTIONS.some(([f]) => (s?.[f] ?? false) !== c[f])) return true;
-    if (((c.scope as string) ?? 'store') !== ((s?.scope as string) ?? 'store')) return true;
-    return !sameSet(c.verbs, s?.verbs);
-  });
-  const chip = (on: boolean): React.CSSProperties => ({
-    background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: on ? 600 : undefined,
-    borderColor: on ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.2rem 0.55rem', fontSize: 12,
-  });
-
-  if (role.code === 'admin') {
-    return <StatusBanner tone="neutral" icon={Lock} title="Administrateur">L'administrateur a tous les droits ; son rôle ne se modifie pas.</StatusBanner>;
-  }
-  return (
-    <section className="ds-panel" aria-label={`Droits du rôle ${role.label}`} style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <h3 className="ds-subhead">Droits du rôle « {role.label} »</h3>
-          <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
-            S'appliquent aux {role.user_count} utilisateur(s) du rôle qui n'ont pas de droits propres. Effet sous 30 secondes.
-          </div>
-        </div>
-        {role.code !== 'admin' && role.is_system && (
-          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onDuplicate}>Dupliquer</button>
-        )}
-        {!role.is_system && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onDuplicate}>Dupliquer</button>
-            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => toggleActive.mutate()}>{role.is_active ? 'Désactiver' : 'Réactiver'}</button>
-            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={role.user_count + (role.inactive_user_count ?? 0) > 0} title={role.user_count + (role.inactive_user_count ?? 0) > 0 ? `Rôle encore attribué à ${role.user_count + (role.inactive_user_count ?? 0)} compte(s), désactivés compris` : undefined}
-              onClick={async () => { if (await confirm(`Supprimer le rôle « ${role.label} » ?`, { title: 'Supprimer le rôle', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}>
-              <Trash2 size={13} aria-hidden="true" /> Supprimer
-            </button>
-          </div>
-        )}
-      </div>
-      {isError ? <ErrorState error={error} onRetry={() => void refetch()} /> : isLoading || !Object.keys(perms).length ? <LoadingPanel /> : (
-        <DataPanel>
-          <table className="odoo-table">
-            <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 90 }}>{l}</th>)}</tr></thead>
-            <tbody>
-              {MODULES.map(mod => {
-                const p = perms[mod];
-                const verbs = verbsFor(mod);
-                return [
-                  <tr key={mod}>
-                    <td className={p?.canView ? 'ds-strong' : undefined}>{MODULE_LABELS[mod] ?? mod}</td>
-                    {ACTIONS.map(([f, l]) => (
-                      <td key={f} style={{ textAlign: 'center' }}>
-                        <input type="checkbox" id={`rp-${role.code}-${mod}-${f}`} aria-label={`${l} ${MODULE_LABELS[mod] ?? mod}`}
-                          checked={!!p?.[f]} onChange={() => toggle(mod, f)} />
-                      </td>
-                    ))}
-                  </tr>,
-                  p?.canView && (
-                    <tr key={`${mod}-scope`}>
-                      <td colSpan={1 + ACTIONS.length} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
-                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 16 }}>
-                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
-                            <span style={{ fontWeight: 600 }}>Portée des données</span>
-                            <select className="ds-input sm" style={{ width: 'auto' }}
-                              value={(p.scope as DataScope) ?? 'store'} onChange={e => setScope(mod, e.target.value as DataScope)}>
-                              {DATA_SCOPES.map(s => <option key={s} value={s}>{DATA_SCOPE_LABELS[s]}</option>)}
-                            </select>
-                          </label>
-                          {verbs.length > 0 && (
-                            <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 12, fontWeight: 600 }}>Actions métier</span>
-                              {verbs.map(v => {
-                                const on = (p.verbs ?? []).includes(v);
-                                return (
-                                  <button key={v} type="button" className="odoo-filter-chip" style={chip(on)}
-                                    aria-pressed={on} onClick={() => toggleVerb(mod, v)}>
-                                    {on && <Check size={11} />} {BUSINESS_VERB_LABELS[v]}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ),
-                ];
-              })}
-            </tbody>
-          </table>
-        </DataPanel>
-      )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>
-          {save.isPending ? 'Enregistrement…' : 'Enregistrer les droits'}
-        </button>
-      </div>
-    </section>
-  );
-}

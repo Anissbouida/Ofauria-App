@@ -12,6 +12,8 @@ export interface User {
   mustChangePassword?: boolean;
   /** G6-05 : langue de l'interface (mig 610) ; null = langue par défaut de la société. */
   locale?: 'fr' | 'ar' | 'en' | null;
+  /** Page d'accueil du rôle principal (refonte Utilisateurs, lot 4) ; null = celle du secteur. */
+  homeRoute?: string | null;
   createdAt: string;
   updatedAt: string;
 }

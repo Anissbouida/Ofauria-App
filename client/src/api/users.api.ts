@@ -61,6 +61,32 @@ export interface RoleRow {
   inactive_user_count?: number;
   user_count: number;
   module_count: number;
+  /** Lot 4 : système, modèle du secteur (même code qu'un modèle) ou personnalisé. */
+  origin?: 'system' | 'template' | 'custom';
+  /** Lot 4 (mig 703) : page d'accueil des comptes dont c'est le rôle principal. */
+  home_route?: string | null;
+  /** Lot 4 : nombre de permissions détaillées détenues. */
+  action_key_count?: number;
+  created_at?: string;
+}
+/** Modèle du secteur proposé à la création d'un rôle (lot 4). */
+export interface RoleTemplateOption {
+  code: string; label: string; description: string | null; baseRole: string; sectorCode: string | null; homeRoute: string | null;
+}
+/** Fiche d'un rôle (lot 4) : membres, délégations, contrôles, rattachements. */
+export interface RoleProfile {
+  origin: 'system' | 'template' | 'custom';
+  template: { code: string; label: string; sectorCode: string | null; homeRoute: string | null } | null;
+  members: { id: string; name: string; email: string; isActive: boolean; storeId: string | null; as: 'primary' | 'secondary'; since: string | null }[];
+  delegations: { id: number; fromName: string; toId: string; toName: string; startsAt: string; endsAt: string; reason: string | null; status: 'active' | 'scheduled' }[];
+  actionKeys: string[];
+  mfaRequired: boolean;
+  approvalLimits: { documentType: string; maxAmount: number; currency: string }[];
+  sod: { alone: { code: string; label: string; severity: string }[]; incompatibleWith: { code: string; label: string; rules: string[] }[]; conflictAccounts: number };
+  approvalSteps: { ruleCode: string; ruleLabel: string; docType: string; enabled: boolean; stepOrder: number }[];
+  workshops: { code: string; label: string }[];
+  pilots: string[];
+  screens: { screenKey: string; publishedAt: string | null }[];
 }
 export interface RolePermission {
   module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
@@ -141,14 +167,18 @@ export const accessReviewApi = {
 
 export const rolesApi = {
   list: () => api.get('/users/roles').then(r => r.data.data) as Promise<RoleRow[]>,
-  create: (data: { label: string; baseRole: string; copyFrom?: string; description?: string }) =>
+  create: (data: { label: string; baseRole?: string; copyFrom?: string; description?: string; template?: string; empty?: boolean }) =>
     api.post('/users/roles', data).then(r => r.data.data) as Promise<RoleRow>,
-  update: (code: string, data: Partial<{ label: string; description: string; baseRole: string; isActive: boolean }>) =>
+  update: (code: string, data: Partial<{ label: string; description: string | null; baseRole: string; isActive: boolean; homeRoute: string | null }>) =>
     api.put(`/users/roles/${code}`, data).then(r => r.data.data),
+  /** Lot 4 : modèles du secteur proposés à la création, fiche d'un rôle. */
+  templates: () => api.get('/users/roles/templates').then(r => r.data.data) as Promise<RoleTemplateOption[]>,
+  profile: (code: string) => api.get(`/users/roles/${code}/profile`).then(r => r.data.data) as Promise<RoleProfile>,
   remove: (code: string) => api.delete(`/users/roles/${code}`),
   permissions: (code: string) => api.get(`/users/roles/${code}/permissions`).then(r => r.data.data) as Promise<RolePermission[]>,
-  setPermissions: (code: string, permissions: RolePermission[]) =>
-    api.put(`/users/roles/${code}/permissions`, { permissions }).then(r => r.data.data),
+  /** keys : permissions détaillées enregistrées en même temps (lot 4). */
+  setPermissions: (code: string, permissions: RolePermission[], keys?: string[]) =>
+    api.put(`/users/roles/${code}/permissions`, keys ? { permissions, keys } : { permissions }).then(r => r.data.data),
   /** Permissions par action (M2-07) : référentiel + clés détenues par rôle. */
   actionMatrix: () => api.get('/users/roles/action-permissions').then(r => r.data.data) as Promise<{
     keys: { key: string; module: string; label: string }[]; byRole: Record<string, string[]>;

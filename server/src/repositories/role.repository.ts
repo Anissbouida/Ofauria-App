@@ -31,8 +31,19 @@ export const roleRepository = {
       ? `(SELECT count(DISTINCT u.id)::int FROM users u LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_code = r.code
             WHERE NOT u.is_active AND (u.role = r.code OR ur.role_code IS NOT NULL))`
       : `(SELECT count(*)::int FROM users u WHERE u.role = r.code AND NOT u.is_active)`;
+    // Lot 4 de la refonte Utilisateurs : origine (système, modèle du secteur, personnalisé),
+    // page d'accueil (mig 703) et nombre de permissions détaillées.
+    const has = async (sql: string) => !!(await db.query(sql)).rows[0]?.ok;
+    const hasTemplates = await has(`SELECT to_regclass('public.sector_role_templates') IS NOT NULL AS ok`);
+    const hasHome = await has(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'roles' AND column_name = 'home_route') AS ok`);
+    const hasKeys = await has(`SELECT to_regclass('public.role_action_permissions') IS NOT NULL AS ok`);
+    const origin = hasTemplates
+      ? `CASE WHEN r.is_system THEN 'system' WHEN EXISTS (SELECT 1 FROM sector_role_templates t WHERE t.code = r.code) THEN 'template' ELSE 'custom' END`
+      : `CASE WHEN r.is_system THEN 'system' ELSE 'custom' END`;
     const r = await db.query(
-      `SELECT r.code, r.label, r.description, r.base_role, r.is_system, r.is_active, r.updated_at,
+      `SELECT r.code, r.label, r.description, r.base_role, r.is_system, r.is_active, r.updated_at, r.created_at,
+              ${origin} AS origin, ${hasHome ? 'r.home_route' : 'NULL::text AS home_route'},
+              ${hasKeys ? '(SELECT count(*)::int FROM role_action_permissions k WHERE k.role_code = r.code)' : '0'} AS action_key_count,
               ${userCount} AS user_count, ${inactiveCount} AS inactive_user_count,
               (SELECT count(*)::int FROM role_permissions p WHERE p.role_code = r.code AND p.can_view) AS module_count,
               -- Mig 699 : rôle propre à un autre secteur (Viennoiserie, Beldi…) : masqué des choix,
@@ -64,8 +75,11 @@ export const roleRepository = {
     return r.rows;
   },
 
-  /** Rôle créé : droits copiés depuis un rôle existant (par défaut son rôle de base). */
-  async create(data: { code: string; label: string; description?: string | null; baseRole: string; copyFrom?: string }, actorId?: string) {
+  /**
+   * Rôle créé : droits copiés depuis un rôle existant (par défaut son rôle de base), ou aucun
+   * droit (copyFrom: null — « Rôle vide », refonte Utilisateurs lot 4).
+   */
+  async create(data: { code: string; label: string; description?: string | null; baseRole: string; copyFrom?: string | null }, actorId?: string) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -75,18 +89,19 @@ export const roleRepository = {
          VALUES ($1, $2, $3, $4, false, $5) RETURNING *`,
         [data.code, data.label, data.description ?? null, data.baseRole, actorId ?? null],
       );
-      await client.query(
+      const source = data.copyFrom === null ? null : (data.copyFrom ?? data.baseRole);
+      if (source) await client.query(
         `INSERT INTO role_permissions (role_code, module, can_view, can_create, can_edit, can_delete, config)
          SELECT $1, module, can_view, can_create, can_edit, can_delete, config FROM role_permissions WHERE role_code = $2`,
-        [data.code, data.copyFrom ?? data.baseRole],
+        [data.code, source],
       );
       // Permissions par action (M2-04, mig 547) : mêmes droits que le rôle copié — sans
       // elles, le nouveau rôle perdrait les routes que son rôle de base ouvre.
-      if ((await client.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
+      if (source && (await client.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
         await client.query(
           `INSERT INTO role_action_permissions (role_code, permission_key, granted_by)
            SELECT $1, permission_key, $3 FROM role_action_permissions WHERE role_code = $2 ON CONFLICT DO NOTHING`,
-          [data.code, data.copyFrom ?? data.baseRole, actorId ?? null]);
+          [data.code, source, actorId ?? null]);
       }
       await client.query('COMMIT');
       invalidatePermissionCaches();
@@ -99,7 +114,7 @@ export const roleRepository = {
     }
   },
 
-  async update(code: string, data: { label?: string; description?: string | null; baseRole?: string; isActive?: boolean }, actorId?: string) {
+  async update(code: string, data: { label?: string; description?: string | null; baseRole?: string; isActive?: boolean; homeRoute?: string | null }, actorId?: string) {
     const fields: string[] = [];
     const values: unknown[] = [code];
     const set = (col: string, v: unknown) => { values.push(v); fields.push(`${col} = $${values.length}`); };
@@ -107,6 +122,7 @@ export const roleRepository = {
     if (data.description !== undefined) set('description', data.description);
     if (data.baseRole !== undefined) set('base_role', data.baseRole);
     if (data.isActive !== undefined) set('is_active', data.isActive);
+    if (data.homeRoute !== undefined) set('home_route', data.homeRoute);
     if (!fields.length) return this.find(code);
     set('updated_by', actorId ?? null);
     const r = await auditedQuery(actorId,

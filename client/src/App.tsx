@@ -62,6 +62,7 @@ import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import MaintenancePage from './features/maintenance/MaintenancePage';
 import UsersPage from './features/users/UsersPage';
 import UserRecordPage from './features/users/UserRecordPage';
+import RoleRecordPage from './features/users/RoleRecordPage';
 import AcceptInvitationPage from './features/auth/AcceptInvitationPage';
 import SettingsPage from './features/settings/SettingsPage';
 import ConfigurationWizard from './features/settings/ConfigurationWizard';
@@ -177,6 +178,7 @@ export default function App() {
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/employees/:id" element={<EmployeeDetailPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/users/roles/:code" element={<RoleRecordPage />} />
               <Route path="/users/:id" element={<UserRecordPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/purchasing" element={<PurchasingPage />} />

@@ -22,5 +22,10 @@ describe('Préférences d’interface',()=>{
     expect(workspaceHomeRoute('sector','/sales',['/sales'])).toBe('/sales');
     expect(workspaceHomeRoute('sales',null,['/sales'],true)).toBeNull();
     expect(workspaceHomeRoute('direction','/sales',['/sales'])).toBeNull();
+    // Lot 4 de la refonte Utilisateurs : la page d'accueil du rôle passe avant celle du secteur,
+    // si elle est visible ; un espace de travail choisi passe avant les deux.
+    expect(workspaceHomeRoute('sector','/sales',['/sales','/purchasing'],false,'/purchasing')).toBe('/purchasing');
+    expect(workspaceHomeRoute('sector','/sales',['/sales'],false,'/purchasing')).toBe('/sales');
+    expect(workspaceHomeRoute('production','/sales',['/sales','/production','/purchasing'],false,'/purchasing')).toBe('/production');
   });
 });

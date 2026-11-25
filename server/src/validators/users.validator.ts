@@ -34,15 +34,22 @@ export const updateUserSchema = body({
   isActive: bool, pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),
 });
 /* Droits d'un utilisateur / d'un rôle — normalizePermissions vérifie la forme. */
-export const permissionsSchema = body({ permissions: any });
+export const permissionsSchema = body({
+  permissions: any,
+  // Lot 4 : permissions détaillées enregistrées avec les niveaux d'accès (remplace celles du rôle).
+  keys: z.array(z.string().min(3).max(120)).max(2000).optional(),
+});
 
 /* Rôles éditables — role.controller.create / update. */
 export const createRoleSchema = body({
   label: z.string().max(200), code: z.string().max(60).nullish(), baseRole: z.string().max(40),
   copyFrom: z.string().max(60).nullish(), description: txt(2000),
+  // Lot 4 : partir d'un modèle du secteur, ou d'un rôle vide.
+  template: z.string().max(30).nullish(), empty: z.boolean().optional(),
 });
 export const updateRoleSchema = body({
   label: z.string().max(200).optional(), description: txt(2000), baseRole: z.string().max(40).optional(), isActive: bool,
+  homeRoute: z.string().max(80).nullish(),
 });
 
 /* Modes de contrôle (droits, séparation des tâches) : off / log / enforce. */

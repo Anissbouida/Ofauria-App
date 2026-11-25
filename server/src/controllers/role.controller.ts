@@ -5,6 +5,18 @@ import { invalidateEnforcementMode, invalidateRolesCache } from '../services/acc
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
 import { PERMISSIONS } from '@ofauria/shared';
 import { permissionsOfRole, permissionsOfUser, setRolePermissions } from '../services/permissions.js';
+import { roleProfile } from '../services/role-profile.js';
+import { createRoleFromTemplate, roleTemplates } from '../services/wizard/role-templates.js';
+import { db, withTransaction } from '../config/database.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
+
+const DEFS = PERMISSIONS as Record<string, unknown>;
+/** Page d'accueil d'un rôle : route interne, « / » = accueil général (null). */
+function homeRouteOf(v: unknown): string | null | 'invalid' {
+  if (v === null || v === '' || v === '/') return null;
+  const s = String(v).trim();
+  return /^\/[a-z0-9/_-]*$/.test(s) && s.length <= 80 ? s : 'invalid';
+}
 
 /**
  * Rôle de base valide : tout rôle système actif, sauf l'administrateur (mig 637 : le contrôle
@@ -41,16 +53,52 @@ export const roleController = {
     });
   },
 
+  /** Modèles du secteur proposés à la création d'un rôle (lot 4) : du secteur actif (ou communs),
+   *  dont les modules requis sont actifs, et pas encore créés. */
+  async templates(_req: AuthRequest, res: Response) {
+    const [all, act] = await Promise.all([roleTemplates(), sectorRepository.activation()]);
+    let lineage: string[] = [];
+    try { lineage = (await db.query(`SELECT fn_active_sector_lineage() AS l`)).rows[0]?.l ?? []; } catch { /* mig 698 absente */ }
+    const modules = new Set<string>([...act.modules] as string[]);
+    const data = all
+      .filter(t => !t.exists && (!t.sector_code || lineage.includes(t.sector_code)) && t.requires_modules.every(m => modules.has(m)))
+      .map(t => ({ code: t.code, label: t.label, description: t.description, baseRole: t.base_role, sectorCode: t.sector_code, homeRoute: t.home_route }));
+    res.json({ success: true, data });
+  },
+
+  /** Fiche d'un rôle (lot 4) : membres, délégations, contrôles, rattachements, permissions détaillées. */
+  async profile(req: AuthRequest, res: Response) {
+    const role = await roleRepository.find(req.params.code);
+    if (!role) { bad(res, 'Rôle inconnu', 404); return; }
+    res.json({ success: true, data: await roleProfile(role) });
+  },
+
   async create(req: AuthRequest, res: Response) {
     const label = typeof req.body?.label === 'string' ? req.body.label.trim() : '';
     if (label.length < 2 || label.length > 60) { bad(res, 'Libellé requis (2 à 60 caractères)'); return; }
+    // Lot 4 : depuis un modèle du secteur — le code du rôle est celui du modèle.
+    const templateCode = typeof req.body?.template === 'string' ? req.body.template : '';
+    if (templateCode) {
+      const t = (await roleTemplates()).find(x => x.code === templateCode);
+      if (!t) { bad(res, 'Modèle inconnu'); return; }
+      if (await roleRepository.find(t.code)) { bad(res, `Le rôle du modèle « ${t.label} » existe déjà`, 409); return; }
+      const modules = [...(await sectorRepository.activation()).modules] as string[];
+      await withTransaction(async () => {
+        await createRoleFromTemplate(t, modules, req.user?.userId ?? null, label);
+      });
+      invalidateRolesCache();
+      res.status(201).json({ success: true, data: await roleRepository.find(t.code) });
+      return;
+    }
     const code = typeof req.body?.code === 'string' && req.body.code ? req.body.code : slug(label);
     if (!/^[a-z][a-z0-9_]{1,29}$/.test(code)) { bad(res, 'Code invalide : lettres minuscules, chiffres et _'); return; }
     const baseRole = String(req.body?.baseRole ?? '');
     if (!(await isValidBaseRole(baseRole))) { bad(res, 'Rôle de base invalide : choisissez un rôle système actif (administrateur exclu)'); return; }
     if (await roleRepository.find(code)) { bad(res, `Le code « ${code} » existe déjà`, 409); return; }
-    const copyFrom = typeof req.body?.copyFrom === 'string' && req.body.copyFrom ? req.body.copyFrom : baseRole;
-    if (!(await roleRepository.find(copyFrom))) { bad(res, 'Rôle à copier inconnu'); return; }
+    const empty = req.body?.empty === true;
+    const copyFrom = empty ? null : (typeof req.body?.copyFrom === 'string' && req.body.copyFrom ? req.body.copyFrom : baseRole);
+    if (copyFrom === 'admin') { bad(res, 'Les droits de l\'administrateur ne se copient pas'); return; }
+    if (copyFrom && !(await roleRepository.find(copyFrom))) { bad(res, 'Rôle à copier inconnu'); return; }
     const description = typeof req.body?.description === 'string' ? req.body.description.trim().slice(0, 500) || null : null;
     const role = await roleRepository.create({ code, label, description, baseRole, copyFrom }, req.user?.userId);
     invalidateRolesCache();
@@ -60,7 +108,12 @@ export const roleController = {
   async update(req: AuthRequest, res: Response) {
     const role = await roleRepository.find(req.params.code);
     if (!role) { bad(res, 'Rôle inconnu', 404); return; }
-    const data: { label?: string; description?: string | null; baseRole?: string; isActive?: boolean } = {};
+    const data: { label?: string; description?: string | null; baseRole?: string; isActive?: boolean; homeRoute?: string | null } = {};
+    if (req.body?.homeRoute !== undefined) {
+      const home = homeRouteOf(req.body.homeRoute);
+      if (home === 'invalid') { bad(res, 'Page d\'accueil invalide'); return; }
+      data.homeRoute = home;
+    }
     if (req.body?.label !== undefined) {
       const label = String(req.body.label).trim();
       if (label.length < 2 || label.length > 60) { bad(res, 'Libellé requis (2 à 60 caractères)'); return; }
@@ -106,7 +159,14 @@ export const roleController = {
     if (role.code === 'admin') { bad(res, 'L\'administrateur a tous les droits'); return; }
     const perms = normalizePermissions(req.body?.permissions);
     if (typeof perms === 'string') { bad(res, perms); return; }
+    // Lot 4 : permissions détaillées enregistrées en même temps que les niveaux d'accès.
+    const keys = Array.isArray(req.body?.keys) ? [...new Set((req.body.keys as unknown[]).map(String))] : null;
+    if (keys) {
+      const unknown = keys.filter(k => !DEFS[k]);
+      if (unknown.length) { bad(res, `Permission(s) inconnue(s) : ${unknown.slice(0, 5).join(', ')}`); return; }
+    }
     await roleRepository.setPermissions(role.code, perms, req.user?.userId);
+    if (keys) await setRolePermissions(role.code, keys, req.user!.userId);
     const rows = await roleRepository.permissions(role.code);
     res.json({ success: true, data: rows.map((p) => permissionView(p as Parameters<typeof permissionView>[0])) });
   },

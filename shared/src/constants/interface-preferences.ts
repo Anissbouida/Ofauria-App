@@ -18,8 +18,10 @@ export const parseWorkspace=(v:unknown):Workspace|undefined=>WORKSPACES.find(o=>
 export const parseTableDensity=(v:unknown):TableDensity|undefined=>TABLE_DENSITIES.find(o=>o.value===v||o.label===v)?.value;
 
 /** Navigation uniquement vers une entrée déjà filtrée par les droits et modules. */
-export function workspaceHomeRoute(workspace:Workspace,sectorRoute:string|null|undefined,visibleRoutes:readonly string[],fromLauncher=false):string|null{
+/** Accueil : espace de travail choisi par la personne, sinon page d'accueil de son rôle
+ *  principal (refonte Utilisateurs, lot 4), sinon celle du secteur. */
+export function workspaceHomeRoute(workspace:Workspace,sectorRoute:string|null|undefined,visibleRoutes:readonly string[],fromLauncher=false,roleRoute?:string|null):string|null{
   if(fromLauncher)return null;
-  const home=workspace==='sector'?sectorRoute:WORKSPACES.find(w=>w.value===workspace)?.route;
-  return home&&home!=='/'&&visibleRoutes.includes(home)?home:null;
+  const candidates=workspace==='sector'?[roleRoute,sectorRoute]:[WORKSPACES.find(w=>w.value===workspace)?.route];
+  return candidates.find((home):home is string=>!!home&&home!=='/'&&visibleRoutes.includes(home))??null;
 }

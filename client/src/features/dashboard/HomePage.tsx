@@ -31,9 +31,9 @@ export default function HomePage() {
     if(preferences.isLoading)return;
     const visible=visibleNavGroups(hasModule,user?.role).flatMap(g=>g.items.map(item=>item.href));
     // Les préférences ne confèrent jamais de droit ; une route non visible garde l'accueil général.
-    const home=workspaceHomeRoute(preferences.data?.values.workspace??'sector',sector?.current?.home_route,visible,fromLauncher);
+    const home=workspaceHomeRoute(preferences.data?.values.workspace??'sector',sector?.current?.home_route,visible,fromLauncher,user?.homeRoute);
     if(home)navigate(home,{replace:true});
-  },[sector,navigate,fromLauncher,preferences.isLoading,preferences.data?.values.workspace,hasModule,user?.role]);
+  },[sector,navigate,fromLauncher,preferences.isLoading,preferences.data?.values.workspace,hasModule,user?.role,user?.homeRoute]);
 
   const userGroups = visibleNavGroups(hasModule, user?.role);
   const approvalsCount = useApprovalsCount(!!user);

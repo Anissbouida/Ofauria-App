@@ -113,6 +113,42 @@ export function templateActionKeys(baseKeys: readonly string[], rows: RightRow[]
   });
 }
 
+/** Page d'accueil reprise d'un modèle : une route interne (« / » seul = accueil général). */
+export function templateHomeRoute(home: string | null | undefined): string | null {
+  return home && home !== '/' && /^\/[a-z0-9/_-]*$/.test(home) && home.length <= 80 ? home : null;
+}
+
+/**
+ * Crée un rôle depuis un modèle du secteur (assistant de configuration, ou « Nouveau rôle »
+ * de la refonte Utilisateurs, lot 4) dans la transaction ambiante : droits du modèle limités
+ * aux modules retenus, clés d'action reprises du rôle de base pour ces modules seulement,
+ * page d'accueil du modèle. Le code du rôle est celui du modèle (c'est ainsi que l'origine
+ * « Modèle du secteur » se lit). Rend false si le rôle existe déjà.
+ */
+export async function createRoleFromTemplate(t: RoleTemplate, modules: readonly string[], actor: string | null, label?: string): Promise<boolean> {
+  const hasHome = !!(await db.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'roles' AND column_name = 'home_route'`)).rows.length;
+  const created = (await db.query(hasHome
+    ? `INSERT INTO roles (code, label, description, base_role, is_system, updated_by, home_route)
+       VALUES ($1, $2, $3, $4, false, $5, $6) ON CONFLICT (code) DO NOTHING RETURNING code`
+    : `INSERT INTO roles (code, label, description, base_role, is_system, updated_by)
+       VALUES ($1, $2, $3, $4, false, $5) ON CONFLICT (code) DO NOTHING RETURNING code`,
+  hasHome ? [t.code, label || t.label, t.description, t.base_role, actor, templateHomeRoute(t.home_route)]
+    : [t.code, label || t.label, t.description, t.base_role, actor])).rows[0];
+  if (!created) return false;
+  const rows = templateRights(t, modules);
+  for (const r of rows) {
+    await db.query(`INSERT INTO role_permissions (role_code, module, can_view, can_create, can_edit, can_delete, config)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)`, [t.code, r.module, r.can_view, r.can_create, r.can_edit, r.can_delete, JSON.stringify(r.config)]);
+  }
+  if ((await db.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
+    const baseKeys = (await db.query(`SELECT permission_key FROM role_action_permissions WHERE role_code = $1`, [t.base_role])).rows.map(r => r.permission_key as string);
+    const keys = templateActionKeys(baseKeys, rows);
+    if (keys.length) await db.query(`INSERT INTO role_action_permissions (role_code, permission_key, granted_by)
+      SELECT $1, unnest($2::text[]), $3 ON CONFLICT DO NOTHING`, [t.code, keys, actor]);
+  }
+  return true;
+}
+
 /** Publication : crée les rôles retenus absents, dans la transaction ambiante. */
 export async function applyRoleTemplates(answers: WizardAnswers, actor: string) {
   const selected = list(answers.roles?.data?.selected);
@@ -125,21 +161,7 @@ export async function applyRoleTemplates(answers: WizardAnswers, actor: string) 
   for (const code of [...new Set(selected)]) {
     const t = templates.get(code);
     if (!t) continue;
-    const created = (await db.query(`INSERT INTO roles (code, label, description, base_role, is_system, updated_by)
-      VALUES ($1, $2, $3, $4, false, $5) ON CONFLICT (code) DO NOTHING RETURNING code`,
-      [t.code, t.label, t.description, t.base_role, actor])).rows[0];
-    if (!created) { impact.skipped.push(code); continue; }
-    const rows = templateRights(t, modules);
-    for (const r of rows) {
-      await db.query(`INSERT INTO role_permissions (role_code, module, can_view, can_create, can_edit, can_delete, config)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)`, [t.code, r.module, r.can_view, r.can_create, r.can_edit, r.can_delete, JSON.stringify(r.config)]);
-    }
-    if ((await db.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
-      const baseKeys = (await db.query(`SELECT permission_key FROM role_action_permissions WHERE role_code = $1`, [t.base_role])).rows.map(r => r.permission_key as string);
-      const keys = templateActionKeys(baseKeys, rows);
-      if (keys.length) await db.query(`INSERT INTO role_action_permissions (role_code, permission_key, granted_by)
-        SELECT $1, unnest($2::text[]), $3 ON CONFLICT DO NOTHING`, [t.code, keys, actor]);
-    }
+    if (!(await createRoleFromTemplate(t, modules, actor))) { impact.skipped.push(code); continue; }
     impact.created.push(code);
   }
   if (impact.created.length) invalidatePermissionCaches();

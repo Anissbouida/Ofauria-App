@@ -96,13 +96,23 @@ async function baseRolesOf(roleCodes: string[]): Promise<string[]> {
  * authorize multi-rôles). L'administrateur l'emporte dès qu'il est présent.
  */
 export async function loginRoleContext(userId: string): Promise<{
-  primaryBaseRole: string; baseRoles: string[]; roles: string[]; roleCode: string; roleLabel: string;
+  primaryBaseRole: string; baseRoles: string[]; roles: string[]; roleCode: string; roleLabel: string; homeRoute: string | null;
 }> {
   const { roleCodes, primary } = await userRoleContext(userId);
   const baseRoles = await baseRolesOf(roleCodes);
   const primaryInfo = await resolveRole(primary);
   const primaryBaseRole = baseRoles.includes('admin') ? 'admin' : primaryInfo.baseRole;
-  return { primaryBaseRole, baseRoles, roles: roleCodes, roleCode: primaryInfo.code, roleLabel: primaryInfo.label };
+  return { primaryBaseRole, baseRoles, roles: roleCodes, roleCode: primaryInfo.code, roleLabel: primaryInfo.label, homeRoute: await roleHomeRoute(primaryInfo.code) };
+}
+
+/** Page d'accueil du rôle (refonte Utilisateurs, lot 4, mig 703) ; null = celle du secteur. */
+async function roleHomeRoute(code: string): Promise<string | null> {
+  try {
+    return (await db.query(`SELECT home_route FROM roles WHERE code = $1`, [code])).rows[0]?.home_route ?? null;
+  } catch (e) {
+    if ((e as { code?: string }).code === '42703') return null; // migration 703 non appliquée
+    throw e;
+  }
 }
 
 let modeCache: { at: number; mode: 'off' | 'log' | 'enforce' } | null = null;

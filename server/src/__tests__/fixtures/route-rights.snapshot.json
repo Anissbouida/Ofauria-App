@@ -2800,7 +2800,13 @@
  "GET /users/roles/:code/permissions": [
   "admin"
  ],
+ "GET /users/roles/:code/profile": [
+  "admin"
+ ],
  "GET /users/roles/action-permissions": [
+  "admin"
+ ],
+ "GET /users/roles/templates": [
   "admin"
  ],
  "GET /users/security": [
