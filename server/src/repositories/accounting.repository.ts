@@ -33,9 +33,10 @@ async function assertEmittedLegalMentions(
   const rules = await legalMentionsRules();
   if (!rules.enforce_customer_ice) return;
   const c = (await client.query(
-    `SELECT customer_type, ice, first_name, last_name, company_name FROM customers WHERE id = $1`,
+    `SELECT customer_type, ice, first_name, last_name, company_name,
+            fn_customer_type_flag(customer_type, 'requires_tax_id') AS requires_tax_id FROM customers WHERE id = $1`,
     [opts.customerId])).rows[0];
-  const isBusiness = c && (c.customer_type === 'professionnel' || c.customer_type === 'revendeur');
+  const isBusiness = c && c.requires_tax_id === true;
   if (isBusiness && !String(c.ice ?? '').trim()) {
     const who = c.company_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'client';
     throw Object.assign(
@@ -587,6 +588,7 @@ export const invoiceRepository = {
               s.name as supplier_name,
               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
               c.company_name as customer_company_name, c.customer_type as customer_type,
+              fn_customer_type_flag(c.customer_type, 'legal_entity') AS customer_legal_entity,
               ec.name as category_name,
               po.order_number as purchase_order_number,
               rv.voucher_number as reception_voucher_number,
@@ -744,6 +746,7 @@ export const invoiceRepository = {
               s.name as supplier_name, s.phone as supplier_phone, s.ice as supplier_ice, s.address as supplier_address, s.city as supplier_city,
               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.email as customer_email,
               c.company_name as customer_company_name, c.customer_type as customer_type,
+              fn_customer_type_flag(c.customer_type, 'legal_entity') AS customer_legal_entity,
               c.address as customer_address, c.city as customer_city,
               c.ice as customer_ice, c.if_fiscal as customer_if, c.rc as customer_rc,
               ec.name as category_name,

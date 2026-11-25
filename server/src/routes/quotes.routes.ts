@@ -162,7 +162,7 @@ quotesRouter.get('/:id/pdf', authenticate, can('sales.quotes.view'), asyncHandle
     invoiceNumber: number!,
     invoiceDate: fr(q.quote_date),
     dueDate: fr(q.valid_until),
-    paymentMethod: q.customer_type && q.customer_type !== 'particulier' ? 'Sur facture' : '',
+    paymentMethod: q.customer_on_account ? 'Sur facture' : '',
     customerName: q.client_label ?? '',
     customerAddress: q.customer_id ? [q.customer_address, q.customer_city].filter(Boolean).join(', ') || undefined : undefined,
     customerPhone: q.customer_phone ?? q.prospect_phone ?? undefined,

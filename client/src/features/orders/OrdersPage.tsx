@@ -1,3 +1,4 @@
+import { isAccountType, orderKindLabel } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -62,7 +63,8 @@ const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready',
 export function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 export function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
 /** Client professionnel (fiche non « particulier ») : processus direction, BL et facture (mig 354). */
-export function isPro(o: OrderRow) { return !!o.customer_type && o.customer_type !== 'particulier'; }
+/** Commande d'un client en compte : comportement du type de client (mig 701), calculé par le serveur. */
+export function isPro(o: OrderRow) { return !!(o.customer_on_account ?? (!!o.customer_type && isAccountType(o.customer_type))); }
 export function customerName(o: OrderRow) {
   if (isPro(o) && o.company_name) return o.company_name as string;
   return o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}`.trim() : '—';
@@ -462,7 +464,7 @@ export default function OrdersPage() {
                                 {customerName(o)}
                               </span>
                               <span className="sal-sub">
-                                {isPro(o) ? 'Professionnel' : 'Particulier'}{o.type && TYPE_LABELS[o.type as string] ? ` · ${TYPE_LABELS[o.type as string]}` : ''}
+                                {orderKindLabel(o.order_kind as string | null) ?? `${isPro(o) ? 'Professionnel' : 'Particulier'}${o.type && TYPE_LABELS[o.type as string] ? ` · ${TYPE_LABELS[o.type as string]}` : ''}`}
                                 {o.customer_phone ? ` · ${o.customer_phone as string}` : ''}
                               </span>
                             </td>

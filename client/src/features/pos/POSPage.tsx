@@ -1,3 +1,4 @@
+import { isAccountType } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1142,7 +1143,7 @@ export default function POSPage() {
 
   // La caisse ne remet que les commandes de particuliers : un professionnel est livré sur BL par la direction.
   const orders = (ordersData?.data || []).filter((o: Record<string, any>) => {
-    if (o.customer_type && o.customer_type !== 'particulier') return false;
+    if (o.customer_on_account ?? isAccountType(o.customer_type)) return false;
     if (!orderSearch) return o.status !== 'completed' && o.status !== 'cancelled';
     const q = orderSearch.toLowerCase();
     const name = `${o.customer_first_name || ''} ${o.customer_last_name || ''}`.toLowerCase();

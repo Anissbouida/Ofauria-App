@@ -1,3 +1,4 @@
+import { REF_BEHAVIOR_FIELDS } from '@ofauria/shared';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -507,6 +508,21 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                 </span>
               </FormField>
             )}
+            {/* Comportements lus par le code (types de client, de commande — mig 701). */}
+            {(REF_BEHAVIOR_FIELDS[tableId] ?? []).map(f => f.kind === 'boolean' ? (
+              <label key={f.key} htmlFor={`ref-form-b-${f.key}`} title={f.help} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14 }}>
+                <input id={`ref-form-b-${f.key}`} type="checkbox" checked={form.metadata[f.key] === true} style={{ marginTop: 3 }}
+                  onChange={e => setForm({ ...form, metadata: { ...form.metadata, [f.key]: e.target.checked } })} />
+                <span>{f.label}<span className="odoo-setting-help" style={{ display: 'block', margin: 0 }}>{f.help}</span></span>
+              </label>
+            ) : (
+              <FormField key={f.key} label={f.label} htmlFor={`ref-form-b-${f.key}`} hint={f.help}>
+                <select id={`ref-form-b-${f.key}`} className="ds-input" value={String(form.metadata[f.key] ?? f.options[0].value)}
+                  onChange={e => setForm({ ...form, metadata: { ...form.metadata, [f.key]: e.target.value } })}>
+                  {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </FormField>
+            ))}
             {tableId === 'expense_categories' && (
               <label htmlFor="ref-form-po" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
                 <input id="ref-form-po" type="checkbox" checked={Boolean(form.metadata.requires_po)}

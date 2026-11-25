@@ -1,3 +1,4 @@
+import { defaultCustomerType } from '../services/commercial-types.js';
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 
@@ -200,7 +201,7 @@ export const crmRepository = {
     const c = await db.query(
       `INSERT INTO customers (first_name, last_name, company_name, customer_type, phone, email, city)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [first || null, rest.join(' ') || null, o.prospect_company || null, o.prospect_company ? 'professionnel' : 'particulier',
+      [first || null, rest.join(' ') || null, o.prospect_company || null, await defaultCustomerType(!!o.prospect_company),
        o.prospect_phone || null, o.prospect_email || null, o.prospect_city || null]);
     await db.query(`UPDATE opportunities SET customer_id = $2 WHERE id = $1`, [id, c.rows[0].id]);
     await db.query(`INSERT INTO crm_activities (opportunity_id, kind, subject, done_at, created_by) VALUES ($1, 'note', 'Fiche client créée', now(), $2)`, [id, userId]);

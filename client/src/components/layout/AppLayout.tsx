@@ -1,3 +1,4 @@
+import { useCommercialTypes } from '../../hooks/useCommercialTypes';
 import '../../styles/design-system.css';
 import { useInterfacePreferences } from '../../api/interface-preferences.api';
 import { useState, useRef, useEffect } from 'react';
@@ -91,10 +92,13 @@ function TimeoutWarningModal() {
 
 export default function AppLayout() {
   const { user, isLoading: authLoading, mfaConfigured } = useAuth();
+  // Types de client et de commande du secteur : chargés avant le premier écran, pour que les
+  // fonctions de lecture (isAccountType, libellés…) répondent juste dès le premier rendu.
+  const { isLoading: typesLoading } = useCommercialTypes(!!user);
   const preferences=useInterfacePreferences(user?.id);
   const { hasModule, isLoading: permsLoading } = usePermissions();
   const { locale, t } = useLocale();
-  const isLoading = authLoading || permsLoading;
+  const isLoading = authLoading || permsLoading || (!!user && typesLoading);
   const [showApps, setShowApps] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();

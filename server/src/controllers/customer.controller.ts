@@ -1,3 +1,4 @@
+import { defaultCustomerType, findCustomerType } from '../services/commercial-types.js';
 import type { Response } from 'express';
 import { receivablesRepository } from '../repositories/receivables.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -32,7 +33,8 @@ export const customerController = {
   async list(req: AuthRequest, res: Response) {
     const { search, customerType, page = '1', limit = '20' } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
-    const validType = ['particulier', 'professionnel', 'association', 'revendeur'].includes(customerType) ? customerType : undefined;
+    // Type de client : toute valeur du référentiel (mig 701) ; la requête est paramétrée.
+    const validType = /^[a-z0-9_]{1,60}$/.test(customerType ?? '') ? customerType : undefined;
     const archived = (req.query.archived as string) === 'true';
     const result = await customerRepository.findAll({ search, customerType: validType, archived, limit: l, offset: (p - 1) * l });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
@@ -57,13 +59,20 @@ export const customerController = {
     // crée des clients particuliers sans plafond, remise ni exonération.
     if (!isDirection(req)) {
       const set = COMMERCIAL_FIELDS.filter(k => !isBlank(req.body?.[k]));
-      if (set.length || (req.body?.customerType && req.body.customerType !== 'particulier')) {
+      // Hors direction : seulement un type réglé au comptant (comportement du type, mig 701).
+      const onAccount = req.body?.customerType ? (await findCustomerType(req.body.customerType)).behaviors.settlement === 'compte' : false;
+      if (set.length || onAccount) {
         res.status(403).json({ success: false, error: { message: 'Type de client et conditions commerciales (plafond, remise, délai, exonération, facturation) : réservés à la direction' } });
         return;
       }
     }
     const bad = await validateLegalIds(req.body);
     if (bad) { res.status(400).json({ success: false, error: { message: bad } }); return; }
+    // Type absent : le premier type du secteur (une personne), pas un code écrit ici.
+    if (!req.body.customerType) req.body.customerType = await defaultCustomerType(!!req.body.companyName && !req.body.lastName);
+    else if (!(await findCustomerType(req.body.customerType)).is_active) {
+      res.status(400).json({ success: false, error: { message: 'Type de client inconnu ou désactivé (Paramètres › Référentiel)' } }); return;
+    }
     try {
       const customer = await customerRepository.create(req.body);
       await customerRepository.logAudit(customer.id, 'create', req.user?.userId ?? null);

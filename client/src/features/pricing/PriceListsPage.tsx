@@ -1,3 +1,4 @@
+import { useCommercialTypes } from '../../hooks/useCommercialTypes';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag, Plus, Trash2, Check, TrendingUp, History } from 'lucide-react';
@@ -18,9 +19,10 @@ import { BASE_CURRENCY } from '../../api/currencies.api';
 // avec validité et devise ; lignes à paliers de quantité. Le prix applicable est résolu
 // côté serveur (caisse, devis, commande, BL) selon la liste la plus spécifique en vigueur.
 
-const CUSTOMER_TYPES = ['particulier', 'professionnel', 'revendeur', 'association'];
 
 export default function PriceListsPage() {
+  // Types de client du secteur (référentiel), plus celui d'une liste ancienne.
+  const commercial = useCommercialTypes();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function PriceListsPage() {
               <FormField label="Type de client" htmlFor="pl-ctype">
                 <select id="pl-ctype" className="ds-input" defaultValue={detail.customer_type ?? ''} onChange={(e) => updateList.mutate({ customerType: e.target.value || null })}>
                   <option value="">Tous</option>
-                  {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {commercial.customerTypes(detail.customer_type).map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
                 </select>
               </FormField>
               <FormField label="Groupe de clients" htmlFor="pl-group">

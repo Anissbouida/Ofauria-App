@@ -10,6 +10,7 @@ import { employeesApi } from '../../api/employees.api';
 import { settingsApi } from '../../api/settings.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
+import { useCommercialTypes, isAccountType, refIcon, refColor, type CommercialType } from '../../hooks/useCommercialTypes';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../ui/InlineNotification';
@@ -53,7 +54,8 @@ function StepIndicator({ current }: { current: number }) {
 type ClientMode = 'known' | 'walkin' | 'pro' | null;
 
 const TVA_RATES = [0, 7, 10, 14, 20];
-const isProType = (t: unknown) => !!t && t !== 'particulier';
+// Client en compte : comportement de son type (référentiel customer_types, mig 701).
+const isProType = (t: unknown) => isAccountType(t);
 
 /* ─── Order form modal (multi-step) ─── */
 export default function OrderFormModal({ order, onClose, onSaved }: {
@@ -105,6 +107,16 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     isEdit && order.created_at ? format(new Date(order.created_at as string), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
   );
   const [type, setType] = useState(isEdit ? (order.type as string || 'custom') : 'custom');
+  // Type de commande choisi (référentiel order_types, piloté par le secteur — mig 701). Ses
+  // comportements décident de l'étape « pour qui » ; l'écran ne connaît aucun type par son code.
+  const commercial = useCommercialTypes();
+  const [orderKind, setOrderKind] = useState<string | null>(isEdit ? ((order.order_kind as string | null) ?? null) : null);
+  const visibleKinds = commercial.orderTypes.filter(t => isDirection || !commercial.orderBehaviors(t).direction_only);
+  const chosenKind = orderKind === null ? null : (commercial.orderTypes.find(t => t.code === orderKind) ?? commercial.orderType(orderKind));
+  const kindRules = commercial.orderBehaviors(chosenKind);
+  /** Tous les clients sont proposés ; le parcours (comptant ou en compte) suit le client choisi. */
+  const anyCustomer = !!chosenKind && kindRules.party === 'customer' && kindRules.settlement === 'any';
+  const canChangeKind = !isEdit && visibleKinds.length > 1;
 
   // Step 2: Products (unitPrice is editable per-order — defaults to product.price)
   // Professionnel : prix HT remisé et TVA par ligne (tvaRate) ; particulier : prix TTC caisse.
@@ -161,7 +173,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     (isProType(c.customer_type) && c.company_name ? c.company_name as string : `${c.first_name || ''} ${c.last_name || ''}`.trim());
 
   const filteredCustomers = customers.filter(c => {
-    if (isProType(c.customer_type) !== isPro) return false;
+    if (!anyCustomer && isProType(c.customer_type) !== isPro) return false;
     if (!customerSearch) return true;
     const q = customerSearch.toLowerCase();
     const name = `${customerLabel(c)} ${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
@@ -280,7 +292,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     return sum + (item.unitPrice || 0) * item.quantity;
   }, 0);
   // Auto-calculate staff discount
-  const appliedPct = type === 'staff' ? staffDiscountPercent : discountPct;
+  const appliedPct = type === 'staff' || kindRules.auto_discount === 'staff' ? staffDiscountPercent : discountPct;
   const effectiveDiscount = Math.round(subtotal * appliedPct) / 100;
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
   // Date de disponibilité promise de chaque article choisi (G5-06).
@@ -352,12 +364,25 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const saving = createMutation.isPending || updateMutation.isPending;
 
+  const chooseKind = (t: CommercialType) => {
+    const rules = commercial.orderBehaviors(t);
+    setOrderKind(t.code);
+    setSelectedCustomerId(null);
+    if (rules.party === 'employee') { setType('staff'); setClientMode(null); return; }
+    setType('custom');
+    if (rules.party === 'walk_in') { setClientMode('walkin'); return; }
+    if (rules.settlement === 'compte') { setClientMode('pro'); setItems([]); } else setClientMode('known');
+  };
+  // Un seul type proposé : pas d'étape de choix.
+  const onlyKind = !isEdit && orderKind === null && visibleKinds.length === 1 ? visibleKinds[0] : null;
+  useEffect(() => { if (onlyKind) chooseKind(onlyKind); }, [onlyKind?.code]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = () => {
     const payload: Record<string, any> = {
       type, pickupDate,
       // orderDate envoye uniquement a la creation pour eviter de reecrire
       // l'historique d'une commande deja saisie.
-      ...(isEdit ? {} : { orderDate }),
+      ...(isEdit ? {} : { orderDate, ...(orderKind ? { orderKind } : {}) }),
       paymentMethod: isPro ? 'deferred' : paymentMethod,
       notes: notes || undefined,
       discountPct: appliedPct,
@@ -371,7 +396,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     if (type === 'staff' && selectedEmployee) {
       payload.customerName = `${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim();
       payload.customerPhone = (selectedEmployee.phone as string) || undefined;
-      payload.notes = `Commande personnel — Remise ${staffDiscountPercent}%${notes ? ` | ${notes}` : ''}`;
+      payload.notes = `${chosenKind?.label ?? 'Commande personnel'} — Remise ${staffDiscountPercent}%${notes ? ` | ${notes}` : ''}`;
     } else if ((clientMode === 'known' || isPro) && selectedCustomerId) {
       payload.customerId = selectedCustomerId;
       payload.customerName = displayName;
@@ -441,61 +466,34 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
           {/* ── STEP 1: Client ── */}
           {step === 1 && (
             <div className="space-y-5">
-              {/* Mode selector: 3 cards (Client / Passager / Personnel) */}
+              {/* Choix du type de commande : cartes du référentiel du secteur */}
               {!clientMode && type !== 'staff' && (
                 <div className="space-y-4">
                   <h3 className="text-center text-lg font-semibold text-gray-700">Type de commande</h3>
-                  <div className={`grid ${isDirection ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-4 max-w-3xl mx-auto`}>
-                    {/* Known client card */}
-                    <button type="button" onClick={() => { setClientMode('known'); setType('custom'); }}
-                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-blue-500 hover:bg-blue-50 transition-all">
-                      <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                        <Users size={28} className="text-blue-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-gray-800 text-base">Client</p>
-                        <p className="text-xs text-gray-400 mt-1">Particulier enregistre</p>
-                      </div>
-                    </button>
-
-                    {/* Walk-in client card */}
-                    <button type="button" onClick={() => { setClientMode('walkin'); setType('custom'); }}
-                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-amber-500 hover:bg-amber-50 transition-all">
-                      <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
-                        <User size={28} className="text-amber-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-gray-800 text-base">Passager</p>
-                        <p className="text-xs text-gray-400 mt-1">Client de passage</p>
-                      </div>
-                    </button>
-
-                    {/* Professional card — direction only */}
-                    {isDirection && (
-                      <button type="button" onClick={() => { setClientMode('pro'); setType('custom'); setSelectedCustomerId(null); setItems([]); }}
-                        className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-emerald-500 hover:bg-emerald-50 transition-all">
-                        <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                          <Building2 size={28} className="text-emerald-600" />
-                        </div>
-                        <div className="text-center">
-                          <p className="font-bold text-gray-800 text-base">Professionnel</p>
-                          <p className="text-xs text-gray-400 mt-1">Livré sur BL, facturé</p>
-                        </div>
-                      </button>
-                    )}
-
-                    {/* Staff card */}
-                    <button type="button" onClick={() => { setType('staff'); setClientMode(null); setSelectedCustomerId(null); }}
-                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all">
-                      <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                        <UserCircle size={28} className="text-purple-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-gray-800 text-base">Personnel</p>
-                        <p className="text-xs text-gray-400 mt-1">Remise {staffDiscountPercent}% automatique</p>
-                      </div>
-                    </button>
-                  </div>
+                  {commercial.isLoading ? <LoadingState bare /> : (
+                    <div className="flex flex-wrap justify-center gap-4 max-w-3xl mx-auto">
+                      {visibleKinds.map(t => {
+                        const Icon = refIcon(t.icon);
+                        const tone = refColor(t.color);
+                        const rules = commercial.orderBehaviors(t);
+                        return (
+                          <button type="button" key={t.code} onClick={() => chooseKind(t)}
+                            style={{ width: 172, ['--tone' as string]: tone, ['--tone-soft' as string]: `${tone}1f` }}
+                            className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white transition-all hover:border-[color:var(--tone)] hover:bg-[color:var(--tone-soft)]">
+                            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: `${tone}26` }}>
+                              <Icon size={28} style={{ color: tone }} />
+                            </div>
+                            <div className="text-center">
+                              <p className="font-bold text-gray-800 text-base">{t.label}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {rules.auto_discount === 'staff' ? `Remise ${staffDiscountPercent} % automatique` : t.description}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -503,15 +501,15 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               {(clientMode === 'known' || isPro) && type !== 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    {!isEdit && (
-                      <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); setType('custom'); }}
+                    {canChangeKind && (
+                      <button type="button" onClick={() => { setOrderKind(null); setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); setType('custom'); }}
                         className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
                     )}
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isPro ? 'bg-emerald-100' : 'bg-blue-100'}`}>
                         {isPro ? <Building2 size={16} className="text-emerald-600" /> : <Users size={16} className="text-blue-600" />}
                       </div>
-                      <h3 className="text-sm font-semibold text-gray-700">{isPro ? 'Client professionnel' : 'Client connu'}</h3>
+                      <h3 className="text-sm font-semibold text-gray-700">{chosenKind?.label || (isPro ? 'Client en compte' : 'Client connu')}</h3>
                     </div>
                   </div>
 
@@ -527,7 +525,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <div className="space-y-1.5 max-h-60 overflow-y-auto">
                     {filteredCustomers.length === 0 ? (
                       <p className="text-center py-6 text-gray-400 text-sm">
-                        {isPro ? 'Aucun client professionnel trouve — créez sa fiche (type professionnel) dans Clients' : 'Aucun client trouve'}
+                        {isPro ? 'Aucun client en compte trouvé — créez sa fiche dans Clients' : 'Aucun client trouvé'}
                       </p>
                     ) : filteredCustomers.map(c => {
                       const cId = c.id as string;
@@ -536,7 +534,9 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       return (
                         <button key={cId} type="button"
                           onClick={() => {
-                            if (isPro && cId !== selectedCustomerId) setItems([]);
+                            const nextPro = isProType(c.customer_type);
+                            if (anyCustomer && nextPro !== isPro) { setClientMode(nextPro ? 'pro' : 'known'); setItems([]); }
+                            else if (isPro && cId !== selectedCustomerId) setItems([]);
                             setSelectedCustomerId(cId);
                             setCustomerName(fullName);
                             setCustomerPhone(c.phone as string || '');
@@ -576,7 +576,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               {clientMode === 'walkin' && type !== 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setClientMode(null); setCustomerName(''); setCustomerPhone(''); setType('custom'); }}
+                    <button type="button" hidden={!isEdit && !canChangeKind} onClick={() => { setOrderKind(null); setClientMode(null); setCustomerName(''); setCustomerPhone(''); setType('custom'); }}
                       className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
@@ -608,7 +608,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               {type === 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setType('custom'); setSelectedEmployeeId(null); setEmployeeSearch(''); }}
+                    <button type="button" hidden={!isEdit && !canChangeKind} onClick={() => { setOrderKind(null); setType('custom'); setSelectedEmployeeId(null); setEmployeeSearch(''); }}
                       className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -838,7 +838,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         clientMode === 'known' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'
                       }`}>
-                        {isPro ? 'Professionnel' : clientMode === 'known' ? 'Client connu' : 'Passager'}
+                        {chosenKind?.label || (isPro ? 'Professionnel' : clientMode === 'known' ? 'Client connu' : 'Passager')}
                       </span>
                     </div>
                     {displayPhone && (

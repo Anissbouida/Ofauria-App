@@ -14,7 +14,7 @@ export const orderRepository = {
     if (params.status) { conditions.push(`o.status = $${i++}`); values.push(params.status); }
     if (params.type) { conditions.push(`o.type = $${i++}`); values.push(params.type); }
     if (params.customerId) { conditions.push(`o.customer_id = $${i++}`); values.push(params.customerId); }
-    if (params.hidePro) conditions.push(`COALESCE(c.customer_type, 'particulier') = 'particulier'`);
+    if (params.hidePro) conditions.push(`NOT fn_customer_on_account(c.customer_type)`);
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -24,7 +24,7 @@ export const orderRepository = {
     values.push(params.limit, params.offset);
     const result = await db.query(
       `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
-              c.customer_type, c.company_name, c.billing_frequency,
+              c.customer_type, fn_customer_on_account(c.customer_type) AS customer_on_account, c.company_name, c.billing_frequency,
               -- Bon de livraison client actif (mig 352) et facture qui le règle (mig 354) :
               -- suivi Livrée → Facturée → Payée des commandes de professionnels.
               bl.id AS delivery_note_id, bl.number AS delivery_note_number, bl.status AS delivery_note_status,
@@ -45,7 +45,7 @@ export const orderRepository = {
   async findById(id: string) {
     const orderResult = await db.query(
       `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
-              c.customer_type, c.company_name, c.billing_frequency,
+              c.customer_type, fn_customer_on_account(c.customer_type) AS customer_on_account, c.company_name, c.billing_frequency,
               -- Bon de livraison client actif (mig 352) et facture qui le règle (mig 354) :
               -- suivi Livrée → Facturée → Payée des commandes de professionnels.
               bl.id AS delivery_note_id, bl.number AS delivery_note_number, bl.status AS delivery_note_status,
@@ -80,6 +80,8 @@ export const orderRepository = {
   async create(data: {
     orderNumber: string; customerId?: string; customerName?: string; customerPhone?: string;
     userId: string; type: string;
+    /** Type de commande choisi (référentiel order_types, mig 701). */
+    orderKind?: string | null;
     subtotal: number; taxAmount: number; discountAmount: number; discountPct?: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     sessionId?: string; storeId?: string; orderDate?: string;
@@ -99,10 +101,10 @@ export const orderRepository = {
       // lieu de NOW()). Conserve l'heure exacte de saisie pour l'audit en
       // ajoutant le time courant a la date fournie.
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct, channel_id, salesperson_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18,
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct, order_kind, channel_id, salesperson_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18, $21,
                  COALESCE($19::uuid, (SELECT id FROM sales_channels WHERE code = CASE
-                   WHEN EXISTS (SELECT 1 FROM customers c WHERE c.id = $2::uuid AND COALESCE(c.customer_type, 'particulier') <> 'particulier')
+                   WHEN EXISTS (SELECT 1 FROM customers c WHERE c.id = $2::uuid AND fn_customer_on_account(c.customer_type))
                    THEN 'gros' ELSE 'commande' END)),
                  -- Commercial attitré repris du client (phase 4.5).
                  COALESCE($20::uuid, (SELECT salesperson_id FROM customers WHERE id = $2::uuid))) RETURNING *`,
@@ -110,7 +112,7 @@ export const orderRepository = {
          data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null,
-         data.orderDate || null, data.discountPct ?? null, data.channelId ?? null, data.salespersonId ?? null]
+         data.orderDate || null, data.discountPct ?? null, data.channelId ?? null, data.salespersonId ?? null, data.orderKind ?? null]
       );
 
       const orderId = orderResult.rows[0].id;

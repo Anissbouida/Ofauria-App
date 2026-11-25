@@ -1327,6 +1327,7 @@
   "manager"
  ],
  "GET /params/:tableName/audit": null,
+ "GET /params/commercial-types": null,
  "GET /params/dashboard": null,
  "GET /params/scope": null,
  "GET /params/scope/preview": null,

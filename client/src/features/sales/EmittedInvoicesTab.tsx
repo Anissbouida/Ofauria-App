@@ -1,3 +1,4 @@
+import { isAccountType, isLegalEntityType } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -70,13 +71,13 @@ function isOverdue(inv: Inv, today: Date) {
 }
 /** Annulation = avoir d'annulation total : facture non annulée et encore jamais créditée. */
 function canCancel(inv: Inv) { return !isCredit(inv) && inv.status !== 'cancelled' && num(inv.credited_total) <= 0.004; }
-function isPro(inv: Inv) { return !!inv.customer_type && inv.customer_type !== 'particulier'; }
+function isPro(inv: Inv) { return !!inv.customer_type && isAccountType(inv.customer_type); }
 function customerLabel(inv: Inv) {
   if (inv.customer_company_name && isPro(inv)) return inv.customer_company_name as string;
   return inv.customer_first_name ? `${inv.customer_first_name} ${inv.customer_last_name || ''}`.trim() : 'Client inconnu';
 }
 function customerOption(c: Inv) {
-  return c.company_name && c.customer_type && c.customer_type !== 'particulier'
+  return c.company_name && c.customer_type && isLegalEntityType(c.customer_type)
     ? c.company_name as string : `${c.first_name || ''} ${c.last_name || ''}`.trim();
 }
 function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {

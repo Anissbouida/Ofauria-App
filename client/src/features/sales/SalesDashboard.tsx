@@ -1,3 +1,4 @@
+import { isAccountType, customerBehaviors } from '../../hooks/useCommercialTypes';
 import { money as moneyFmt, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -119,7 +120,7 @@ export default function SalesDashboard() {
   const t = rec?.totals;
   const overdueCustomers = (rec?.customers ?? []).filter(c => c.overdue > 0);
   const customers: Row[] = (customersResp as { data?: Row[] } | undefined)?.data ?? [];
-  const noIce = customers.filter(c => (c.customer_type === 'professionnel' || c.customer_type === 'revendeur') && !c.ice);
+  const noIce = customers.filter(c => customerBehaviors(c.customer_type as string | null).requires_tax_id && !c.ice);
   const openSessions: Row[] = ((sessionsResp as { data?: Row[] } | undefined)?.data ?? []).filter(s => s.status !== 'closed');
 
   /* ── À traiter : seulement ce qui demande une action ── */
@@ -165,7 +166,7 @@ export default function SalesDashboard() {
     .map(c => ({
       id: c.id as string,
       name: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' ') || '—',
-      pro: !!c.customer_type && c.customer_type !== 'particulier',
+      pro: !!c.customer_type && isAccountType(c.customer_type),
       purchases: (Number(c.orders_count) || 0) + (Number(c.sales_count) || 0),
       spent: num(c.total_spent), owed: owedBy.get(c.id) ?? 0,
     })).filter(c => c.spent > 0), [customers, owedBy]);

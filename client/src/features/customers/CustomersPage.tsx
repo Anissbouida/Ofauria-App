@@ -5,7 +5,7 @@ import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import { usersApi } from '../../api/users.api';
 import {
-  Plus, Pencil, Users, ShoppingCart, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, User,
+  Plus, Pencil, Users, X, ArrowUpDown, ArrowUp, ArrowDown, MapPin,
   FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, Contact,
   Archive, RotateCcw } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
@@ -18,6 +18,7 @@ import { customFieldsApi, useCustomFieldsForm, formatCfValue, type CfValues } fr
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
+import { useCommercialTypes, customerBehaviors, customerTypeIcon, customerTypeLabel, isLegalEntityType } from '../../hooks/useCommercialTypes';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SelectFilter, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { RowMenu } from '../../components/ui/RowMenu';
@@ -33,16 +34,12 @@ import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, TableFooter
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-export type CustomerType = 'particulier' | 'professionnel' | 'association' | 'revendeur';
+/** Code d'un type de client : valeur du référentiel customer_types, piloté par le secteur (mig 701). */
+export type CustomerType = string;
 type Customer = Record<string, any>;
 
-export const TYPE_META: Record<CustomerType, { label: string; icon: typeof User }> = {
-  particulier: { label: 'Particulier', icon: User },
-  professionnel: { label: 'Société', icon: Building2 },
-  association: { label: 'Association', icon: HeartHandshake },
-  revendeur: { label: 'Revendeur', icon: ShoppingCart },
-};
-const TYPE_OPTIONS = (Object.keys(TYPE_META) as CustomerType[]).map(k => ({ key: k, label: TYPE_META[k].label }));
+/** Libellé et icône d'un type de client, lus dans le référentiel (useCommercialTypes doit être monté). */
+export const typeMeta = (code: string | null | undefined) => ({ label: customerTypeLabel(code), icon: customerTypeIcon(code) });
 
 /** Niveau de fidélité (mig 372) : points gagnés sur 12 mois, niveaux paramétrés. */
 function loyaltyTier(points12m: number, tiers: LoyaltyTier[]): { key: string; label: string; tag: string } | null {
@@ -59,8 +56,9 @@ function useLoyaltyTiers() {
   return useQuery({ queryKey: ['loyalty-tiers'], queryFn: loyaltyApi.tiers, staleTime: 300_000 }).data ?? [];
 }
 
+/** Personne morale : comportement du type de client, plus un code écrit ici. */
 export function isMoral(t: string | undefined): boolean {
-  return t === 'professionnel' || t === 'association' || t === 'revendeur';
+  return isLegalEntityType(t);
 }
 
 export function displayName(c: Customer): { primary: string; secondary: string | null } {
@@ -90,7 +88,7 @@ const STAGE_DOT: Record<string, string> = {
 };
 
 export function needsIce(c: Customer): boolean {
-  return (c.customer_type === 'professionnel' || c.customer_type === 'revendeur') && !c.ice;
+  return customerBehaviors(c.customer_type).requires_tax_id && !c.ice;
 }
 function missingContact(c: Customer): boolean {
   return !c.phone && !c.email;
@@ -182,9 +180,12 @@ export default function CustomersPage() {
 
   const today = useMemo(() => new Date(), []);
   const tiers = useLoyaltyTiers();
+  const commercial = useCommercialTypes();
+  const typeOptions = commercial.customerTypes().map(t => ({ key: t.code, label: t.label }));
   const customers = useMemo(
     () => ((data?.data || []) as Customer[]).map((c): Customer => ({ ...c, _stage: stageOf(c, today) })),
-    [data, today],
+    // `commercial` : la situation dépend de l'identifiant fiscal exigé par le type de client.
+    [data, today, commercial],
   );
 
   // Filtres hors situation : la situation sert de pipeline, les cartes comptent sur ce sous-ensemble.
@@ -318,7 +319,7 @@ export default function CustomersPage() {
         <Toolbar>
           <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher un client"
             placeholder="Nom, société, téléphone, email, ville ou ICE…" busy={isFetching && !isLoading} />
-          <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
+          <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={typeOptions} />
           <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />
           <SelectFilter label="Ville" icon={MapPin} value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="Toutes" />
           {hasFilters && (
@@ -364,7 +365,7 @@ export default function CustomersPage() {
               <tbody>
                 {pageRows.map(c => {
                   const type = (c.customer_type as CustomerType) || 'particulier';
-                  const meta = TYPE_META[type] || TYPE_META.particulier;
+                  const meta = typeMeta(type);
                   const TypeIcon = meta.icon;
                   const { primary, secondary } = displayName(c);
                   const points = Number(c.loyalty_points) || 0;
@@ -459,12 +460,16 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   // Type de client et conditions commerciales : direction seulement (O2C L0, G-CR-04).
   const { user } = useAuth();
   const direction = user?.role === 'admin' || user?.role === 'manager';
-  const [customerType, setCustomerType] = useState<CustomerType>(
-    (editing?.customer_type as CustomerType) || 'particulier'
-  );
-  const [tvaExonere, setTvaExonere] = useState<boolean>(
-    editing?.tva_exonere === true || editing?.customer_type === 'association'
-  );
+  // Types proposés : ceux du secteur (référentiel), plus celui d'une fiche ancienne.
+  const commercial = useCommercialTypes();
+  const typeChoices = commercial.customerTypes(editing?.customer_type);
+  const [chosenType, setCustomerType] = useState<CustomerType>((editing?.customer_type as CustomerType) || '');
+  const customerType = chosenType || typeChoices[0]?.code || 'particulier';
+  const rules = customerBehaviors(customerType);
+  /** Entité sans identifiants fiscaux (association, organisme exonéré). */
+  const noFiscalIds = rules.vat_exempt && !rules.requires_tax_id;
+  const [tvaChoice, setTvaExonere] = useState<boolean | null>(editing ? editing.tva_exonere === true : null);
+  const tvaExonere = tvaChoice ?? rules.vat_exempt;
   const [salespersonId, setSalespersonId] = useState<string>(
     (editing as Record<string, any> | null)?.salesperson_id || ''
   );
@@ -514,8 +519,8 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
       footer={<FormFooter dirty={dirty} onCancel={onClose} busy={isPending} submitLabel={editing ? 'Enregistrer' : 'Créer le client'} />}>
       <FormSection title="Type de client">
         <div className="odoo-view-switcher" role="radiogroup" aria-label="Type de client" style={{ alignSelf: 'flex-start' }}>
-          {(Object.keys(TYPE_META) as CustomerType[]).map(t => {
-            const Icon = TYPE_META[t].icon;
+          {typeChoices.map(({ code: t, label }) => {
+            const Icon = customerTypeIcon(t);
             const selected = customerType === t;
             return (
               <button type="button" key={t} role="radio" aria-checked={selected}
@@ -524,8 +529,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 onClick={() => {
                   setDirty(true);
                   setCustomerType(t);
-                  if (t === 'association') setTvaExonere(true);
-                  else if (t === 'particulier') setTvaExonere(false);
+                  setTvaExonere(customerBehaviors(t).vat_exempt);
                 }}
                 style={{
                   padding: '0.35rem 0.85rem', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -533,7 +537,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                   color: selected ? 'var(--ds-accent)' : 'var(--ds-muted)',
                   fontWeight: selected ? 600 : 400,
                 }}>
-                <Icon size={13} /> {TYPE_META[t].label}
+                <Icon size={13} /> {label}
               </button>
             );
           })}
@@ -542,12 +546,12 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
       </FormSection>
 
       {isMoralEntity && (
-        <FormSection title={customerType === 'association' ? 'Identité de l\'association' : 'Identité de l\'entreprise'}>
+        <FormSection title={`Identité — ${customerTypeLabel(customerType)}`}>
           <FormField label="Raison sociale" htmlFor="cf-company" required>
             <input id="cf-company" name="companyName" defaultValue={editing?.company_name} className="ds-input" required autoFocus
-              placeholder={customerType === 'association' ? 'Association X' : 'Pâtisserie du Coin SARL'} />
+              placeholder="Raison sociale" />
           </FormField>
-          {customerType !== 'association' && (
+          {!noFiscalIds && (
             <div className="ds-form-grid">
               <FormField label="Forme juridique" htmlFor="cf-forme">
                 <select id="cf-forme" name="formeJuridique" defaultValue={editing?.forme_juridique || ''} className="ds-input">
@@ -573,9 +577,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
 
       {isMoralEntity && (
         <FormSection title="Identifiants légaux">
-          {customerType !== 'association' ? (
+          {!noFiscalIds ? (
             <div className="ds-form-grid">
-              <FormField label={`ICE${customerType === 'professionnel' || customerType === 'revendeur' ? ' (requis pour facturer)' : ''}`} htmlFor="cf-ice" hint="15 chiffres">
+              <FormField label={`ICE${rules.requires_tax_id ? ' (requis pour facturer)' : ''}`} htmlFor="cf-ice" hint="15 chiffres">
                 <input id="cf-ice" name="ice" defaultValue={editing?.ice} className="ds-input" style={mono}
                   maxLength={15} pattern="[0-9]{15}" title="15 chiffres" placeholder="000000000000000"
                   onBlur={e => checkIce(e.target.value)} />
@@ -644,7 +648,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           {isMoralEntity ? (
             <FormField label="Fonction / rôle" htmlFor="cf-role">
               <input id="cf-role" name="contactRole" defaultValue={editing?.contact_role} className="ds-input"
-                placeholder={customerType === 'association' ? 'Trésorier, secrétaire…' : 'Gérant, acheteur, comptable…'} />
+                placeholder="Fonction du contact" />
             </FormField>
           ) : (
             <FormField label="Date de naissance" htmlFor="cf-birthday">
@@ -688,7 +692,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
         </div>
       </FormSection>
 
-      {customerType !== 'particulier' && (
+      {rules.settlement === 'compte' && (
         <FormSection title={`Conditions commerciales${!direction ? ' (fixées par la direction)' : ''}`}>
           <div className="ds-form-grid cols-4">
             <FormField label={`Plafond de crédit (${currencySymbol()})`} htmlFor="cf-credit">
@@ -712,7 +716,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
       )}
 
       <FormSection title="Préférences et notes">
-        {customerType === 'particulier' && (
+        {rules.personal_fields && (
           <FormField label="Allergies / restrictions" htmlFor="cf-allergies">
             <input id="cf-allergies" name="allergies" defaultValue={editing?.allergies} className="ds-input" placeholder="Gluten, lactose, fruits à coque…" />
           </FormField>

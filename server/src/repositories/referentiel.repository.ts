@@ -1,3 +1,4 @@
+import { REF_BEHAVIOR_FIELDS, cleanRefBehaviors } from '@ofauria/shared';
 import { db, withTransaction } from '../config/database.js';
 
 /* ═══ Ref Tables (registry) ═══ */
@@ -73,6 +74,16 @@ export const refEntryRepository = {
     code?: string; label: string; description?: string;
     color?: string; icon?: string; display_order?: number; metadata?: Record<string, unknown>;
   }) {
+    // Référentiel à comportements (types de client, de commande) : schéma contrôlé.
+    const cleaned = cleanRefBehaviors(tableId, data.metadata);
+    if (!cleaned.ok) throw Object.assign(new Error(cleaned.error), { statusCode: 400 });
+    if (REF_BEHAVIOR_FIELDS[tableId]) {
+      // Le code est ce que les fiches enregistrent : déduit du libellé s'il n'est pas saisi.
+      const code = (data.code || data.label).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
+      if (!code) throw Object.assign(new Error('Code requis'), { statusCode: 400 });
+      data = { ...data, code, metadata: cleaned.metadata };
+    }
     // Auto-assign display_order if not provided
     let order = data.display_order;
     if (order === undefined) {
@@ -98,6 +109,11 @@ export const refEntryRepository = {
       color: 'color', icon: 'icon', display_order: 'display_order',
       is_active: 'is_active', metadata: 'metadata',
     };
+    if (data.metadata !== undefined && REF_BEHAVIOR_FIELDS[tableId]) {
+      const cleaned = cleanRefBehaviors(tableId, data.metadata);
+      if (!cleaned.ok) throw Object.assign(new Error(cleaned.error), { statusCode: 400 });
+      data = { ...data, metadata: cleaned.metadata };
+    }
     const fields: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [];
     let i = 1;

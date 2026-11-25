@@ -23,7 +23,8 @@ import CustomerPortalPanel from './CustomerPortalPanel';
 import CustomerHistoryPanel from './CustomerHistoryPanel';
 import CustomerDataProtectionPanel from './CustomerDataProtectionPanel';
 import { ListKpi } from '../sales/ListTemplate';
-import { TYPE_META, displayName, isMoral, needsIce, PAYMENT_LABELS, type CustomerType } from './CustomersPage';
+import { typeMeta, displayName, isMoral, needsIce, PAYMENT_LABELS, type CustomerType } from './CustomersPage';
+import { useCommercialTypes, customerBehaviors } from '../../hooks/useCommercialTypes';
 import { LoadingState, ErrorState, EmptyState, TableFooter } from '../../components/ds';
 
 /**
@@ -66,6 +67,7 @@ export default function CustomerRecordPage() {
   const [kind, setKind] = useState<DocKind | ''>('');
   const [showAll, setShowAll] = useState(false);
 
+  useCommercialTypes(); // libellés et comportements des types de client (référentiel du secteur)
   const { data: stats, isLoading, error } = useQuery({ queryKey: ['customer-stats', id], queryFn: () => customersApi.stats(id), enabled: !!id });
   const { data: situation } = useQuery({ queryKey: ['customer-situation', id], queryFn: () => customersApi.situation(id), enabled: !!id, retry: false });
   const { data: loyalty } = useQuery({ queryKey: ['loyalty', 'customer', id], queryFn: () => loyaltyApi.customer(id), enabled: !!id, retry: false });
@@ -116,7 +118,7 @@ export default function CustomerRecordPage() {
   }
 
   const type = (c.customer_type as CustomerType) || 'particulier';
-  const meta = TYPE_META[type] ?? TYPE_META.particulier;
+  const meta = typeMeta(type);
   const TypeIcon = meta.icon;
   const { primary, secondary } = displayName(c);
   const moral = isMoral(type);
@@ -310,8 +312,8 @@ export default function CustomerRecordPage() {
               {c.credit_limit && <><dt>Plafond</dt><dd>{money(num(c.credit_limit), { decimals: 0 })}</dd></>}
               {c.remise_pct && <><dt>Remise</dt><dd>{num(c.remise_pct)} %</dd></>}
               {moral && <><dt>TVA</dt><dd>{c.tva_exonere ? 'Exonérée' : 'Assujettie'}</dd></>}
-              {type === 'particulier' && c.birthday && <><dt>Naissance</dt><dd>{day(c.birthday, 'd MMMM yyyy')}</dd></>}
-              {type === 'particulier' && c.allergies && <><dt>Allergies</dt><dd>{c.allergies}</dd></>}
+              {customerBehaviors(type).personal_fields && c.birthday && <><dt>Naissance</dt><dd>{day(c.birthday, 'd MMMM yyyy')}</dd></>}
+              {customerBehaviors(type).personal_fields && c.allergies && <><dt>Allergies</dt><dd>{c.allergies}</dd></>}
             </dl>
           </section>
 

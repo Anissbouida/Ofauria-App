@@ -56,7 +56,10 @@ export async function invoicePdfById(
   let customerAddress = '';
   let customerICE = '';
   const inv = invoice as Record<string, unknown>;
-  const isMoral = ['professionnel', 'association', 'revendeur'].includes(inv.customer_type as string);
+  // Personne morale : comportement du type de client (mig 701) ; ancienne liste si la requête ne le fournit pas.
+  const isMoral = inv.customer_legal_entity !== undefined && inv.customer_legal_entity !== null
+    ? inv.customer_legal_entity === true
+    : ['professionnel', 'association', 'revendeur'].includes(inv.customer_type as string);
   if (isMoral && inv.customer_company_name) {
     customerName = inv.customer_company_name as string;
   } else if (inv.customer_first_name || inv.customer_last_name) {

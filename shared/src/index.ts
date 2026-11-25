@@ -35,3 +35,4 @@ export * from './types/recipe.types.js';
 export * from './types/employee.types.js';
 export * from './types/production.types.js';
 export * from './types/ledger.types.js';
+export * from './constants/commercial-types.js';

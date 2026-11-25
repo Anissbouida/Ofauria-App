@@ -56,18 +56,18 @@ async function candidates(runner: Runner, ctx: PromoContext) {
 
 async function customerFacts(runner: Runner, customerId: string | null | undefined) {
   if (!customerId) return null;
-  const c = await runner.query(`SELECT id, COALESCE(customer_type, 'particulier') AS customer_type FROM customers WHERE id = $1`, [customerId]);
+  const c = await runner.query(`SELECT id, fn_customer_on_account(customer_type) AS on_account FROM customers WHERE id = $1`, [customerId]);
   if (!c.rows[0]) return null;
   const t = await tierFor(customerId, runner);
   const tiers = await runner.query(`SELECT code, min_points FROM loyalty_tiers`);
-  return { type: c.rows[0].customer_type as string, points12m: t.points12m, tierMin: Object.fromEntries(tiers.rows.map(x => [x.code, x.min_points])) as Record<string, number> };
+  return { onAccount: c.rows[0].on_account === true, points12m: t.points12m, tierMin: Object.fromEntries(tiers.rows.map(x => [x.code, x.min_points])) as Record<string, number> };
 }
 
 function customerOk(p: Promo, c: Awaited<ReturnType<typeof customerFacts>>) {
   switch (p.customer_scope) {
     case 'identified': return !!c;
-    case 'particulier': return !!c && c.type === 'particulier';
-    case 'professionnel': return !!c && c.type !== 'particulier';
+    case 'particulier': return !!c && !c.onAccount;
+    case 'professionnel': return !!c && c.onAccount;
     case 'tier': return !!c && c.points12m >= (c.tierMin[p.min_tier_code] ?? Infinity);
     default: return true;
   }

@@ -5,6 +5,7 @@ import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { activeUnits } from '../services/unit-referential.js';
+import { commercialTypes } from '../services/commercial-types.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { refEntrySchema, refReactivateSchema, refReorderSchema } from '../validators/referentiel.validator.js';
 
@@ -20,6 +21,13 @@ router.get('/tables', authenticate, authorizeSettings('referentiel'), asyncHandl
 // production, donc ouvertes à tout utilisateur connecté (liste non sensible).
 router.get('/units/active', authenticate, asyncHandler(async (_req, res) => {
   res.json({ success: true, data: await activeUnits() });
+}));
+
+// Types de client et de commande (mig 701) : lus par le formulaire de commande et la fiche
+// client, donc ouverts à tout utilisateur connecté. Valeurs inactives comprises (une fiche
+// ancienne garde son libellé) ; l'écran ne propose que les actives.
+router.get('/commercial-types', authenticate, asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await commercialTypes() });
 }));
 
 // Portée sectorielle des référentiels (mig 698) : contexte, aperçu d'un choix de secteur,

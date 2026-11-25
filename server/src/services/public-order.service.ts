@@ -72,10 +72,10 @@ export async function createPublicOrder(
   if (!userId) return { error: 'Aucun utilisateur pour porter la commande' };
 
   const customer = input.customerId
-    ? (await db.query(`SELECT id, customer_type, tva_exonere FROM customers WHERE id = $1`, [input.customerId])).rows[0] ?? null
+    ? (await db.query(`SELECT id, customer_type, tva_exonere, fn_customer_on_account(customer_type) AS on_account FROM customers WHERE id = $1`, [input.customerId])).rows[0] ?? null
     : null;
   if (input.customerId && !customer) return { error: 'Client introuvable' };
-  const isPro = !!customer && (customer.customer_type ?? 'particulier') !== 'particulier';
+  const isPro = !!customer && customer.on_account === true;
 
   const ctx = await priceContextForCustomer(db, input.customerId ?? null, null);
   // TVA par ligne : même défaut que la prise de commande interne (professionnels).

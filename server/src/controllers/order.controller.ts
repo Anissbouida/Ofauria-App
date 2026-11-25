@@ -1,3 +1,4 @@
+import { accountOrdersRestricted, findOrderType } from '../services/commercial-types.js';
 import type { Response } from 'express';
 import { defaultWorkshop, workshopForCategorySlug } from '../services/workshops.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -47,10 +48,18 @@ const fail = (res: Response, code: number, message: string) => { res.status(code
 export async function loadCustomer(customerId?: string | null) {
   if (!customerId) return null;
   const r = await db.query(
-    `SELECT id, customer_type, remise_pct, tva_exonere, credit_limit, billing_frequency FROM customers WHERE id = $1`, [customerId]);
+    `SELECT id, customer_type, remise_pct, tva_exonere, credit_limit, billing_frequency,
+            fn_customer_on_account(customer_type) AS on_account FROM customers WHERE id = $1`, [customerId]);
   return r.rows[0] ?? null;
 }
-export const isProCustomer = (c: { customer_type?: string | null } | null) => !!c && (c.customer_type ?? 'particulier') !== 'particulier';
+/**
+ * Client « en compte » (prix HT, BL, facture) plutôt que réglé au comptoir : comportement
+ * `settlement` de son type (référentiel customer_types, mig 701). `on_account` vient de
+ * loadCustomer, `customer_on_account` des requêtes de commande ; sans l'un ni l'autre (ligne
+ * lue ailleurs), la règle historique s'applique.
+ */
+export const isProCustomer = (c: { customer_type?: string | null; on_account?: boolean | null; customer_on_account?: boolean | null } | null) =>
+  !!c && (c.on_account ?? c.customer_on_account ?? ((c.customer_type ?? 'particulier') !== 'particulier'));
 
 type InItem = { productId: string; quantity: number; unitPrice?: number | string | null; tvaRate?: number | string | null; notes?: string };
 type OrderLine = { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; notes?: string;
@@ -225,7 +234,7 @@ export const orderController = {
     const result = await orderRepository.findAll({
       status, type, customerId, storeId: req.user!.storeId, limit: l, offset: (p - 1) * l,
       // Les commandes de professionnels sont l'affaire de la direction : la caisse ne les voit pas.
-      hidePro: !isDirection(req),
+      hidePro: !isDirection(req) && await accountOrdersRestricted(),
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },
@@ -275,8 +284,16 @@ export const orderController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    const { customerId, customerName, customerPhone, type, items, notes, pickupDate, orderDate } = req.body;
-    let { paymentMethod } = req.body;
+    const { customerId, customerName, customerPhone, items, notes, pickupDate, orderDate } = req.body;
+    let { paymentMethod, type } = req.body;
+
+    // Type de commande choisi (référentiel order_types, mig 701) : ses comportements décident
+    // de qui commande, de la remise d'office et de qui a le droit de la prendre.
+    const kind = req.body.orderKind ? await findOrderType(String(req.body.orderKind)) : null;
+    if (req.body.orderKind && (!kind || !kind.is_active)) { fail(res, 400, 'Type de commande inconnu ou désactivé (Paramètres › Référentiel)'); return; }
+    if (kind?.behaviors.direction_only && !isDirection(req)) { fail(res, 403, `« ${kind.label} » : commande réservée à la direction`); return; }
+    if (kind?.behaviors.party === 'customer' && !customerId) { fail(res, 400, `« ${kind.label} » : choisissez un client enregistré`); return; }
+    if (kind?.behaviors.auto_discount === 'staff') { type = 'staff'; req.body.type = 'staff'; }
 
     // Walk-in clients: store name/phone on order directly, no customer record
     // Known clients: customerId is provided by the frontend
@@ -287,7 +304,11 @@ export const orderController = {
     const customer = await loadCustomer(customerId);
     if (customerId && !customer) { fail(res, 400, 'Client introuvable'); return; }
     const pro = isProCustomer(customer) ? customer : null;
-    if (pro && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont prises par la direction'); return; }
+    // Sans type choisi (ancien écran, API) : règle historique, la direction prend les commandes en compte.
+    if (!kind && pro && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont prises par la direction'); return; }
+    if (kind?.behaviors.party === 'customer' && kind.behaviors.settlement !== 'any' && (kind.behaviors.settlement === 'compte') !== !!pro) {
+      fail(res, 400, pro ? `« ${kind.label} » ne s'adresse pas à un client en compte` : `« ${kind.label} » s'adresse à un client en compte`); return;
+    }
 
     const priced = await priceLines(items, pro, { role: req.user!.role, userId: req.user!.userId, overrideReason: req.body.priceOverrideReason ?? null });
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
@@ -335,7 +356,7 @@ export const orderController = {
       await client.query('BEGIN');
       order = await orderRepository.create({
         orderNumber, customerId, customerName, customerPhone,
-        userId: req.user!.userId, type: type || 'custom',
+        userId: req.user!.userId, type: type || 'custom', orderKind: kind?.code ?? null,
         subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
         sessionId: activeSession?.id, storeId: req.user!.storeId, channelId: req.body.channelId ?? null,
       }, client);
@@ -415,7 +436,10 @@ export const orderController = {
     const customer = await loadCustomer(customerId);
     if (customerId && !customer) { fail(res, 400, 'Client introuvable'); return; }
     const pro = isProCustomer(customer) ? customer : null;
-    if ((pro || isProCustomer(existing)) && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont gérées par la direction'); return; }
+    // Commande d'un type « réservé à la direction », ou commande en compte sans type (historique).
+    const existingKind = existing.order_kind ? await findOrderType(existing.order_kind) : null;
+    const reserved = existingKind ? existingKind.behaviors.direction_only : !!(pro || isProCustomer(existing));
+    if (reserved && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont gérées par la direction'); return; }
 
     // L'avance a été encaissée à la prise de commande : elle ne se modifie pas ici.
     const advance = parseFloat(existing.advance_amount) || 0;

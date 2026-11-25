@@ -1,3 +1,4 @@
+import { isAccountType, customerTypeLabel } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -189,7 +190,7 @@ function CustomerRow({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { c
         <td>
           <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {c.name}
-            {c.customerType === 'professionnel' && <span className="kl-pill b">Pro</span>}
+            {isAccountType(c.customerType) && <span className="kl-pill b">{customerTypeLabel(c.customerType)}</span>}
             {overLimit && <span className="kl-pill r" title={`Plafond ${money(c.creditLimit!)}`}>Plafond dépassé</span>}
           </span>
           {c.phone && <span className="sal-sub"><Phone size={11} style={{ display: 'inline', verticalAlign: -1 }} /> {c.phone}</span>}

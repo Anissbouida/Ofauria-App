@@ -1,3 +1,4 @@
+import { customerTypeLabel } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -291,7 +292,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
   // Le bon de livraison est un document logistique ouvert à tout client (pro ou
   // particulier) : le sélecteur liste tous les clients, pros d'abord, type indiqué.
   const customerOptions = useMemo(() => customers
-    .map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: (c.customer_type ?? 'particulier') === 'particulier' ? 'Particulier' : 'Professionnel' }))
+    .map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: customerTypeLabel(c.customer_type as string | null) }))
     .sort((a, b) => Number(b.sublabel === 'Professionnel') - Number(a.sublabel === 'Professionnel') || a.label.localeCompare(b.label)), [customers]);
   const { data: productsResp } = useQuery({ queryKey: ['products-bl'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products = ((productsResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];

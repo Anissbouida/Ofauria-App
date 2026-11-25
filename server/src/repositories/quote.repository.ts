@@ -41,7 +41,7 @@ const EDITABLE: QuoteStatus[] = ['draft', 'sent'];
 const SELECT = `
   SELECT q.*,
          COALESCE(NULLIF(c.company_name, ''), ${NAME('c')}, q.prospect_company, q.prospect_name) AS client_label,
-         c.customer_type, c.company_name AS customer_company, c.email AS customer_email, c.phone AS customer_phone,
+         c.customer_type, fn_customer_on_account(c.customer_type) AS customer_on_account, c.company_name AS customer_company, c.email AS customer_email, c.phone AS customer_phone,
          c.address AS customer_address, c.city AS customer_city, c.ice AS customer_ice,
          o.order_number, ${NAME('u')} AS created_by_name,
          re.label AS lost_reason_label,
@@ -228,7 +228,7 @@ export const quoteRepository = {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
                  -- Canal (O2C L3) : « gros » pour un client professionnel, « commande » sinon.
                  (SELECT id FROM sales_channels WHERE code = CASE
-                    WHEN EXISTS (SELECT 1 FROM customers cu WHERE cu.id = $3::uuid AND COALESCE(cu.customer_type, 'particulier') <> 'particulier')
+                    WHEN EXISTS (SELECT 1 FROM customers cu WHERE cu.id = $3::uuid AND fn_customer_on_account(cu.customer_type))
                     THEN 'gros' ELSE 'commande' END),
                  -- Commercial attitré repris du client (phase 4.5).
                  (SELECT salesperson_id FROM customers WHERE id = $3::uuid)) RETURNING id`,

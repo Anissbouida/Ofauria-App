@@ -1,3 +1,4 @@
+import { isAccountType, customerTypeLabel } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -223,10 +224,10 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
   const customers = ((customersResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
   const customerOptions = useMemo(() => customers.map(c => ({
     id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '),
-    sublabel: (c.customer_type ?? 'particulier') !== 'particulier' ? 'Professionnel · HT + TVA' : 'Particulier · TTC',
+    sublabel: `${customerTypeLabel(c.customer_type as string | null)} · ${isAccountType(c.customer_type) ? 'HT + TVA' : 'TTC'}`,
   })).sort((a, b) => a.label.localeCompare(b.label)), [customers]);
   const customer = customers.find(c => String(c.id) === customerId);
-  const isPro = !!customer && (customer.customer_type ?? 'particulier') !== 'particulier';
+  const isPro = !!customer && isAccountType(customer.customer_type);
   const withTax = mode === 'customer' ? isPro : head.withTax;
 
   const { data: productsResp } = useQuery({ queryKey: ['products-quotes'], queryFn: () => productsApi.list({ limit: '1000' }) });
@@ -556,7 +557,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                     <FormField label="Client (facultatif)">
                       <SearchSelect value={converting.customerId} onChange={v => setConverting({ ...converting, customerId: v })} width="100%" size="md" ariaLabel="Client (facultatif)"
                         placeholder={`Sinon : commande au nom de « ${q.prospect_company || q.prospect_name} »`}
-                        options={customers.map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: (c.customer_type ?? 'particulier') !== 'particulier' ? 'Professionnel' : 'Particulier' }))} />
+                        options={customers.map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: customerTypeLabel(c.customer_type as string | null) }))} />
                     </FormField>
                   )}
                 </div>

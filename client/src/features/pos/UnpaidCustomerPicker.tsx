@@ -41,7 +41,7 @@ export default function UnpaidCustomerPicker({ customerId, customerLabel, saleTo
       const parts = newCustomer.name.trim().split(/\s+/);
       return customersApi.create({
         firstName: parts[0], lastName: parts.slice(1).join(' ') || null,
-        phone: newCustomer.phone.trim() || null, customerType: 'particulier',
+        phone: newCustomer.phone.trim() || null,
       });
     },
     onSuccess: (c: Record<string, any>) => {
