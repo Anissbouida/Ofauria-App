@@ -189,7 +189,14 @@ export default function ConfigurationWizard() {
   const pct = Math.round(100 * completed.size / steps.length);
   const changeData = (data: NonNullable<WizardAnswers[string]['data']>) => setAnswers(a => {
     const out: WizardAnswers = { ...a, [current.key]: { ...a[current.key], data, reviewed: false }, review: { ...a.review, reviewed: false } };
-    if (current.key === 'sector') for (const key of ['specialties','modules','operations','vocabulary','rules','interfaces','roles']) out[key] = { ...a[key], reviewed: false };
+    if (current.key === 'sector') {
+      for (const key of ['specialties','modules','operations','vocabulary','rules','interfaces','roles']) out[key] = { ...a[key], reviewed: false };
+      // Les spécialités d'un secteur qui n'est plus retenu sont retirées du brouillon.
+      const codes = [data.primary, ...(Array.isArray(data.secondary) ? data.secondary : [])];
+      const lineage = new Set((catalog.data?.profiles ?? []).filter(p => codes.includes(p.code)).flatMap(p => p.lineage));
+      const chosen = a.specialties?.data?.selected;
+      if (Array.isArray(chosen)) out.specialties = { ...out.specialties, data: { ...a.specialties!.data, selected: chosen.filter(c => lineage.has(catalog.data?.specialties.find(s => s.code === c)?.sector ?? '')) } };
+    }
     if (current.key === 'modules') for (const key of ['operations','rules','interfaces','roles']) out[key] = { ...a[key], reviewed: false };
     return out;
   });

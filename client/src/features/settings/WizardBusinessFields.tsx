@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChefHat, Factory, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Store, Truck, TriangleAlert } from 'lucide-react';
+import { Briefcase, Check, ChefHat, Cross, Factory, Hammer, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Shirt, ShoppingCart, Sprout, Store, Truck, TriangleAlert, Utensils } from 'lucide-react';
 import { ACTIVATABLE_MODULES, CORE_MODULES, MODULE_GROUPS, MODULE_LABELS, requiredModules, dependentModules, effectiveModules, VOCABULARY_KEYS, WORKSPACES, TABLE_DENSITIES, parseWorkspace, parseTableDensity, type AppModule } from '@ofauria/shared';
 import type { WizardAnswers, WizardCatalog, WizardData } from '../../api/wizard.api';
 import { Switch } from '../../components/ds/Switch';
@@ -30,7 +30,14 @@ function Segmented({ value, options, onChange, disabled, label }: { value: strin
 export function profileIcon(code: string, size = 20) {
   if (/boulang|patiss|bouche/.test(code)) return <ChefHat size={size} />;
   if (/agro/.test(code)) return <Package size={size} />;
-  if (/negoce|gros|distri/.test(code)) return <Truck size={size} />;
+  if (/negoce|gros|distri|transport/.test(code)) return <Truck size={size} />;
+  if (/restau|hotel/.test(code)) return <Utensils size={size} />;
+  if (/btp|batiment/.test(code)) return <Hammer size={size} />;
+  if (/agri/.test(code)) return <Sprout size={size} />;
+  if (/textile/.test(code)) return <Shirt size={size} />;
+  if (/services/.test(code)) return <Briefcase size={size} />;
+  if (/sante|pharma/.test(code)) return <Cross size={size} />;
+  if (/ecommerce/.test(code)) return <ShoppingCart size={size} />;
   if (/detail|commerce/.test(code)) return <Store size={size} />;
   if (/fabric|discret|process|atelier|indus/.test(code)) return <Factory size={size} />;
   return <LayoutGrid size={size} />;
@@ -168,8 +175,12 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     const selected = list(data.selected);
     const groups = profiles.map(p => ({ p, items: (catalog?.specialties ?? []).filter(s => p.lineage.includes(s.sector)) }))
       .filter((g, i, arr) => g.items.length && arr.findIndex(x => x.items.map(s => s.code).join() === g.items.map(s => s.code).join()) === i);
+    const offered = new Set(groups.flatMap(g => g.items.map(s => s.code)));
+    const stale = selected.filter(c => !offered.has(c));
+    const staleAlert = stale.length > 0 && <Alert tone="warning" icon={<TriangleAlert size={16} />} action={<button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={disabled} onClick={() => set('selected', selected.filter(c => offered.has(c)))}>Retirer</button>}>
+      {stale.length} spécialité{stale.length > 1 ? 's' : ''} d’un secteur qui n’est plus retenu : {stale.map(c => catalog?.specialties.find(s => s.code === c)?.label ?? c).join(', ')}.</Alert>;
     if (!groups.length) return <Alert tone="warning" icon={<TriangleAlert size={16} />}>Le profil « {main?.label ?? primary} » n’a pas encore de spécialités. L’assistant applique le socle commun ; vous pourrez enregistrer votre configuration comme profil.</Alert>;
-    return <>{groups.map(({ p, items }) => {
+    return <>{staleAlert}{groups.map(({ p, items }) => {
       const n = items.filter(s => selected.includes(s.code)).length;
       return <div key={p.code} style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><h3 className="ds-subhead" style={{ margin: 0 }}>{p.code === primary ? p.label : `Activité secondaire — ${p.label}`}</h3><span style={{ flex: 1 }} /><Tag tone="b">{n} sélectionnée{n > 1 ? 's' : ''}</Tag></div>
