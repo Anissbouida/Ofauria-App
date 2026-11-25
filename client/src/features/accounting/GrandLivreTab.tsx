@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { Download, Lock, BookOpen, ChevronRight, ChevronDown } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
-import type { LedgerAccountBlock, LedgerMovement } from '../../api/ledger.api';
+import type { LedgerAccountSummary, GeneralLedgerAccountPage } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
@@ -54,9 +56,12 @@ export default function GrandLivreTab() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [allOpen, setAllOpen] = useState(false);
 
+  // Synthèse par compte seulement ; les mouvements se chargent au dépliage, par pages
+  // (le 7111 compte plus de 100 000 lignes sur une année : tout afficher figeait l'écran).
+  const [exporting, setExporting] = useState(false);
   const { data, isLoading } = useQuery({
-    queryKey: ['ledger-general-ledger-full', startDate, endDate, classFilter],
-    queryFn: () => financialStatementsApi.generalLedgerFull({
+    queryKey: ['ledger-general-ledger-summary', startDate, endDate, classFilter],
+    queryFn: () => financialStatementsApi.generalLedgerSummary({
       startDate, endDate,
       class: classFilter === 'all' ? undefined : classFilter,
     }),
@@ -84,9 +89,19 @@ export default function GrandLivreTab() {
   });
   const isOpen = (code: string) => allOpen || expanded.has(code) || !!search;
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    setExporting(true);
+    let full;
+    try {
+      full = await financialStatementsApi.generalLedgerFull({ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter });
+    } catch {
+      notify.error('Export impossible : la période est peut-être trop large.');
+      setExporting(false);
+      return;
+    }
+    const wanted = new Set(accounts.map(a => a.code));
     const rows: string[][] = [];
-    for (const a of accounts) {
+    for (const a of full.accounts.filter(x => wanted.has(x.code))) {
       rows.push([a.code, a.label, '', '', 'Solde ouverture', '', '', a.opening.toFixed(2)]);
       let running = a.opening;
       for (const m of a.movements) {
@@ -98,13 +113,14 @@ export default function GrandLivreTab() {
     }
     exportCSV(`grand_livre_${startDate}_${endDate}.csv`,
       ['COMPTE', 'LIBELLE', 'DATE', 'N ECRITURE', 'DESCRIPTION', 'DEBIT', 'CREDIT', 'SOLDE'], rows);
+    setExporting(false);
   };
 
   return (
     <>
       <HeaderActions>
-        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={accounts.length === 0}>
-          <Download size={13} aria-hidden="true" /> Exporter CSV
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={accounts.length === 0 || exporting}>
+          <Download size={13} aria-hidden="true" /> {exporting ? 'Export en cours…' : 'Exporter CSV'}
         </button>
         <EditionButtons kind="grand-livre" params={{ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter }} />
       </HeaderActions>
@@ -142,7 +158,7 @@ export default function GrandLivreTab() {
           : <NoResultState text="Aucun compte ne correspond à la recherche." onReset={() => setSearch('')} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {accounts.map((a: LedgerAccountBlock) => {
+          {accounts.map((a: LedgerAccountSummary) => {
             const open = isOpen(a.code);
             return (
               <DataPanel key={a.code} label={`Compte ${a.code}`}>
@@ -155,7 +171,7 @@ export default function GrandLivreTab() {
                   {open ? <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
                   <span className="ds-ref" style={{ minWidth: 70 }}>{a.code}</span>
                   <span className="ds-strong" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
-                  <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{a.movements.length} mouvement{a.movements.length > 1 ? 's' : ''}</span>
+                  <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{a.movement_count.toLocaleString('fr-FR')} mouvement{a.movement_count > 1 ? 's' : ''}</span>
                   <span className="ds-num" style={{ fontSize: 13, minWidth: 190, color: 'var(--ds-muted)' }}>
                     D {n(a.total_debit) || '0,00'} · C {n(a.total_credit) || '0,00'}
                   </span>
@@ -182,7 +198,7 @@ export default function GrandLivreTab() {
                         <td colSpan={6} style={{ color: 'var(--ds-muted)' }}>Solde d'ouverture</td>
                         <td className="ds-num ds-strong">{sign(a.opening)}</td>
                       </tr>
-                      <RunningRows opening={a.opening} movements={a.movements} />
+                      <AccountRows account={a} startDate={startDate} endDate={endDate} />
                     </tbody>
                     <tfoot>
                       <tr>
@@ -203,27 +219,46 @@ export default function GrandLivreTab() {
   );
 }
 
-function RunningRows({ opening, movements }: { opening: number; movements: LedgerMovement[] }) {
-  let running = opening;
+const PAGE = 200;
+
+/** Mouvements d'un compte, chargés par pages de 200 au dépliage ; « Afficher plus » ajoute
+ *  la page suivante. Le solde progressif vient du serveur (pages précédentes comprises). */
+function AccountRows({ account, startDate, endDate }: { account: LedgerAccountSummary; startDate: string; endDate: string }) {
+  const q = useInfiniteQuery({
+    queryKey: ['ledger-account-page', account.code, startDate, endDate],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => financialStatementsApi.generalLedgerAccountPage(account.code, { startDate, endDate, offset: pageParam, limit: PAGE }),
+    getNextPageParam: (last: GeneralLedgerAccountPage, pages) => (last.movements.length < PAGE ? undefined : pages.length * PAGE),
+  });
+  const movements = (q.data?.pages ?? []).flatMap(p => p.movements);
+  if (q.isLoading) return <tr><td colSpan={7} style={{ color: 'var(--ds-muted)' }}>Chargement des mouvements…</td></tr>;
+  if (q.isError) return <tr><td colSpan={7} style={{ color: 'var(--ds-danger)' }}>Mouvements indisponibles. <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => q.refetch()}>Réessayer</button></td></tr>;
+  const left = account.movement_count - movements.length;
   return (
     <>
-      {movements.map((m, i) => {
-        running += (parseFloat(m.debit) || 0) - (parseFloat(m.credit) || 0);
-        return (
-          <tr key={i}>
-            <td>{fmtDate(m.entry_date)}</td>
-            <td className="ds-ref">{m.entry_number}</td>
-            <td>{m.journal_code}</td>
-            <td className="ds-strong">
-              {m.auxiliary_label ? <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{m.auxiliary_label} · </span> : ''}
-              {m.entry_description || m.line_label || '—'}
-            </td>
-            <td className="ds-num">{n(m.debit)}</td>
-            <td className="ds-num">{n(m.credit)}</td>
-            <td className="ds-num ds-strong">{sign(running)}</td>
-          </tr>
-        );
-      })}
+      {movements.map((m, i) => (
+        <tr key={i}>
+          <td>{fmtDate(m.entry_date)}</td>
+          <td className="ds-ref">{m.entry_number}</td>
+          <td>{m.journal_code}</td>
+          <td className="ds-strong">
+            {m.auxiliary_label ? <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{m.auxiliary_label} · </span> : ''}
+            {m.entry_description || m.line_label || '—'}
+          </td>
+          <td className="ds-num">{n(m.debit)}</td>
+          <td className="ds-num">{n(m.credit)}</td>
+          <td className="ds-num ds-strong">{sign(m.running)}</td>
+        </tr>
+      ))}
+      {q.hasNextPage && left > 0 && (
+        <tr>
+          <td colSpan={7} style={{ textAlign: 'center' }}>
+            <button type="button" className="ds-btn-ghost ds-btn-sm" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>
+              {q.isFetchingNextPage ? 'Chargement…' : `Afficher ${Math.min(PAGE, left).toLocaleString('fr-FR')} mouvements de plus (${left.toLocaleString('fr-FR')} restants)`}
+            </button>
+          </td>
+        </tr>
+      )}
     </>
   );
 }

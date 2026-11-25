@@ -416,6 +416,19 @@ export interface LedgerAccountBlock {
   closing: number;
   movements: LedgerMovement[];
 }
+/** Grand livre, écran : une ligne par compte, sans mouvements. */
+export type LedgerAccountSummary = Omit<LedgerAccountBlock, 'movements'> & { movement_count: number };
+export interface GeneralLedgerSummaryResult {
+  accounts: LedgerAccountSummary[];
+  total_debit: number;
+  total_credit: number;
+  account_count: number;
+}
+/** Une page des mouvements d'un compte, solde progressif calculé par le serveur. */
+export interface GeneralLedgerAccountPage {
+  opening: number;
+  movements: (LedgerMovement & { running: number })[];
+}
 export interface GeneralLedgerFullResult {
   accounts: LedgerAccountBlock[];
   total_debit: number;
@@ -468,6 +481,10 @@ export const financialStatementsApi = {
     api.get('/ledger/general-ledger', { params: { account, ...params } }).then(r => r.data.data),
   generalLedgerFull: (params: PeriodParams & { account?: string; class?: number } = {}): Promise<GeneralLedgerFullResult> =>
     api.get('/ledger/general-ledger-full', { params }).then(r => r.data.data),
+  generalLedgerSummary: (params: PeriodParams & { class?: number } = {}): Promise<GeneralLedgerSummaryResult> =>
+    api.get('/ledger/general-ledger-full', { params: { ...params, summary: 1 } }).then(r => r.data.data),
+  generalLedgerAccountPage: (account: string, params: PeriodParams & { offset: number; limit: number }): Promise<GeneralLedgerAccountPage> =>
+    api.get('/ledger/general-ledger-full', { params: { ...params, account } }).then(r => r.data.data),
   balance: (params: PeriodParams = {}): Promise<BalanceRow[]> =>
     api.get('/ledger/balance', { params }).then(r => r.data.data),
   incomeStatement: (params: PeriodParams = {}): Promise<IncomeStatementResult> =>

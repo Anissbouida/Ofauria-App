@@ -448,6 +448,28 @@ const WINDOW_SQL = (bilan: string, gestion: string) =>
 const OPENING_SQL = (start: string, bilan: string, gestion: string) =>
   `${WINDOW_SQL(bilan, gestion)} AND (je.entry_date < ${start}::date OR (je.source_kind = 'opening' AND je.entry_date <= ${start}::date))`;
 
+/** Soldes d'ouverture par compte à startDate (même règle que generalLedgerByPeriod). */
+async function openingBalances(params: { startDate?: string; storeId?: string; accountCode?: string; accountClass?: number }) {
+  const out = new Map<string, { label: string; normal_side: string; bal: number }>();
+  if (!params.startDate) return out;
+  const w = await windowStarts(params.startDate);
+  const ow: string[] = [`je.status IN ('posted','reversed')`, OPENING_SQL('$1', '$2', '$3')];
+  const ov: unknown[] = [params.startDate, w.bilan, w.gestion];
+  let op = 4;
+  if (params.storeId)     { ov.push(params.storeId);     ow.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
+  if (params.accountCode) { ov.push(params.accountCode); ow.push(`a.code = $${op++}`); }
+  if (params.accountClass){ ov.push(params.accountClass);ow.push(`a.account_class = $${op++}`); }
+  const r = await db.query(
+    `SELECT a.code, a.label, a.normal_side, COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+      WHERE ${ow.join(' AND ')}
+      GROUP BY a.code, a.label, a.normal_side`, ov);
+  for (const row of r.rows) out.set(row.code, { label: row.label, normal_side: row.normal_side, bal: parseFloat(row.bal) || 0 });
+  return out;
+}
+
 export const financialStatementsRepository = {
   /**
    * Grand livre d'un compte : tous les mouvements (lignes posted) d'un compte
@@ -519,6 +541,96 @@ export const financialStatementsRepository = {
     }
 
     return { account: account.rows[0], opening, movements: rows.rows };
+  },
+
+  /**
+   * Grand livre, écran : une ligne par compte (ouverture, totaux, nombre de mouvements,
+   * clôture), SANS les mouvements. Avant, l'écran recevait toutes les lignes de la période
+   * (225 000 en dev, dont 109 000 sur le 7111) et figeait le navigateur au dépliage.
+   */
+  async generalLedgerSummary(params: {
+    startDate?: string; endDate?: string; storeId?: string; accountClass?: number;
+  }) {
+    const where: string[] = [`je.status IN ('posted','reversed')`, `je.source_kind <> 'opening'`];
+    const values: unknown[] = [];
+    let p = 1;
+    if (params.startDate)   { values.push(params.startDate);   where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)     { values.push(params.endDate);     where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)     { values.push(params.storeId);     where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+    if (params.accountClass){ values.push(params.accountClass);where.push(`a.account_class = $${p++}`); }
+    const sums = await db.query(
+      `SELECT a.code, a.label, a.normal_side, COUNT(*)::int AS movement_count,
+              COALESCE(SUM(jel.debit), 0)::float8 AS total_debit, COALESCE(SUM(jel.credit), 0)::float8 AS total_credit
+         FROM journal_entry_lines jel
+         JOIN journal_entries je ON je.id = jel.journal_entry_id
+         JOIN accounts a ON a.id = jel.account_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY a.code, a.label, a.normal_side`, values);
+    const opening = await openingBalances(params);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const map = new Map<string, { code: string; label: string; normal_side: string; opening: number; total_debit: number; total_credit: number; movement_count: number }>();
+    for (const s of sums.rows) {
+      map.set(s.code, { code: s.code, label: s.label, normal_side: s.normal_side, opening: opening.get(s.code)?.bal ?? 0,
+        total_debit: Number(s.total_debit), total_credit: Number(s.total_credit), movement_count: s.movement_count });
+    }
+    for (const [code, o] of opening) {
+      if (!map.has(code) && Math.round(o.bal * 100) !== 0) {
+        map.set(code, { code, label: o.label, normal_side: o.normal_side, opening: o.bal, total_debit: 0, total_credit: 0, movement_count: 0 });
+      }
+    }
+    const accounts = [...map.values()].sort((a, b) => a.code.localeCompare(b.code)).map(a => ({
+      ...a, opening: r2(a.opening), total_debit: r2(a.total_debit), total_credit: r2(a.total_credit),
+      closing: r2(a.opening + a.total_debit - a.total_credit),
+    }));
+    const grand = accounts.reduce((acc, a) => ({ debit: acc.debit + a.total_debit, credit: acc.credit + a.total_credit }), { debit: 0, credit: 0 });
+    return { accounts, total_debit: r2(grand.debit), total_credit: r2(grand.credit), account_count: accounts.length };
+  },
+
+  /**
+   * Grand livre, écran : une page des mouvements d'un compte, dans l'ordre du grand livre,
+   * avec le solde progressif calculé en base (il tient compte des pages précédentes).
+   */
+  async generalLedgerAccountPage(params: {
+    startDate?: string; endDate?: string; storeId?: string; accountCode: string; offset: number; limit: number;
+  }) {
+    const where: string[] = [`je.status IN ('posted','reversed')`, `je.source_kind <> 'opening'`, `a.code = $1`];
+    const values: unknown[] = [params.accountCode];
+    let p = 2;
+    if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+    const opening = (await openingBalances({ ...params, accountCode: params.accountCode })).get(params.accountCode)?.bal ?? 0;
+    // Tri partiel (top-N) plutôt qu'une fenêtre sur toutes les lignes du compte : la première
+    // page du 7111 (109 000 lignes) passe de 1,9 s à 1,3 s. Le solde avant la page n'est
+    // calculé que pour les pages suivantes.
+    const from = `FROM journal_entry_lines jel
+           JOIN journal_entries je ON je.id = jel.journal_entry_id
+           JOIN journals j ON j.id = je.journal_id
+           JOIN accounts a ON a.id = jel.account_id
+           LEFT JOIN account_auxiliaries aa ON aa.id = jel.auxiliary_id
+          WHERE ${where.join(' AND ')}`;
+    const order = 'ORDER BY je.entry_date, je.entry_number, jel.line_order, jel.id';
+    const rows = await db.query(
+      `SELECT je.entry_date, je.entry_number, j.code AS journal_code,
+              je.description AS entry_description, jel.label AS line_label,
+              jel.debit, jel.credit, jel.lettrage_id, aa.code AS auxiliary_code, aa.label AS auxiliary_label
+         ${from} ${order} LIMIT $${p} OFFSET $${p + 1}`, [...values, params.limit, params.offset]);
+    let before = 0;
+    if (params.offset > 0) {
+      before = Number((await db.query(
+        `SELECT COALESCE(SUM(d), 0)::float8 AS s FROM (
+           SELECT COALESCE(jel.debit, 0) - COALESCE(jel.credit, 0) AS d ${from} ${order} LIMIT $${p}) t`,
+        [...values, params.offset])).rows[0].s);
+    }
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    let running = opening + before;
+    return {
+      opening: r2(opening),
+      movements: rows.rows.map(m => {
+        running += (parseFloat(m.debit) || 0) - (parseFloat(m.credit) || 0);
+        return { ...m, running: r2(running) };
+      }),
+    };
   },
 
   /**

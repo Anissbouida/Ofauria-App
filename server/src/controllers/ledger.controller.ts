@@ -220,6 +220,24 @@ export const financialStatementsController = {
    */
   async generalLedgerFull(req: AuthRequest, res: Response) {
     const cls = req.query.class ? parseInt(req.query.class as string, 10) : undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    // Écran : synthèse par compte sans mouvements (?summary=1), puis mouvements d'un compte
+    // par pages (?account=…&limit=…&offset=…). Sans ces paramètres : tout (export, éditions).
+    if (req.query.summary === '1') {
+      res.json({ success: true, data: await financialStatementsRepository.generalLedgerSummary({
+        startDate, endDate, storeId: req.user!.storeId, accountClass: cls && !Number.isNaN(cls) ? cls : undefined,
+      }) });
+      return;
+    }
+    if (typeof req.query.account === 'string' && req.query.limit !== undefined) {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit), 10) || 200, 1), 2000);
+      const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10) || 0, 0);
+      res.json({ success: true, data: await financialStatementsRepository.generalLedgerAccountPage({
+        startDate, endDate, storeId: req.user!.storeId, accountCode: req.query.account, offset, limit,
+      }) });
+      return;
+    }
     const data = await financialStatementsRepository.generalLedgerByPeriod({
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
