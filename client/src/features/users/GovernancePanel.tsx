@@ -45,7 +45,7 @@ export default function GovernancePanel() {
 }
 
 /* ============ SÉPARATION DES TÂCHES ============ */
-function SodSection() {
+export function SodSection() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: mode } = useQuery({ queryKey: ['sod-mode'], queryFn: governanceApi.sodMode });
@@ -208,7 +208,7 @@ function SodRuleForm({ onDone }: { onDone: () => void }) {
 }
 
 /* ============ PLAFONDS D'APPROBATION ============ */
-function ApprovalLimitsSection() {
+export function ApprovalLimitsSection() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: limits = [], isError: limitsError, error: limitsErr, refetch: refetchLimits } = useQuery({ queryKey: ['approval-limits'], queryFn: governanceApi.limitsList });
@@ -285,7 +285,7 @@ function ApprovalLimitsSection() {
 }
 
 /* ============ DÉLÉGATIONS ============ */
-function DelegationsSection() {
+export function DelegationsSection() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: delegations = [], isError: delegError, error: delegErr, refetch: refetchDeleg } = useQuery({ queryKey: ['delegations'], queryFn: governanceApi.delegationsList });

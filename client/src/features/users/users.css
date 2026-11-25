@@ -1,0 +1,40 @@
+/*
+ * Module Utilisateurs (refonte 2026-11) : briques propres au module, uniquement avec les jetons
+ * du Design System (--ds-*). Tableaux, tuiles, pastilles et fenêtres viennent de components/ds.
+ */
+
+/* Deux colonnes de sections (Vue d'ensemble), une seule sous 1100 px. */
+.usr-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-s4); align-items: start; }
+@media (max-width: 1100px) { .usr-split { grid-template-columns: minmax(0, 1fr); } }
+
+/* Personne : pastille d'initiales, nom, e-mail. */
+.usr-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.usr-who b { display: block; color: var(--ds-ink); font-weight: 600; font-size: 14px; }
+.usr-who small { display: block; color: var(--ds-muted); font-size: 12.5px; }
+.usr-av {
+  flex: none; width: 32px; height: 32px; border-radius: 999px; background: var(--ds-tint); color: var(--ds-accent-ink);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+}
+.usr-av.lg { width: 56px; height: 56px; font-size: 19px; }
+.usr-av.off { background: var(--ds-hair); color: var(--ds-muted); }
+.usr-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ds-muted); }
+
+/* Signaux de sécurité : icône colorée + texte. */
+.usr-sigs { display: grid; gap: 2px; font-size: 13px; color: var(--ds-body); }
+.usr-sig { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.usr-sig.ok svg { color: var(--ds-success); }
+.usr-sig.todo svg { color: var(--ds-warning); }
+.usr-sig.todo { color: var(--ds-warning); }
+.usr-sig.none svg { color: var(--ds-muted); }
+
+/* Ligne de réglage : libellé + aide à gauche, valeur ou contrôle à droite. */
+.usr-row { display: flex; align-items: center; gap: var(--ds-s4); padding: 14px 20px; border-bottom: 1px solid var(--ds-hair); flex-wrap: wrap; font-size: 14px; }
+.usr-row:last-child { border-bottom: 0; }
+.usr-row > div:first-child { flex: 1 1 280px; min-width: 0; }
+.usr-row b { font-weight: 600; color: var(--ds-ink); }
+.usr-row p { margin: 2px 0 0; font-size: 13px; color: var(--ds-muted); }
+
+/* Liste libellé / valeur (aperçu, résumé de fiche). */
+.usr-kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 14px; }
+.usr-kv dt { color: var(--ds-muted); }
+.usr-kv dd { margin: 0; color: var(--ds-ink); min-width: 0; }

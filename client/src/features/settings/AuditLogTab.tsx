@@ -58,7 +58,8 @@ const OP_TAG: Record<AuditLogEntry['operation'], { tone: StatusTone; icon: Lucid
   DELETE: { tone: 'blocked', icon: Trash2, label: 'Suppression' },
 };
 
-const EVENT_LABELS: Record<string, string> = {
+/** Libellés des événements de connexion (auth_events), repris par le module Utilisateurs. */
+export const AUTH_EVENT_LABELS: Record<string, string> = {
   login_success: 'Connexion', login_failed: 'Échec de connexion',
   pin_login_success: 'Connexion PIN', pin_login_failed: 'Échec PIN',
   logout: 'Déconnexion', account_locked: 'Compte verrouillé',
@@ -251,7 +252,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
   );
 }
 
-function LoginsView({ users }: { users: Record<string, any>[] }) {
+export function LoginsView({ users }: { users: Record<string, any>[] }) {
   const [eventType, setEventType] = useState('');
   const [userId, setUserId] = useState('');
   const [result, setResult] = useState<'' | 'true' | 'false'>('');
@@ -275,7 +276,7 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
       <div className="prj-toolbar">
         <select className="ds-input sm" style={{ width: 'auto' }} value={eventType} onChange={e => reset(setEventType)(e.target.value)} aria-label="Événement">
           <option value="">Tous les événements</option>
-          {Object.entries(EVENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          {Object.entries(AUTH_EVENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
         <select className="ds-input sm" style={{ width: 'auto' }} value={result} onChange={e => reset(setResult)(e.target.value as '' | 'true' | 'false')} aria-label="Résultat">
           <option value="">Réussis et échoués</option>
@@ -302,7 +303,7 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
               {data.rows.map((e: AuthEventEntry) => (
                 <tr key={e.id}>
                   <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtDate(e.created_at)}</td>
-                  <td><StatusTag tone={e.success ? 'done' : 'blocked'} label={EVENT_LABELS[e.event_type] ?? e.event_type} /></td>
+                  <td><StatusTag tone={e.success ? 'done' : 'blocked'} label={AUTH_EVENT_LABELS[e.event_type] ?? e.event_type} /></td>
                   <td>{e.user_name || e.email || '—'}</td>
                   <td>{e.target_name || ''}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{e.ip || ''}</td>

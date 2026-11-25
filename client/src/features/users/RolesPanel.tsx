@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { LoadingPanel, Segmented, HrHeaderActions } from '../employees/ui';
-import { DataPanel, TableFooter, Toolbar, SectionHeader, FormField, FormFooter, ErrorState } from '../../components/ds';
+import { LoadingPanel, HrHeaderActions } from '../employees/ui';
+import { DataPanel, TableFooter, SectionHeader, FormField, FormFooter, ErrorState } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Check } from 'lucide-react';
 import * as shared from '@ofauria/shared';
@@ -13,7 +13,6 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
-import RoleActionMatrix from './RoleActionMatrix';
 
 /**
  * Rôles éditables et contrôle des droits côté serveur (audit Paramètres, lot 3, mig 330).
@@ -53,18 +52,12 @@ export default function RolesPanel() {
   const [creating, setCreating] = useState(false);
   // Duplication (M2-07) : le formulaire de création, prérempli depuis le rôle choisi.
   const [duplicateOf, setDuplicateOf] = useState<RoleRow | null>(null);
-  const [view, setView] = useState<'modules' | 'actions'>('modules');
   const { data: roles = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
   const current = roles.find(r => r.code === selected) ?? null;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <SecurityModePanel />
-      <Toolbar>
-        <Segmented label="Droits des rôles" value={view} onChange={setView}
-          options={[{ key: 'modules', label: 'Rôles et droits par module' }, { key: 'actions', label: 'Permissions par action' }]} />
-      </Toolbar>
-      {view === 'actions' ? <RoleActionMatrix roles={roles} /> : <>
+      {/* Contrôle des droits : Contrôles internes ; matrice par action : Rapports › Droits par rôle (refonte 2026-11). */}
       {/* Action principale de la vue, à droite du fil d'Ariane. */}
       <HrHeaderActions>
         <button type="button" className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -98,12 +91,11 @@ export default function RolesPanel() {
       )}
       {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)}
         onDuplicate={() => { setDuplicateOf(current); setCreating(false); }} />}
-      </>}
     </div>
   );
 }
 
-function SecurityModePanel() {
+export function SecurityModePanel() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { data } = useQuery({ queryKey: ['security'], queryFn: rolesApi.security });
