@@ -143,9 +143,11 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 2 fournées entières', (
          FROM production_plan_dependencies d JOIN production_plan_items i ON i.plan_id = d.dependency_plan_id
         WHERE d.parent_plan_id = $1`, [plan.id])).rows[0];
     expect(num(dep.quantity_to_produce)).toBeCloseTo(7.2, 3);
-    expect(num(dep.planned_quantity)).toBeCloseTo(8.7, 3);
-    expect(num(dep.requested_quantity)).toBeCloseTo(7.2, 3);
-    expect(dep.nb_contenants).toBe(3);
+    // Lot 4 (C-06) : le plan de crème du plan précédent, encore en brouillon le même jour, est
+    // partagé — 7,2 + 7,2 = 14,4 kg demandés, 5 fournées de 2,9 kg = 14,5 kg.
+    expect(num(dep.requested_quantity)).toBeCloseTo(14.4, 3);
+    expect(num(dep.planned_quantity)).toBeCloseTo(14.5, 3);
+    expect(dep.nb_contenants).toBe(5);
   });
 
   it('modifier les lignes d\'un brouillon réapplique la règle', async () => {
