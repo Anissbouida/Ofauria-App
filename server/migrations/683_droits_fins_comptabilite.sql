@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 679 — Plan d'action compta, étape 19 (audit C-09) : droits fins à la place des droits fourre-tout
+-- 683 — Plan d'action compta, étape 19 (audit C-09) : droits fins à la place des droits fourre-tout
 --
 --   `accounting.delete` protégeait dix actions sans rapport (facture, paiement, compte du plan,
 --   brouillon d'écriture, délettrage, modèle, famille de produits…) et `accounting.cancel` cinq

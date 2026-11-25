@@ -1,5 +1,5 @@
 /**
- * Plan d'action compta, étape 19 (audit C-09) : la migration 679 découpe accounting.delete et
+ * Plan d'action compta, étape 19 (audit C-09) : la migration 683 découpe accounting.delete et
  * accounting.cancel en droits fins SANS changer qui peut quoi.
  */
 import { describe, it, expect, afterAll } from 'vitest';

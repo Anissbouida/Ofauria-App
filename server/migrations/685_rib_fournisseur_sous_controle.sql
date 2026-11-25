@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 681 — Plan d'action compta, étape 22 (audit C-09) : changement de RIB fournisseur sous contrôle
+-- 685 — Plan d'action compta, étape 22 (audit C-09) : changement de RIB fournisseur sous contrôle
 --
 --   Le RIB d'un fournisseur se modifiait avec le seul droit d'édition des fournisseurs, sans second
 --   regard, et une campagne de paiement recopiait le RIB courant : un RIB changé juste avant un

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 680 — Plan d'action compta, étape 21 (audit C-09) : approbation des écritures manuelles
+-- 684 — Plan d'action compta, étape 21 (audit C-09) : approbation des écritures manuelles
 --
 --   Une OD était créée et comptabilisée par la même personne, sans aucun contrôle. Le type de pièce
 --   « journal_entry » rejoint le moteur d'approbation (mig 350) : quand une règle active s'applique

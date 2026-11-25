@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 682 — Plan d'action compta, étape 23 (audit C-09) : audit du paramétrage comptable, SoD par défaut
+-- 686 — Plan d'action compta, étape 23 (audit C-09) : audit du paramétrage comptable, SoD par défaut
 --
 --   1. Le journal d'audit du paramétrage (config_audit_log, mig 328) ne couvrait pas les tables qui
 --      décident des comptes et des paiements : journaux, profils de comptabilisation, règles de

@@ -1,5 +1,5 @@
 /**
- * Changement de RIB d'un fournisseur sous contrôle (plan compta, étape 22, audit C-09, mig 681).
+ * Changement de RIB d'un fournisseur sous contrôle (plan compta, étape 22, audit C-09, mig 685).
  *
  * Le RIB d'un fournisseur DÉJÀ pourvu d'un RIB ne se change plus d'un seul clic : le changement
  * devient une demande que quelqu'un d'autre approuve (moteur d'approbation, type de pièce
