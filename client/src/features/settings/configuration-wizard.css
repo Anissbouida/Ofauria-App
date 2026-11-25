@@ -57,7 +57,7 @@
 
 .wz-app .wz-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--ds-hair); flex-wrap: wrap; }
 .wz-app .wz-row:last-child { border-bottom: 0; }
-.wz-app .wz-row > div:first-child { flex: 1 1 260px; min-width: 0; }
+.wz-app .wz-row > div:first-child { flex: 1 1 320px; min-width: min(320px, 100%); }
 .wz-app .wz-row b { font-size: 14px; font-weight: 600; color: var(--ds-ink); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .wz-app .wz-row p { margin: 2px 0 0; font-size: 13px; color: var(--ds-muted); }
 .wz-app .wz-row.off b, .wz-app .wz-row.off p { opacity: .55; }

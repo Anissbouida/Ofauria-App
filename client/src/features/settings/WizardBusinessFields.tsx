@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, Check, ChefHat, Cross, Factory, Hammer, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Shirt, ShoppingCart, Sprout, Store, Truck, TriangleAlert, Utensils } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { storesApi } from '../../api/stores.api';
+import { settingsApi } from '../../api/settings.api';
+import { Briefcase, Check, Download, Upload, ChefHat, Cross, Factory, Hammer, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Shirt, ShoppingCart, Sprout, Store, Truck, TriangleAlert, Utensils } from 'lucide-react';
 import { ACTIVATABLE_MODULES, CORE_MODULES, MODULE_GROUPS, MODULE_LABELS, requiredModules, dependentModules, effectiveModules, VOCABULARY_KEYS, WORKSPACES, TABLE_DENSITIES, parseWorkspace, parseTableDensity, type AppModule } from '@ofauria/shared';
 import type { WizardAnswers, WizardCatalog, WizardData } from '../../api/wizard.api';
 import { Switch } from '../../components/ds/Switch';
@@ -101,7 +104,9 @@ export function draftData(step: string, answers: WizardAnswers, catalog: WizardC
 
 /** Aperçu de l'espace de travail (bandeau, menu, accueil), comme dans la maquette. */
 export function PreviewBox({ answers, catalog, company }: { answers: WizardAnswers; catalog: WizardCatalog | undefined; company: string }) {
-  const modules = list(draftData('modules', answers, catalog, company).selected).filter(m => !CORE_MODULES.has(m as AppModule));
+  const order = MODULE_GROUPS.flatMap(g => g.modules as string[]);
+  const modules = list(draftData('modules', answers, catalog, company).selected).filter(m => !CORE_MODULES.has(m as AppModule))
+    .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
   const voc = draftData('vocabulary', answers, catalog, company);
   const name = text(draftData('company', answers, catalog, company).name) || 'Kalum';
   const prod = modules.includes('production');
@@ -116,7 +121,12 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   step: string; answers: WizardAnswers; catalog: WizardCatalog | undefined; company: string; disabled: boolean; onChange: (data: WizardData) => void;
 }) {
   const navigate = useNavigate();
+  const stores = useQuery({ queryKey: ['stores'], queryFn: storesApi.list, enabled: step === 'company' });
   const [search, setSearch] = useState('');
+  const download = async (entity: string) => {
+    const { blob, filename } = await settingsApi.download(`import/${entity}/template`);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  };
   const [note, setNote] = useState<{ tone: 'info' | 'danger'; text: string } | null>(null);
   const data = draftData(step, answers, catalog, company);
   const set = (key: string, value: WizardData[string]) => onChange({ ...data, [key]: value });
@@ -143,6 +153,14 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         {field('Taille de l’entreprise', select('size', [{ value: 'TPE', label: '1 à 9 salariés (TPE)' }, { value: 'PME', label: '10 à 249 salariés (PME)' }, { value: 'Grande entreprise', label: '250 salariés et plus' }]), 'Sert aux recommandations de modules et de rôles.')}
         {field('Nombre d’établissements', <input className="ds-input" type="number" min={1} value={text(data.sites)} disabled={disabled} onChange={e => set('sites', e.target.value)} />, 'Magasins, sites de production, dépôts. Ils se créent dans Paramètres › Établissements.')}
       </div></fieldset>
+      <div><div className="ds-section-head" style={{ marginBottom: 8 }}><h2 style={{ fontSize: 14 }}>Établissements</h2><small>Magasins, sites de production, dépôts</small><span className="ds-grow" style={{ flex: 1 }} />
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=stores')}><Plus size={13} aria-hidden="true" /> Ajouter</button></div>
+        <div className="ds-scroll"><table className="odoo-table ds-dense" style={{ width: '100%' }}><thead><tr><th>Nom</th><th>Type</th><th>Adresse</th><th style={{ width: 110 }}>État</th></tr></thead><tbody>
+          {(stores.data as { id: string; name: string; kind?: string; address?: string | null; is_active?: boolean }[] | undefined ?? []).map(s => <tr key={s.id}>
+            <td className="ds-strong">{s.name}</td><td>{({ shop: 'Magasin', workshop: 'Site de production', warehouse: 'Dépôt', office: 'Bureau', mixed: 'Magasin et production' } as Record<string, string>)[s.kind ?? ''] ?? s.kind ?? '—'}</td>
+            <td>{s.address || '—'}</td><td>{s.is_active === false ? <Tag tone="x">Inactif</Tag> : <Tag tone="g">Actif</Tag>}</td></tr>)}
+          {stores.isLoading && <tr><td colSpan={4} className="mq-sub">Chargement…</td></tr>}
+        </tbody></table></div></div>
     </>;
   }
 
@@ -273,7 +291,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
       <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th>Votre terme</th><th style={{ width: 110 }}></th></tr></thead><tbody>
         {VOCAB.map(v => { const val = text(data[v.key]), changed = val !== proposed(v.key, v.fallback);
           return <tr key={v.key}><td className="ds-strong">{v.designates}</td><td>{proposed(v.key, v.fallback)}</td>
-            <td><input className="ds-input sm" aria-label={`Terme pour ${v.designates}`} value={val} disabled={disabled} onChange={e => set(v.key, e.target.value)} /></td>
+            <td><input className="ds-input sm" style={{ width: '100%' }} aria-label={`Terme pour ${v.designates}`} value={val} disabled={disabled} onChange={e => set(v.key, e.target.value)} /></td>
             <td>{changed && <Tag tone="o">Modifié</Tag>}</td></tr>; })}
       </tbody></table></div>
       <p className="mq-sub" style={{ margin: 0 }}>Les mots changent à l’écran, sur les documents et les rapports. Les autres termes se règlent dans Paramètres › Vocabulaire.</p>
@@ -295,6 +313,25 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         <Row title={<>Densité des tableaux {'density' in data && <Tag tone="o">Modifié</Tag>}</>} help="Standard ou compacte, pour toutes les listes.">
           <Segmented label="Densité des tableaux" value={density} options={TABLE_DENSITIES.map(d => ({ value: d.value, label: d.label }))} disabled={disabled || !prefs?.available} onChange={v => set('density', v)} /></Row>
       </div>
+      {(() => {
+        const chosen = list(draftData('roles', answers, catalog, company).selected);
+        const roles = proposedRoleTemplates(answers, catalog, company).filter(t => t.exists || chosen.includes(t.code));
+        const home = (route: string | null) => {
+          const m = (route ?? '/').split('/')[1] ?? '';
+          const map: Record<string, [string, string]> = {
+            '': ['Tableau de bord général', 'Chiffre d’affaires, marge, trésorerie'], pos: ['Caisse', 'Ventes du jour, fond de caisse'],
+            production: ['Poste de production', `${text(draftData('vocabulary', answers, catalog, company).production_plans) || 'Ordres'} du jour, matières à sortir`],
+            purchasing: ['Poste de travail achats', 'À commander, réceptions attendues'], accounting: ['Tableau de bord comptable', 'À comptabiliser, échéances'],
+            stock: ['Stock', 'Ruptures, péremptions proches'], sales: ['Tableau de bord des ventes', 'Devis à relancer, encours'],
+            controle: ['Contrôle et qualité', 'Lots retenus, contrôles à faire'], maintenance: ['Maintenance', 'Interventions ouvertes, équipements'],
+            projects: ['Mes projets', 'Temps à saisir, jalons'], employees: ['Personnel', 'Pointage, absences, paie'],
+          };
+          return map[m] ?? [MODULE_LABELS[m as AppModule] ?? m, '—'];
+        };
+        return roles.length > 0 && <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Rôle</th><th>Écran d’accueil</th><th>Indicateurs et raccourcis</th></tr></thead><tbody>
+          {roles.map(t => { const [screen, kpis] = home(t.home_route); return <tr key={t.code}><td className="ds-strong">{t.label}</td><td>{screen}</td><td>{kpis}</td></tr>; })}
+        </tbody></table></div>;
+      })()}
       <p className="mq-sub" style={{ margin: 0 }}>Tous les écrans gardent le même gabarit Kalum.</p>
     </>;
   }
@@ -352,15 +389,29 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     </>;
   }
 
-  if (step === 'data') return <>
+  if (step === 'data') {
+    const mods = new Set(list(draftData('modules', answers, catalog, company).selected));
+    const items = ([
+      ['suppliers', 'Fournisseurs', 'Doublons détectés sur l’ICE et le nom', mods.has('purchasing')],
+      ['customers', 'Clients', 'Doublons détectés sur l’e-mail et le téléphone', mods.has('customers') || mods.has('sales')],
+      ['ingredients', text(draftData('vocabulary', answers, catalog, company).ingredient) ? `Matières (${text(draftData('vocabulary', answers, catalog, company).ingredient).toLowerCase()})` : 'Matières premières', 'Unités, contenants, fournisseur habituel', mods.has('stock')],
+      ['packaging_items', 'Consommables', 'Emballages, fournitures', mods.has('packaging')],
+      ['products', 'Produits', 'Prix, catégories, codes', mods.has('products')],
+    ] as const).filter(x => x[3]);
+    return <>
+    <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Donnée</th><th style={{ width: 150 }}>État</th><th className="ds-actions" style={{ width: 270 }}>Action</th></tr></thead><tbody>
+      {items.map(([key, label, hint]) => <tr key={key}><td className="ds-strong">{label}<div className="mq-sub">{hint}</div></td><td><Tag tone="x">À importer</Tag></td>
+        <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => void download(key)}><Download size={13} aria-hidden="true" /> Modèle de fichier</button> <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=data')}><Upload size={13} aria-hidden="true" /> Importer</button></td></tr>)}
+    </tbody></table></div>
     <div>
       <Row title="Référentiels du profil" help="Catégories, unités, types d’étape et ateliers des spécialités choisies. Seuls les éléments absents sont créés."><Tag tone="g">Avec la publication</Tag></Row>
       <Row title="Données de démonstration" help="Marquées « démonstration », exclues de la comptabilité et des déclarations, effaçables en une action.">
         <Switch label="Données de démonstration" checked={data.demo === true} disabled={disabled} onChange={v => set('demo', v)} /></Row>
     </div>
     {data.demo === true && <Alert tone="warning" icon={<TriangleAlert size={16} />}>Les données de démonstration devront être effacées avant la première écriture comptable réelle.</Alert>}
-    <p className="mq-sub" style={{ margin: 0 }}>Articles, clients, fournisseurs, employés, stocks et soldes d’ouverture s’importent après l’activation, dans Paramètres › Import, avec aperçu et annulation.</p>
+    <p className="mq-sub" style={{ margin: 0 }}>Chaque import passe par un aperçu et peut être annulé (Paramètres › Données). Importez de préférence après l’activation, pour que les fiches reçoivent les bons modules et libellés.</p>
   </>;
+  }
 
   return null;
 }
