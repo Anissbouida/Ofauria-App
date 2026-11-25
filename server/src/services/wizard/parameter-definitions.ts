@@ -4,13 +4,16 @@ import { parameterByKey } from '../parameters-catalog.js';
  * ceux du centre de paramètres. Les règles fiscales et bascules de moteur sont exclues. */
 const selection = [
   ['operations','production','production.demand_source'],
+  ['operations','production','production.rhythm'],
   ['operations','production','production.mrp_horizon'],
   ['operations','production','production.yield_target'],
   ['operations','production','production.cost_allocation_key'],
+  ['operations','stock','stock.organization'],
   ['operations','stock','stock.negative_policy'],
   ['operations','stock','stock.dlc_alerts'],
   ['operations','stock','stock.low_stock_alerts'],
   ['operations','pos','sales.pos_stock'],
+  ['operations','sales','sales.channel'],
   ['operations','sales','sales.quotes'],
   ['rules','production','production.flow'],
   ['rules','production','production.enforce_declared_steps'],

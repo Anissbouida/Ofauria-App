@@ -138,6 +138,16 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'production.rhythm', domain: 'production', section: 'production',
+    label: 'Rythme de production',
+    help: 'Artisanal : plan du jour, horizon du plan directeur de 3 jours, dépassement de capacité signalé. Industriel : 14 jours, dépassement de capacité bloqué. En continu : 28 jours, capacité bloquée ; incompatible avec une production à la commande. Changer de rythme règle ces deux paramètres, qui restent ajustables ensuite.',
+    fields: [{ name: 'mode', label: 'Rythme', type: 'enum', options: [
+      { value: 'artisanal', label: 'Artisanal' }, { value: 'industrial', label: 'Industriel' }, { value: 'continuous', label: 'En continu' },
+    ] }],
+    defaults: { mode: 'artisanal' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'production.flow', domain: 'production', section: 'production',
     label: 'Parcours d\'une production',
     help: 'Étapes obligatoires d\'un ordre. Fiche technique : un article sans fiche bloque la confirmation du plan. Bon de sortie : le démarrage attend la sortie des matières (types d\'ordre qui en prévoient un). Contrôle qualité : le transfert attend les contrôles prévus. Validation du transfert : la boutique confirme la réception ; sinon elle est enregistrée d\'office.',
@@ -335,6 +345,16 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'company_settings', columns: { percent: 'staff_discount_percent' } },
   },
   {
+    key: 'sales.channel', domain: 'sales', section: 'business',
+    label: 'Canal de vente principal',
+    help: 'Fixe l\'écran d\'accueil « Selon le secteur » : au détail = la caisse, en gros = les ventes, directe = les commandes clients, multicanale = l\'accueil du secteur. Les autres canaux restent disponibles.',
+    fields: [{ name: 'channel', label: 'Canal', type: 'enum', options: [
+      { value: 'direct', label: 'Directe' }, { value: 'retail', label: 'Au détail' }, { value: 'wholesale', label: 'En gros' }, { value: 'multi', label: 'Multicanale' },
+    ] }],
+    defaults: { channel: 'multi' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.quotes', domain: 'sales', section: 'business',
     label: 'Devis clients',
     help: 'Durée de validité proposée sur un nouveau devis (modifiable devis par devis). Passé ce délai, un devis envoyé passe en « expiré » et son auteur est prévenu (mig 365).',
@@ -404,6 +424,16 @@ export const PARAMETERS: ParamDef[] = [
       { name: 'email', label: 'Envoyer aussi un e-mail aux responsables', type: 'boolean' },
     ],
     defaults: { days: [30, 7], email: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'stock.organization', domain: 'production', section: 'business',
+    label: 'Organisation du stock',
+    help: 'Par établissement : chacun achète et suit son stock. Centralisée : les bons de commande sont livrés au dépôt central (premier établissement de type dépôt, sinon mixte, sinon production) et le tableau « À commander » regroupe tous les établissements.',
+    fields: [{ name: 'mode', label: 'Organisation', type: 'enum', options: [
+      { value: 'per_store', label: 'Par établissement' }, { value: 'central', label: 'Centralisée' },
+    ] }],
+    defaults: { mode: 'per_store' },
     storage: { kind: 'module_parameters' },
   },
   {

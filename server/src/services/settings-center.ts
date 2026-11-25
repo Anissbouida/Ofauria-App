@@ -3,6 +3,7 @@ import { auditedQuery } from '../utils/audit-context.js';
 import { PARAMETERS, type ParamDef } from './parameters-catalog.js';
 import { policySnapshot, setPolicy } from './policies.js';
 import { WIZARD_MODULE_PARAMETER_KEYS } from './wizard/parameter-definitions.js';
+import { asRhythm, RHYTHM_PRESETS } from './operating-rules.js';
 import { isDeepStrictEqual } from 'node:util';
 
 /**
@@ -86,6 +87,32 @@ export async function write(def: ParamDef, value: Record<string, unknown>, actor
   }
   if (def.storage.kind === 'module_parameters') {
     if (!(await moduleParametersAvailable())) return false;
+    const before = (await db.query(`SELECT value FROM module_parameters WHERE key = $1`, [def.key])).rows[0]?.value;
+    const ok = await writeModuleParameter(def, value, actorId);
+    if (ok) await applyDependentSettings(def.key, before, value, actorId);
+    return ok;
+  }
+  const cols = Object.entries(def.storage.columns);
+  const sets = cols.map(([, col], i) => `${col} = $${i + 1}`);
+  await auditedQuery(actorId,
+    `UPDATE company_settings SET ${sets.join(', ')}, updated_at = now() WHERE id = 1`,
+    cols.map(([field]) => value[field]));
+  return true;
+}
+
+/** Réglages qui en pilotent d'autres (mig 694) : le rythme de production fixe l'horizon du
+ *  plan directeur et le contrôle de capacité des équipements quand il change. */
+async function applyDependentSettings(key: string, before: Record<string, unknown> | undefined, value: Record<string, unknown>, actorId?: string) {
+  if (key !== 'production.rhythm') return;
+  const mode = asRhythm(value.mode);
+  if (!mode || before?.mode === mode) return;
+  const preset = RHYTHM_PRESETS[mode];
+  if ('error' in await setPolicy('production.mrp_horizon', 'company', '', { days: preset.mrp_horizon_days }, actorId)) throw new Error('Horizon du plan directeur non réglé');
+  if ('error' in await setPolicy('production.equipment_capacity', 'company', '', { mode: preset.equipment_capacity }, actorId)) throw new Error('Contrôle de capacité non réglé');
+}
+
+async function writeModuleParameter(def: ParamDef, value: Record<string, unknown>, actorId?: string): Promise<boolean> {
+  {
     if(WIZARD_MODULE_PARAMETER_KEYS.includes(def.key)){
       return withTransaction(async()=>{
         await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
@@ -105,10 +132,4 @@ export async function write(def: ParamDef, value: Record<string, unknown>, actor
       [def.key, JSON.stringify(value), actorId ?? null]);
     return (r.rowCount ?? 0) > 0;
   }
-  const cols = Object.entries(def.storage.columns);
-  const sets = cols.map(([, col], i) => `${col} = $${i + 1}`);
-  await auditedQuery(actorId,
-    `UPDATE company_settings SET ${sets.join(', ')}, updated_at = now() WHERE id = 1`,
-    cols.map(([field]) => value[field]));
-  return true;
 }

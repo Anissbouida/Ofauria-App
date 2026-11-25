@@ -1,4 +1,5 @@
 import { landedCostRepository } from '../repositories/landed-cost.repository.js';
+import { purchaseStoreId } from '../services/operating-rules.js';
 import type { Response } from 'express';
 import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -170,7 +171,8 @@ export const purchaseOrderController = {
     try {
       const po = await purchaseOrderRepository.create({
         supplierId, expectedDeliveryDate, notes, currencyCode, exchangeRate,
-        createdBy: req.user!.userId, storeId: req.user!.storeId,
+        // Organisation du stock (mig 694) : centralisée = livraison au dépôt central.
+        createdBy: req.user!.userId, storeId: await purchaseStoreId(req.user!.storeId),
         items,
       });
       await purchaseOrderActionsRepository.log(po.id, 'created', req.user!.userId);

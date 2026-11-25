@@ -8,11 +8,12 @@ import { validateLayerData, validateInterfaceData } from './layer-operations.js'
 import { readInterfacePreferences } from '../interface-preferences.js';
 import { wizardParameters, prepareParameterChanges } from './parameter-operations.js';
 import { wizardApprovalRules, approvalIssues } from './approval-operations.js';
+import { centralStoreId } from '../operating-rules.js';
 import { roleTemplates, activeSodRules, roleTemplateIssues, templateRights, templateSod } from './role-templates.js';
 
 /** A live read-only catalogue. No starter, profile or module is applied here. */
 export async function wizardCatalog(includeLabels = true) {
-  const [templates, sodRules, approvalRules] = await Promise.all([roleTemplates(), activeSodRules(), wizardApprovalRules()]);
+  const [templates, sodRules, approvalRules, centralStore] = await Promise.all([roleTemplates(), activeSodRules(), wizardApprovalRules(), centralStoreId()]);
   const [packs, specialties, country, currency, activation,company,parameters,interfacePreferences] = await Promise.all([
     sectorRepository.list(), specializationRepository.list(), countryPackRepository.activeCountry(), companyCurrency(), sectorRepository.activation(),
     db.query(`SELECT to_jsonb(c) AS data FROM company_settings c WHERE id=1`), wizardParameters(),readInterfacePreferences(),
@@ -21,7 +22,7 @@ export async function wizardCatalog(includeLabels = true) {
     status: p.status, wizard: p.in_wizard === true, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
     labels: includeLabels ? await (p.code === activation.sector.code ? sectorRepository.labels(p.code) : sectorRepository.sectorLabels(p.code)) : {} })));
   return {
-    profiles, parameters,interfacePreferences, sodRules, approvalRules,
+    profiles, parameters,interfacePreferences, sodRules, approvalRules, centralStoreAvailable: !!centralStore,
     // Personnalisation des modules : capacités du catalogue et capacités actives aujourd'hui.
     capabilities: activation.catalog.map(f => ({ code: f.key, module: f.module_key, label: f.label, description: f.description, kind: f.kind, requires: f.requires ?? [], default_on: f.default_on })),
     activeCapabilities: [...activation.features],
@@ -60,6 +61,23 @@ export function validateWizardCatalog(answers: WizardAnswers, catalog: Awaited<R
     if (unknown.length) block('modules', `Capacités inconnues : ${unknown.join(', ')}.`);
   }
   issues.push(...approvalIssues(answers, catalog.approvalRules ?? []));
+  issues.push(...operatingModelIssues(answers, catalog));
   issues.push(...roleTemplateIssues(answers, catalog.roleTemplates ?? [], catalog.sodRules ?? [], new Set(packs.flatMap(p => p.lineage))));
+  return issues;
+}
+
+/** Cohérence du modèle opérationnel (mig 694) : réponses du brouillon, sinon valeurs actuelles. */
+export function operatingModelIssues(answers: WizardAnswers, catalog: Pick<Awaited<ReturnType<typeof wizardCatalog>>, 'parameters' | 'centralStoreAvailable'>): WizardIssue[] {
+  const ops = answers.operations?.data ?? {};
+  const pick = (key: string, field: string) => ops[`${key}:${field}`] ?? (catalog.parameters ?? []).find(p => p.key === key)?.value?.[field];
+  const modules = answers.modules?.data?.selected;
+  const has = (m: string) => !Array.isArray(modules) || modules.includes(m);
+  const issues: WizardIssue[] = [];
+  if (has('production') && pick('production.rhythm', 'mode') === 'continuous' && pick('production.demand_source', 'mode') === 'orders')
+    issues.push({ step: 'operations', severity: 'blocking', message: 'Une production en continu se pilote sur stock ou en hybride, pas à la commande.' });
+  if (pick('sales.channel', 'channel') === 'retail' && !has('pos'))
+    issues.push({ step: 'operations', severity: 'warning', message: 'Vente au détail sans le module Point de vente : l\'accueil restera celui du secteur.' });
+  if (pick('stock.organization', 'mode') === 'central' && !catalog.centralStoreAvailable)
+    issues.push({ step: 'operations', severity: 'warning', message: 'Stock centralisé sans dépôt : créez un établissement de type dépôt, sinon les achats restent livrés à l\'établissement de l\'acheteur.' });
   return issues;
 }

@@ -32,4 +32,27 @@ describe.skipIf(!hasTestDb)('Assistant — approbations et réglages des règles
       throw rollback;
     })).rejects.toBe(rollback);
   }, 60000);
+
+  it('changer de rythme règle l’horizon du plan directeur et le contrôle de capacité', async () => {
+    const { withTransaction } = await import('../../config/database.js');
+    const { write, readAll } = await import('../../services/settings-center.js');
+    const { parameterByKey } = await import('../../services/parameters-catalog.js');
+    const { resolvePolicy } = await import('../../services/policies.js');
+    const rollback = new Error('rollback test');
+    await expect(withTransaction(async () => {
+      const current = (await readAll()).get('production.rhythm')?.mode;
+      const target = current === 'industrial' ? 'continuous' : 'industrial';
+      expect(await write(parameterByKey('production.rhythm')!, { mode: target }, fx.userId)).toBe(true);
+      expect((await resolvePolicy<{ days: number }>('production.mrp_horizon')).value.days).toBe(target === 'industrial' ? 14 : 28);
+      expect((await resolvePolicy<{ mode: string }>('production.equipment_capacity')).value.mode).toBe('block');
+      throw rollback;
+    })).rejects.toBe(rollback);
+  }, 60000);
+
+  it('production en continu à la commande : incohérence bloquante', async () => {
+    const { operatingModelIssues } = await import('../../services/wizard/catalog.js');
+    const issues = operatingModelIssues({ operations: { data: { 'production.rhythm:mode': 'continuous', 'production.demand_source:mode': 'orders' } } }, { parameters: [], centralStoreAvailable: true });
+    expect(issues).toEqual([expect.objectContaining({ step: 'operations', severity: 'blocking' })]);
+    expect(operatingModelIssues({ operations: { data: { 'production.rhythm:mode': 'continuous', 'production.demand_source:mode': 'both' } } }, { parameters: [], centralStoreAvailable: true })).toEqual([]);
+  });
 });

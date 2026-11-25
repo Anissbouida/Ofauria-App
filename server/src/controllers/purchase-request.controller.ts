@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { purchasingBoardStore } from '../services/operating-rules.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
 import { toOrderRepository } from '../repositories/to-order.repository.js';
@@ -37,7 +38,7 @@ export const purchaseRequestController = {
 
   /** GET /purchase-requests/to-order : besoins d'achat fusionnés par ingrédient. */
   async toOrder(req: AuthRequest, res: Response) {
-    res.json({ success: true, data: await toOrderRepository.board(req.user!.storeId) });
+    res.json({ success: true, data: await toOrderRepository.board(await purchasingBoardStore(req.user!.storeId)) });
   },
 
   async grouped(req: AuthRequest, res: Response) {

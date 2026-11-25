@@ -1,3 +1,4 @@
+import { db } from '../config/database.js';
 import { getParameter } from './module-parameters.service.js';
 
 /**
@@ -32,4 +33,45 @@ export async function productionFlow(): Promise<ProductionFlow> {
 /** Alertes de stock bas (listes d'alerte, tableau de bord, propositions d'achat). */
 export async function lowStockAlertsEnabled(): Promise<boolean> {
   return (await getParameter<{ enabled?: boolean }>('stock.low_stock_alerts'))?.enabled !== false;
+}
+
+/** Rythme de production : règle, quand il change, l'horizon du plan directeur et le
+ *  contrôle de capacité des équipements (settings-center.write). */
+export type ProductionRhythm = 'artisanal' | 'industrial' | 'continuous';
+export const RHYTHM_PRESETS: Record<ProductionRhythm, { mrp_horizon_days: number; equipment_capacity: 'off' | 'warn' | 'block'; label: string }> = {
+  artisanal: { mrp_horizon_days: 3, equipment_capacity: 'warn', label: 'Artisanal' },
+  industrial: { mrp_horizon_days: 14, equipment_capacity: 'block', label: 'Industriel' },
+  continuous: { mrp_horizon_days: 28, equipment_capacity: 'block', label: 'En continu' },
+};
+export const asRhythm = (v: unknown): ProductionRhythm | null => v === 'artisanal' || v === 'industrial' || v === 'continuous' ? v : null;
+
+/** Canal de vente principal : écran d'accueil « Selon le secteur ». */
+export type SalesChannel = 'direct' | 'retail' | 'wholesale' | 'multi';
+export async function salesChannel(): Promise<SalesChannel> {
+  const v = (await getParameter<{ channel?: string }>('sales.channel'))?.channel;
+  return v === 'direct' || v === 'retail' || v === 'wholesale' ? v : 'multi';
+}
+/** Accueil imposé par le canal ; null = celui du secteur (multicanal). */
+export function channelHomeRoute(channel: SalesChannel): string | null {
+  return channel === 'retail' ? '/pos' : channel === 'wholesale' ? '/sales' : channel === 'direct' ? '/orders' : null;
+}
+
+/** Organisation du stock : par établissement (défaut) ou centralisée sur un dépôt. */
+export async function stockOrganization(): Promise<'central' | 'per_store'> {
+  return (await getParameter<{ mode?: string }>('stock.organization'))?.mode === 'central' ? 'central' : 'per_store';
+}
+/** Dépôt central : premier établissement actif de type dépôt, sinon mixte, sinon production. */
+export async function centralStoreId(): Promise<string | null> {
+  const r = await db.query(`SELECT id FROM stores WHERE is_active IS NOT FALSE AND kind IN ('warehouse','mixed','workshop')
+    ORDER BY CASE kind WHEN 'warehouse' THEN 0 WHEN 'mixed' THEN 1 ELSE 2 END, name LIMIT 1`);
+  return r.rows[0]?.id ?? null;
+}
+/** Établissement de livraison d'un achat : le dépôt central si le stock est centralisé. */
+export async function purchaseStoreId(userStoreId?: string | null): Promise<string | undefined> {
+  if ((await stockOrganization()) === 'central') return (await centralStoreId()) ?? userStoreId ?? undefined;
+  return userStoreId ?? undefined;
+}
+/** Périmètre du tableau « À commander » : tous les établissements si le stock est centralisé. */
+export async function purchasingBoardStore(userStoreId?: string | null): Promise<string | undefined> {
+  return (await stockOrganization()) === 'central' ? undefined : userStoreId ?? undefined;
 }

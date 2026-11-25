@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { channelHomeRoute, salesChannel } from '../services/operating-rules.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { companyBankRepository, type BankAccountInput } from '../repositories/company-bank.repository.js';
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
@@ -94,7 +95,8 @@ export const companyController = {
     // `modules` / `features` = listes EFFECTIVES pour CET utilisateur (préréglage +
     // ajustements, mig 507 ; pilotes et établissement, mig 509) : le client les
     // applique aux menus.
-    const current = { ...act.sector, modules: [...mine.modules], features: [...mine.features] };
+    // Canal de vente principal (mig 694) : il fixe l'accueil « Selon le secteur ».
+    const current = { ...act.sector, home_route: channelHomeRoute(await salesChannel()) ?? act.sector.home_route ?? null, modules: [...mine.modules], features: [...mine.features] };
     const adjusted = Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length;
     const byCode = new Map(available.map(s => [s.code, s]));
     const specializations = await specializationRepository.list();
