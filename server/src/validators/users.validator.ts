@@ -72,6 +72,11 @@ export const approvalLimitSchema = body({
 
 /* Délégation — delegationsCreate (dates et utilisateurs vérifiés par le contrôleur). */
 export const delegationSchema = body({
-  fromUserId: uuid, toUserId: uuid, roleCode: z.string().max(60),
+  // Lot 5 : « role » (rôle complet, défaut) ou « approvals » (approbations seulement, sans rôle).
+  kind: z.enum(['role', 'approvals']).optional(),
+  fromUserId: uuid, toUserId: uuid, roleCode: z.string().max(60).optional(),
   startsAt: txt(40), endsAt: z.string().max(40), reason: txt(2000),
 });
+export const extendDelegationSchema = body({ endsAt: z.string().min(8).max(40) });
+export const documentSodModeSchema = body({ mode: z.enum(['off', 'warn', 'block', 'block_except_admin'], { message: 'Mode invalide' }) });
+export const documentSodRuleSchema = body({ isActive: z.boolean() });

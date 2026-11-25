@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldCheck, ShieldAlert, Eye, Check, Copy, FolderOpen } from 'lucide-react';
+import { Plus, Check, Copy, FolderOpen } from 'lucide-react';
 import { MODULE_LABELS, APPROVAL_DOC_TYPES, type AppModule } from '@ofauria/shared';
 import { HrHeaderActions } from '../employees/ui';
 import {
@@ -11,8 +11,6 @@ import { FilterChips } from '../sales/ListTemplate';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { rolesApi, usersApi, type RoleRow, type RolePermission, type RoleProfile } from '../../api/users.api';
 import { settingsApi } from '../../api/settings.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
-import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { currencySymbol } from '../../utils/money';
@@ -300,66 +298,3 @@ export function NewRoleModal({ roles, copyOf, onClose, onCreated }: { roles: Rol
     </Modal>
   );
 }
-
-export function SecurityModePanel() {
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const { data } = useQuery({ queryKey: ['security'], queryFn: rolesApi.security });
-  const save = useMutation({
-    mutationFn: (mode: 'off' | 'log' | 'enforce') => rolesApi.setSecurityMode(mode),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['security'] }); notify.success('Mode de contrôle enregistré'); },
-    onError: (err) => notify.error(errorMessage(err, 'Erreur')),
-  });
-  if (!data) return null;
-  const denials = data.denials ?? [];
-  const setMode = async (mode: 'off' | 'log' | 'enforce') => {
-    if (mode === 'enforce' && !(await confirm(
-      denials.length
-        ? `${denials.length} appel(s) hors droits ont été observés ces 14 derniers jours : ils seront refusés. Ajustez d'abord les droits des rôles concernés si ces accès sont légitimes.`
-        : 'Les appels hors droits seront refusés (erreur 403).',
-      { title: 'Bloquer les accès hors droits ?', confirmLabel: 'Bloquer', danger: denials.length > 0 },
-    ))) return;
-    save.mutate(mode);
-  };
-  const tone = data.mode === 'enforce' ? 'success' : data.mode === 'log' ? 'info' : 'warning';
-  const title = data.mode === 'enforce' ? 'Droits appliqués : les accès hors droits sont refusés'
-    : data.mode === 'log' ? 'Observation : les accès hors droits sont journalisés, pas bloqués'
-    : 'Contrôle des droits désactivé';
-  return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <StatusBanner tone={tone} icon={data.mode === 'enforce' ? ShieldCheck : data.mode === 'log' ? Eye : ShieldAlert} title={title}
-        actions={
-          <div className="prj-views" role="group" aria-label="Mode de contrôle">
-            {(['log', 'enforce', 'off'] as const).map(m => (
-              <button key={m} type="button" aria-pressed={data.mode === m} className={data.mode === m ? 'active' : ''} disabled={save.isPending} onClick={() => data.mode !== m && setMode(m)}>
-                {m === 'log' ? 'Observer' : m === 'enforce' ? 'Bloquer' : 'Désactiver'}
-              </button>
-            ))}
-          </div>
-        }>
-        Chaque appel est comparé aux droits du rôle, ou aux droits propres de l'utilisateur s'il en a.
-        {data.mode === 'log' && ' Laissez tourner quelques jours, vérifiez la liste ci-dessous, puis passez en « Bloquer ».'}
-      </StatusBanner>
-      {denials.length > 0 && (
-        <DataPanel>
-          <table className="odoo-table">
-            <thead><tr><th>Appel hors droits (14 jours)</th><th>Rôle</th><th>Modules requis</th><th>Utilisateurs</th><th className="ds-num">Appels</th><th>Dernier appel</th></tr></thead>
-            <tbody>
-              {denials.map(d => (
-                <tr key={`${d.route}|${d.role_code}`}>
-                  <td className="ds-ref">{d.route}</td>
-                  <td>{d.role_code}</td>
-                  <td>{(d.modules ?? []).map(m => MODULE_LABELS[m as AppModule] ?? m).join(', ')}</td>
-                  <td>{d.user_names}</td>
-                  <td className="ds-num">{d.hits}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(d.last_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataPanel>
-      )}
-    </div>
-  );
-}
-

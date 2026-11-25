@@ -3,14 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi, governanceApi } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
-import { SodSection, ApprovalLimitsSection, DelegationsSection } from './GovernancePanel';
+import ControlsPanel, { DelegationsPanel } from './ControlsPanel';
 import RoleActionMatrix from './RoleActionMatrix';
 import UsersOverview, { needsSecurityAction } from './UsersOverview';
 import AccountDrawer from './AccountDrawer';
 import NewUserWizard, { InvitationSentModal } from './NewUserWizard';
 import type { InvitationResult } from '../../api/users.api';
 import { LoginsView } from '../settings/AuditLogTab';
-import { SecurityModePanel } from './RolesPanel';
 import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { usePermissions } from '../../context/PermissionsContext';
 import './users.css';
@@ -125,20 +124,11 @@ export default function UsersPage() {
             {view === 'overview' && <UsersOverview onOpenAccount={setPreview} onGo={select} />}
             {view === 'accounts' && <AccountsTab onEdit={openRecord} onPreview={setPreview} onReview={setReviewUser} />}
             {view === 'review' && <AccessReviewTab />}
-            {view === 'delegations' && <DelegationsSection />}
+            {view === 'delegations' && <DelegationsPanel />}
             {view === 'journal' && <LoginsView users={users} />}
             {view === 'matrix' && <RoleActionMatrix roles={roles} />}
             {view === 'roles' && <RolesPanel />}
-            {view === 'controls' && (
-              <div style={{ display: 'grid', gap: 28 }}>
-                <SodSection />
-                <ApprovalLimitsSection />
-                <section style={{ display: 'grid', gap: 12 }}>
-                  <SectionHeader title="Contrôle des droits" note="Écrans et actions utilisés sans le droit nécessaire" />
-                  <SecurityModePanel />
-                </section>
-              </div>
-            )}
+            {view === 'controls' && <ControlsPanel />}
             {view === 'security' && <SecurityPolicy roles={roles} />}
           </div>
         </ModulePage>

@@ -550,8 +550,9 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'purchasing.sod_mode', domain: 'purchasing', section: 'business',
     label: 'Séparation des tâches (achats)',
-    help: 'Sur la chaîne bon de commande → réception → facture → paiement, la personne qui fait une étape ne peut pas en faire une autre censée la contrôler : l\'auteur du BC ne le réceptionne pas, le réceptionnaire ne valide pas la facture, le valideur ne la paie pas, le payeur ne lève pas un blocage. « Observer » journalise les manquements sans bloquer (le temps de voir ce qui serait rejeté) ; « Bloquer » refuse l\'action ; « Bloquer sauf les administrateurs » laisse un administrateur passer outre (son action reste journalisée) — utile pour une petite équipe. Une dérogation motivée reste possible au cas par cas (mig 442).',
-    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: [{ value: 'warn', label: 'Observer (journaliser sans bloquer)' }, { value: 'block', label: 'Bloquer l\'action' }, { value: 'block_except_admin', label: 'Bloquer, sauf les administrateurs' }] }],
+    help: 'Sur la chaîne bon de commande → réception → facture → paiement, la personne qui fait une étape ne peut pas en faire une autre censée la contrôler : l\'auteur du BC ne le réceptionne pas, le réceptionnaire ne valide pas la facture, le valideur ne la paie pas, le payeur ne lève pas un blocage. « Observer » journalise les manquements sans bloquer (le temps de voir ce qui serait rejeté) ; « Bloquer » refuse l\'action ; « Bloquer sauf administrateur » laisse un administrateur passer outre (son action reste journalisée) — utile pour une petite équipe ; « Désactivé » ne contrôle rien. Une dérogation motivée reste possible au cas par cas (mig 442). Réglable aussi dans Utilisateurs › Contrôles internes.',
+    // Même vocabulaire que le cumul de rôles (Utilisateurs › Contrôles internes, refonte lot 5).
+    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: [{ value: 'warn', label: 'Observer' }, { value: 'block', label: 'Bloquer' }, { value: 'block_except_admin', label: 'Bloquer sauf administrateur' }, { value: 'off', label: 'Désactivé' }] }],
     defaults: { mode: 'warn' },
     storage: { kind: 'module_parameters' },
   },

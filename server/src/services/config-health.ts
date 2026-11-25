@@ -267,15 +267,15 @@ const CHECKS: Check[] = [
     run: async ({ act, count }) => {
       if (!act.modules.has('purchasing')) return null;
       const mode = (await db.query(`SELECT value->>'mode' AS m FROM module_parameters WHERE key = 'purchasing.sod_mode'`)).rows[0]?.m ?? 'warn';
-      if (mode !== 'warn') return null;
+      if (mode !== 'warn' && mode !== 'off') return null;
       const documents = await count(`SELECT (SELECT count(*) FROM invoices WHERE invoice_type = 'received') + (SELECT count(*) FROM payments)`);
       if (documents === 0) return null; // société neuve : rien à conclure
       const logged = await count(`SELECT count(*) FROM sod_violations WHERE occurred_at > now() - make_interval(days => $1)`, [RECENT_DAYS]).catch(() => 0);
       return {
         tone: 'warning', module: 'purchasing',
-        title: 'La séparation des tâches des achats ne fait que journaliser',
-        detail: `Le mode « avertissement » laisse la même personne commander, réceptionner, valider la facture et payer${logged ? ` (${logged} cas relevé(s) ces ${RECENT_DAYS} derniers jours)` : ''}. Le mode « bloquer, sauf les administrateurs » l'empêche tout en laissant l'administrateur passer outre, avec trace.`,
-        action: { kind: 'link', label: 'Régler la séparation des tâches', to: '/settings?page=purchasing' },
+        title: mode === 'off' ? 'La séparation des tâches des achats est désactivée' : 'La séparation des tâches des achats ne fait que journaliser',
+        detail: `Le mode « ${mode === 'off' ? 'Désactivé' : 'Observer'} » laisse la même personne commander, réceptionner, valider la facture et payer${logged && mode !== 'off' ? ` (${logged} cas relevé(s) ces ${RECENT_DAYS} derniers jours)` : ''}. Le mode « Bloquer sauf administrateur » l'empêche tout en laissant l'administrateur passer outre, avec trace.`,
+        action: { kind: 'link', label: 'Régler la séparation des tâches', to: '/users?tab=controls' },
       };
     },
   },

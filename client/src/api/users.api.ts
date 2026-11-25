@@ -108,14 +108,29 @@ export interface SodRuleRow {
 }
 export interface SodViolationReport {
   userId: string; name: string; roleCode: string;
+  /** Lot 5 : rôles du compte (délégations comprises) qui produisent le conflit. */
+  roles?: string[];
   violations: { code: string; label: string; severity: string; a: { module: string; right: string }; b: { module: string; right: string } }[];
 }
+export interface ApprovalCircuit { code: string; label: string; enabled: boolean; approvers: string[] }
 export interface ApprovalLimitRow {
   id: number; role_code: string; role_label: string; document_type: string; max_amount: string | number; currency: string;
+  /** Lot 5 : plafond réellement lu (bon de commande seulement aujourd'hui) et circuits du même type. */
+  enforced?: boolean; circuits?: ApprovalCircuit[];
 }
+/** Délégations réunies (lot 5) : rôle complet ou approbations seulement. */
 export interface DelegationRow {
-  id: number; from_user_id: string; to_user_id: string; role_code: string; role_label: string;
-  from_name: string; to_name: string; reason: string | null; starts_at: string; ends_at: string; active: boolean;
+  kind: 'role' | 'approvals'; id: string; from_user_id: string; to_user_id: string; role_code: string | null; role_label: string | null;
+  from_name: string; to_name: string; reason: string | null; starts_at: string; ends_at: string;
+  status: 'active' | 'scheduled' | 'ended'; active: boolean;
+}
+/** Séparation des tâches sur les pièces (mig 442), réglée dans Contrôles internes (lot 5). */
+export type DocumentSodMode = 'off' | 'warn' | 'block' | 'block_except_admin';
+export interface DocumentSod {
+  mode: DocumentSodMode;
+  rules: { code: string; action: string; forbidden: string; label: string; is_active: boolean }[];
+  violations: { rule_code: string; actor_id: string | null; actor: string; occurrences: number; documents: number; last_at: string }[];
+  overridesThisMonth: number;
 }
 
 export const governanceApi = {
@@ -129,14 +144,25 @@ export const governanceApi = {
   sodRemove: (code: string) => api.delete(`/users/sod/${code}`),
   // Plafonds d'approbation
   limitsList: () => api.get('/users/approval-limits').then(r => r.data.data) as Promise<ApprovalLimitRow[]>,
+  /** Lot 5 : plafonds, types de pièce qui les appliquent et circuits par type. */
+  limitsOverview: () => api.get('/users/approval-limits').then(r => ({
+    rows: r.data.data as ApprovalLimitRow[],
+    enforcedTypes: (r.data.meta?.enforcedTypes ?? ['purchase_order']) as string[],
+    circuits: (r.data.meta?.circuits ?? {}) as Record<string, ApprovalCircuit[]>,
+  })),
   limitsSet: (data: { roleCode: string; documentType: string; maxAmount: number; currency?: string }) =>
     api.post('/users/approval-limits', data).then(r => r.data.data),
   limitsRemove: (id: number) => api.delete(`/users/approval-limits/${id}`),
   // Délégations
   delegationsList: () => api.get('/users/delegations').then(r => r.data.data) as Promise<DelegationRow[]>,
-  delegationsCreate: (data: { fromUserId: string; toUserId: string; roleCode: string; endsAt: string; startsAt?: string; reason?: string }) =>
-    api.post('/users/delegations', data).then(r => r.data.data),
-  delegationsRemove: (id: number) => api.delete(`/users/delegations/${id}`),
+  delegationsCreate: (data: { kind?: 'role' | 'approvals'; fromUserId: string; toUserId: string; roleCode?: string; endsAt: string; startsAt?: string; reason?: string }) =>
+    api.post('/users/delegations', data).then(r => ({ ...r.data.data, warnings: (r.data.warnings ?? []) as string[] })),
+  delegationsExtend: (d: Pick<DelegationRow, 'kind' | 'id'>, endsAt: string) => api.put(`/users/delegations/${d.kind}/${d.id}`, { endsAt }),
+  delegationsRemove: (d: Pick<DelegationRow, 'kind' | 'id'>) => api.delete(d.kind === 'approvals' ? `/users/delegations/approvals/${d.id}` : `/users/delegations/${d.id}`),
+  // Séparation des tâches sur les pièces (lot 5)
+  documentSod: () => api.get('/users/sod/documents').then(r => r.data.data) as Promise<DocumentSod>,
+  setDocumentSodMode: (mode: DocumentSodMode) => api.put('/users/sod/documents/mode', { mode }).then(r => r.data.data),
+  setDocumentSodRule: (code: string, isActive: boolean) => api.put(`/users/sod/documents/rules/${code}`, { isActive }).then(r => r.data.data),
 };
 
 // ─── Revue des accès (Phase 3, outils admin) ────────────────────────────

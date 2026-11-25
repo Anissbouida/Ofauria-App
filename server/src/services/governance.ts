@@ -67,6 +67,7 @@ export interface UserSodReport {
   userId: string;
   name: string;
   roleCode: string;
+  roles?: string[];
   violations: SodViolation[];
 }
 
@@ -80,7 +81,8 @@ export async function scanSodViolations(): Promise<UserSodReport[]> {
   for (const u of users) {
     const rights = await effectiveRights(u.id);
     const violations = evaluateSod(rights, rules);
-    if (violations.length > 0) out.push({ userId: u.id, name: u.name, roleCode: u.role, violations });
+    // Lot 5 : rôles qui produisent le conflit (délégations comprises), pour « Retirer un rôle ».
+    if (violations.length > 0) out.push({ userId: u.id, name: u.name, roleCode: u.role, roles: rights.roles, violations });
   }
   return out;
 }

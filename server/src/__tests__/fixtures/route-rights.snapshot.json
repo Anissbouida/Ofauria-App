@@ -335,6 +335,9 @@
  "DELETE /users/delegations/:id": [
   "admin"
  ],
+ "DELETE /users/delegations/approvals/:id": [
+  "admin"
+ ],
  "DELETE /users/roles/:code": [
   "admin"
  ],
@@ -2816,6 +2819,9 @@
   "admin"
  ],
  "GET /users/sod": [
+  "admin"
+ ],
+ "GET /users/sod/documents": [
   "admin"
  ],
  "GET /users/sod/mode": [
@@ -5572,6 +5578,9 @@
  "PUT /users/:id/preferences": [
   "admin"
  ],
+ "PUT /users/delegations/:kind/:id": [
+  "admin"
+ ],
  "PUT /users/me/interface-preferences": null,
  "PUT /users/me/locale": null,
  "PUT /users/roles/:code": [
@@ -5590,6 +5599,12 @@
   "admin"
  ],
  "PUT /users/sod/:code": [
+  "admin"
+ ],
+ "PUT /users/sod/documents/mode": [
+  "admin"
+ ],
+ "PUT /users/sod/documents/rules/:code": [
   "admin"
  ],
  "PUT /users/sod/mode": [

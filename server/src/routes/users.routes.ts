@@ -11,7 +11,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { z } from 'zod';
 import { readInterfacePreferences, setPersonalInterfacePreferences } from '../services/interface-preferences.js';
-import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserSchema, delegationSchema, enforcementModeSchema, permissionsSchema, updateRoleSchema, updateSodRuleSchema, updateUserSchema } from '../validators/users.validator.js';
+import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserSchema, delegationSchema, documentSodModeSchema, documentSodRuleSchema, enforcementModeSchema, extendDelegationSchema, permissionsSchema, updateRoleSchema, updateSodRuleSchema, updateUserSchema } from '../validators/users.validator.js';
 
 /** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
 export const setLocaleSchema = z.object({ locale: z.enum(['fr', 'ar', 'en']).nullable() }).strict();
@@ -60,6 +60,10 @@ router.put('/security/mfa-policy', authenticate, can('users.edit'), validate(mfa
 router.get('/sod/violations', authenticate, can('users.view'), asyncHandler(governanceController.sodViolations));
 router.get('/sod/mode', authenticate, can('users.view'), asyncHandler(governanceController.sodMode));
 router.put('/sod/mode', authenticate, can('users.edit'), validate(enforcementModeSchema), asyncHandler(governanceController.setSodMode));
+// Séparation des tâches sur les pièces (mig 442), réglée ici comme le cumul de rôles (lot 5).
+router.get('/sod/documents', authenticate, can('users.view'), asyncHandler(governanceController.documentSod));
+router.put('/sod/documents/mode', authenticate, can('users.sod'), validate(documentSodModeSchema), asyncHandler(governanceController.setDocumentSodMode));
+router.put('/sod/documents/rules/:code', authenticate, can('users.sod'), validate(documentSodRuleSchema), asyncHandler(governanceController.setDocumentSodRule));
 router.get('/sod', authenticate, can('users.view'), asyncHandler(governanceController.sodList));
 router.post('/sod', authenticate, can('users.sod'), validate(createSodRuleSchema), asyncHandler(governanceController.sodCreate));
 router.put('/sod/:code', authenticate, can('users.sod'), validate(updateSodRuleSchema), asyncHandler(governanceController.sodUpdate));
@@ -71,6 +75,8 @@ router.delete('/approval-limits/:id', authenticate, can('users.delete'), asyncHa
 
 router.get('/delegations', authenticate, can('users.view'), asyncHandler(governanceController.delegationsList));
 router.post('/delegations', authenticate, can('users.delegations'), validate(delegationSchema), asyncHandler(governanceController.delegationsCreate));
+router.put('/delegations/:kind/:id', authenticate, can('users.delegations'), validate(extendDelegationSchema), asyncHandler(governanceController.delegationsExtend));
+router.delete('/delegations/approvals/:id', authenticate, can('users.delete'), asyncHandler(governanceController.approvalDelegationRemove));
 router.delete('/delegations/:id', authenticate, can('users.delete'), asyncHandler(governanceController.delegationsRemove));
 
 router.get('/', authenticate, can('users.view'), userController.list);
