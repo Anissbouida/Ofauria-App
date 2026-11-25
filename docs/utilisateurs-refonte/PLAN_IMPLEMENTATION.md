@@ -20,7 +20,7 @@ est fixé au moment du commit, après vérification de `main`.
 | 5 | Contrôles internes : séparation des tâches (cumul de rôles et pièces) avec un seul vocabulaire de mode, plafonds rattachés aux circuits, délégations réunies (rôle complet / approbations) avec date de début, contrôle des droits | oui | 704 |
 | 6 | Exceptions individuelles (accorder ou retirer une permission, motif, date de fin) qui s'ajoutent aux rôles | oui | 706 |
 | 7 | Plusieurs établissements par compte, établissement par défaut, portée « Son établissement » sur l'ensemble | oui | 707 user_stores |
-| 8 | Sécurité et connexions : politique paramétrable (longueur du mot de passe, renouvellement, verrouillage, délai 2FA, inactivité, écran PIN), sessions et appareils, inscription libre supprimée | oui | à numéroter (user_sessions) |
+| 8 | Sécurité et connexions : politique paramétrable (longueur du mot de passe, renouvellement, verrouillage, délai 2FA, inactivité, écran PIN), sessions et appareils, inscription libre supprimée | oui | 708 user_sessions |
 | 9 | Revue des accès en campagnes (décisions datées, rapport), comptes dormants | oui | à numéroter |
 | 10 | Administration déléguée (gérer les comptes de sa portée) et approbation des changements sensibles (circuit « Changement de configuration ») | oui | à numéroter |
 
@@ -35,6 +35,12 @@ est fixé au moment du commit, après vérification de `main`.
   (sélecteur visible à partir de deux établissements), parmi les siens seulement. La portée « Son
   établissement » se lit sur l'établissement actif, un à la fois : les 495 lectures existantes de
   l'établissement restent inchangées. Couvrir tous les établissements cochés à la fois n'est pas fait.
+- **Sécurité et connexions (lot 8)** : politique dans module_parameters 'security.policy' (défauts =
+  anciennes constantes : 12 caractères, pas de renouvellement, 5 échecs / 15 min, 2FA dès la
+  connexion, PIN 6 chiffres, 15 min d'inactivité). La longueur du mot de passe ne descend pas sous
+  12. Sessions : une ligne user_sessions par jeton émis (la révocation reste revoked_tokens +
+  token_version). Non fait : écran PIN limité à l'établissement du poste (aucun poste n'est rattaché
+  à un établissement), réglage de la connexion Google/Microsoft à l'écran (variables du serveur).
 - **Exceptions individuelles (lot 6)** : une exception de module remplace les droits des rôles pour
   ce module seulement ; une exception d'action accorde ou retire une permission précise. Motif
   obligatoire, date de fin facultative (incluse), expirée = ignorée mais affichée. Refusée si elle ne
@@ -59,6 +65,6 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 5 — Contrôles internes à quatre onglets, un vocabulaire de mode partout ; séparation des tâches sur les pièces réglée ici (mode Désactivé, mig 704) ; plafonds reliés aux circuits (seul le bon de commande applique un plafond : les autres types sont signalés « sans effet » et refusés à la création) ; délégations réunies (rôle complet / approbations, début futur, prolongation, historique, motif) ; cumul interdit refusé en mode Bloquer à la délégation. Contrôlé à l'écran le 2026-11-25 (page blanche du contrôle des droits sur les refus d'action métier corrigée)
 - [x] Lot 6 — exceptions individuelles (mig 706), contrôlé à l'écran
 - [x] Lot 7 — établissements par compte, établissement actif (mig 707), contrôlé à l'écran
-- [ ] Lot 8
+- [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708)
 - [ ] Lot 9
 - [ ] Lot 10
