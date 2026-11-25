@@ -8,6 +8,11 @@ export type Passkey = { id: string; label: string; createdAt: string; lastUsedAt
 /** Le navigateur sait-il utiliser les passkeys ? (jamais dans l'application mobile). */
 export const passkeysSupported = () => !import.meta.env.VITE_API_URL && browserSupportsWebAuthn();
 
+/** Ce navigateur a déjà servi à créer ou utiliser une passkey : le bouton de connexion passkey est mis en avant. */
+const PASSKEY_HERE = 'kalum_passkey_here';
+export const passkeyUsedHere = () => { try { return localStorage.getItem(PASSKEY_HERE) === '1'; } catch { return false; } };
+export const markPasskeyHere = () => { try { localStorage.setItem(PASSKEY_HERE, '1'); } catch { /* rien */ } };
+
 /** Annulation par l'utilisateur (fenêtre Face ID fermée, délai dépassé) : pas une erreur à afficher. */
 export const passkeyCancelled = (e: unknown) => (e as { name?: string })?.name === 'NotAllowedError' || (e as { name?: string })?.name === 'AbortError';
 
@@ -35,13 +40,17 @@ export const authApi = {
   loginWithPasskey: async (mfaToken?: string, rememberDevice = false): Promise<LoginResponse> => {
     const { options, ticket } = (await api.post('/auth/passkeys/login/options', mfaToken ? { mfaToken } : {})).data.data;
     const response = await startAuthentication({ optionsJSON: options });
-    return (await api.post('/auth/passkeys/login/verify', { ticket, response, rememberDevice })).data.data;
+    const r = (await api.post('/auth/passkeys/login/verify', { ticket, response, rememberDevice })).data.data;
+    markPasskeyHere();
+    return r;
   },
   passkeys: () => api.get('/auth/passkeys').then(r => r.data.data as Passkey[]),
   addPasskey: async (label?: string): Promise<Passkey> => {
     const { options, ticket } = (await api.post('/auth/passkeys/register/options', {})).data.data;
     const response = await startRegistration({ optionsJSON: options });
-    return (await api.post('/auth/passkeys/register/verify', { ticket, response, ...(label ? { label } : {}) })).data.data;
+    const p = (await api.post('/auth/passkeys/register/verify', { ticket, response, ...(label ? { label } : {}) })).data.data;
+    markPasskeyHere();
+    return p;
   },
   renamePasskey: (id: string, label: string) => api.patch(`/auth/passkeys/${id}`, { label }).then(r => r.data.data as Passkey),
   removePasskey: (id: string) => api.delete(`/auth/passkeys/${id}`).then(r => r.data.data),

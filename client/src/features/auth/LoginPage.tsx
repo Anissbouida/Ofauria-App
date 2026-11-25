@@ -5,7 +5,7 @@ import api, { serverUrl } from '../../api/client';
 import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { ArrowLeft, Delete, Eye, EyeOff, Fingerprint, Lock, Mail } from 'lucide-react';
-import { authApi, passkeyCancelled, passkeysSupported } from '../../api/auth.api';
+import { authApi, passkeyCancelled, passkeysSupported, passkeyUsedHere } from '../../api/auth.api';
 import { useT } from '../../i18n';
 import { LanguageSelect } from '../../components/layout/LanguageSwitcher';
 
@@ -257,8 +257,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Passkeys (mig 705) : connexion sans mot de passe, Face ID / Touch ID / Windows Hello. */}
-          {canPasskey && (
+          {/* Passkeys (mig 705) : bouton mis en avant seulement si ce navigateur a déjà une passkey ;
+              sinon, l'aide « première fois » et un lien discret (passkey sur un autre appareil). */}
+          {canPasskey && (passkeyUsedHere() ? (
             <>
               <div className="flex items-center gap-3 text-xs my-4" style={{ color: 'var(--ds-muted)' }}>
                 <span className="flex-1 border-t" /> {t('auth.or')} <span className="flex-1 border-t" />
@@ -267,9 +268,16 @@ export default function LoginPage() {
                 onClick={() => void passkeySignIn()}>
                 <Fingerprint size={18} /> {passkeyBusy ? t('auth.verifying') : t('auth.signInWithPasskey')}
               </button>
-              <p className="text-xs text-center mt-2" style={{ color: 'var(--ds-muted)' }}>{t('auth.passkeyFirstTime')}</p>
             </>
-          )}
+          ) : (
+            <div className="mt-4 text-xs text-center" style={{ color: 'var(--ds-muted)' }}>
+              <p>{t('auth.passkeyFirstTime')}</p>
+              <button type="button" className="mt-1 inline-flex items-center gap-1 underline" style={{ color: 'var(--ds-accent)' }}
+                disabled={passkeyBusy || loading} onClick={() => void passkeySignIn()}>
+                <Fingerprint size={13} /> {t('auth.passkeyOtherDevice')}
+              </button>
+            </div>
+          ))}
 
           {/* G6-02 : connexion d'entreprise (fournisseurs configurés seulement). */}
           {ssoProviders.length > 0 && (
