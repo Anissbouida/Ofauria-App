@@ -541,6 +541,17 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'ledger.closed_period_policy', domain: 'accounting', section: 'business',
+    label: 'Pièce datée d\'une période fermée',
+    help: 'Que faire quand la période de la pièce est fermée : l\'écriture est passée au premier jour de la période ouverte (la date de la pièce est conservée et le redatage est tracé), ou la pièce est refusée et part dans « À comptabiliser ».',
+    fields: [{ name: 'policy', label: 'Politique', type: 'enum', options: [
+      { value: 'redate', label: 'Redater l\'écriture au premier jour de la période ouverte' },
+      { value: 'refuse', label: 'Refuser : mettre la pièce en attente' },
+    ] }],
+    defaults: { policy: 'redate' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'ledger.posting_mode', domain: 'accounting', section: 'business',
     label: 'Comptabilisation automatique',
     help: 'Que faire si l\'écriture comptable d\'une pièce échoue.',

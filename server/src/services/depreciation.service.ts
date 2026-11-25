@@ -1,4 +1,5 @@
-import { extourneEntryById } from './journal-generator.service.js';
+import { extourneEntryById, tvaAccountForRate } from './journal-generator.service.js';
+import { countryParam } from './country-pack.js';
 /**
  * Service d'amortissement des immobilisations (CGNC Maroc).
  *
@@ -361,8 +362,6 @@ export const fixedAssetRepository = {
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ym = (y: number, m: number) => y * 100 + m;
-/** TVA facturée par taux (comptes 4455x du plan). */
-const VAT_ACCOUNT: Record<number, string> = { 20: '44551', 14: '44552', 10: '44553', 7: '44554' };
 const COUNTERPART: Record<'receivable' | 'bank' | 'cash', string> = { receivable: '3481', bank: '5141', cash: '5161' };
 
 export type DisposalInput = {
@@ -481,7 +480,8 @@ export const fixedAssetDisposal = {
       const price = sale ? round2(input.price ?? 0) : 0;
       if (sale && price <= 0) throw fail('Prix de cession obligatoire pour une vente (mise au rebut sinon)');
       const rate = sale ? Number(input.vatRate ?? 0) : 0;
-      if (rate && !VAT_ACCOUNT[rate]) throw fail('Taux de TVA non géré');
+      // Taux légaux en vigueur à la date de cession (pack pays daté), non plus une liste en dur.
+      if (rate && !(await countryParam('fiscalite.vat_rates', input.date)).includes(rate)) throw fail('Taux de TVA non géré');
       const vat = round2(price * rate / 100);
       const counterpart = sale ? (input.counterpart ?? 'receivable') : null;
       const f = await disposalFigures(c, a, input.date, price);
@@ -516,7 +516,7 @@ export const fixedAssetDisposal = {
           { code: COUNTERPART[counterpart!], debit: round2(price + vat), credit: 0, label: input.buyer ? `Prix de cession — ${input.buyer}` : 'Prix de cession' },
           { code: intangible ? '7512' : '7513', debit: 0, credit: price, label: 'Produit de cession' },
         );
-        if (vat) lines.push({ code: VAT_ACCOUNT[rate], debit: 0, credit: vat, label: `TVA facturée ${rate} %` });
+        if (vat) lines.push({ code: tvaAccountForRate(rate, 'collected'), debit: 0, credit: vat, label: `TVA facturée ${rate} %` });
       }
       const entry = await postOd(c, { date: input.date, label, lines, sourceId: id, sourceDetail: 'cession', storeId: a.store_id, userId });
 

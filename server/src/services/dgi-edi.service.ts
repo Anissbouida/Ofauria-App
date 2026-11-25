@@ -21,6 +21,7 @@
 import { deflateRawSync } from 'node:zlib';
 import { db } from '../config/database.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { countryParam } from './country-pack.js';
 import { payrollDeclarationRepository } from '../repositories/payroll-declarations.repository.js';
 import { liasseRepository } from '../repositories/liasse.repository.js';
 import { LIASSE_MODEL_ID, liasseEdiTables, simplifiedGaps, type EdiTable } from './liasse-edi.codes.js';
@@ -153,11 +154,13 @@ export async function vatDeductionStatement(p: { year: number; period: number; r
     return [...m].map(([sup, nums]) => `${sup} (${nums.size > 1 ? `${nums.size} factures` : `facture ${[...nums][0]}`})`).join(', ');
   };
   const noId = group(l => !l.if && !l.ice), noIce = group(l => !!l.if && !l.ice);
-  const noPay = group(l => !l.dpai), badRate = group(l => ![20, 14, 10, 7].includes(l.tx));
+  // Taux légaux en vigueur à la fin de la période (pack pays daté) : 14 % et 7 % sont résorbés en 2026.
+  const legalRates = await countryParam('fiscalite.vat_rates', end);
+  const noPay = group(l => !l.dpai), badRate = group(l => !legalRates.includes(l.tx));
   if (noId) issues.push({ level: 'error', message: `Fournisseurs sans IF ni ICE (fiche fournisseur) : ${noId}` });
   if (noIce) issues.push({ level: 'warning', message: `Fournisseurs sans ICE : ${noIce}` });
   if (noPay) issues.push({ level: 'error', message: `Aucun règlement daté avant la déduction : ${noPay}` });
-  if (badRate) issues.push({ level: 'warning', message: `Taux hors des taux légaux (20, 14, 10, 7 %) : ${badRate}` });
+  if (badRate) issues.push({ level: 'warning', message: `Taux hors des taux légaux (${[...legalRates].sort((a, b) => b - a).join(', ')} %) : ${badRate}` });
   const totals = { ht: r2(lines.reduce((s, l) => s + l.mht, 0)), tva: r2(lines.reduce((s, l) => s + l.tva, 0)), ttc: r2(lines.reduce((s, l) => s + l.ttc, 0)) };
   return { period: { year: p.year, period: p.period, regime: p.regime, start, end }, lines, totals, issues };
 }

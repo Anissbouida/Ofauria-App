@@ -1,6 +1,7 @@
 import type { QueryResult } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { vatRegimeSetting } from '../services/module-parameters.service.js';
+import { tvaAccountForRate } from '../services/journal-generator.service.js';
 
 /* ═══ Plan comptable CGNC ═══ */
 export const accountRepository = {
@@ -936,7 +937,9 @@ export const tvaDeclarationRepository = {
         if (line) line.amount = (Math.round(((parseFloat(line.amount) || 0) + amount) * 100) / 100).toFixed(2);
         else collected.push({ code: d.code, label: d.label, tva_rate: d.tva_rate, tva_direction: 'collected', amount: amount.toFixed(2) });
       }
-      collected.sort((a: { tva_rate: string }, b: { tva_rate: string }) => parseFloat(a.tva_rate) - parseFloat(b.tva_rate));
+      // Le compte générique « sans taux » (tva_rate NULL) passe en dernier.
+      const rateKey = (x: { tva_rate: string | null }) => (x.tva_rate == null ? 999 : parseFloat(x.tva_rate));
+      collected.sort((a: { tva_rate: string | null }, b: { tva_rate: string | null }) => rateKey(a) - rateKey(b));
     }
     // Mig 311 (G-D8-15) : TVA déductible = factures fournisseurs dont le droit est
     // né dans la période (date du règlement qui les solde, CGI art. 101), hors
@@ -963,7 +966,8 @@ export const tvaDeclarationRepository = {
        SELECT rate, ROUND(SUM(tva), 2) AS amount FROM (SELECT * FROM by_line UNION ALL SELECT * FROM by_header) x
         GROUP BY rate HAVING ROUND(SUM(tva), 2) <> 0 ORDER BY rate`,
       withStore([params.startDate, params.endDate]));
-    const codeFor = (r: number) => (r === 20 ? '34552' : r === 14 ? '34553' : r === 10 ? '34554' : r === 7 ? '34555' : '3455');
+    // Plan compta, étape 4 : une seule table taux → compte, celle du générateur d'écritures.
+    const codeFor = (r: number) => tvaAccountForRate(r, 'deductible');
     const deductible = ded.rows.map((r: { rate: number; amount: string }) => ({
       code: codeFor(r.rate), label: `TVA récupérable sur achats ${r.rate} %`, tva_rate: r.rate,
       tva_direction: 'deductible', amount: r.amount,
@@ -977,6 +981,11 @@ export const tvaDeclarationRepository = {
         WHERE invoice_type = 'received' AND status <> 'cancelled' AND tax_amount > 0 AND NOT is_vat_recoverable
           AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2${store('$3')}
         GROUP BY 1`, withStore([params.startDate, params.endDate]));
+    // Plan compta, étape 3 : TVA collectée comptabilisée sur un compte sans taux (4455). Elle est
+    // dans le total, mais elle doit être classée : la clôture est bloquée tant qu'elle existe.
+    const unclassifiedCollected = collected
+      .filter((r: { tva_rate: string | null }) => r.tva_rate == null)
+      .reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
     const totalCollected = collected.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
     const totalDeductible = deductible.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
 
@@ -988,6 +997,7 @@ export const tvaDeclarationRepository = {
       collected,
       deductible,
       total_collected: totalCollected,
+      unclassified_collected: Math.round(unclassifiedCollected * 100) / 100,
       total_deductible: totalDeductible,
       // TVA due (a payer si positif, credit de TVA a reporter si negatif)
       tva_due: totalCollected - totalDeductible,

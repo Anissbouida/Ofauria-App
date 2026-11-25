@@ -48,7 +48,7 @@ describe('Pack pays — résolution d\'un paramètre daté', () => {
   });
 
   it('lecture synchrone sans chargement : valeurs MA intégrées', () => {
-    expect(countryParamSync('fiscalite.vat_rates')).toEqual([7, 10, 14, 20]);
+    expect(countryParamSync('fiscalite.vat_rates')).toEqual([10, 20]);
     expect(countryParamSync('paie.base_days')).toBe(26);
   });
 

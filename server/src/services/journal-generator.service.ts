@@ -101,7 +101,8 @@ function toIsoDate(raw: unknown): string {
   return String(raw).slice(0, 10);
 }
 
-function tvaAccountForRate(rate: number, direction: 'collected' | 'deductible'): string {
+/** Compte de TVA d'un taux (sous-compte du taux, sinon compte générique 4455 / 3455, visible dans la déclaration). */
+export function tvaAccountForRate(rate: number, direction: 'collected' | 'deductible'): string {
   const r = Math.round(rate);
   if (direction === 'deductible') {
     if (r === 20) return '34552';
@@ -146,6 +147,43 @@ async function tvaGroupsForInvoice(
     const rate = parseFloat(r.tva_rate);
     return { accountCode: tvaAccountForRate(rate, direction), rate, tva: round2(parseFloat(r.tva)) };
   });
+}
+
+/**
+ * TVA collectée d'un ticket de caisse, UNE LIGNE PAR TAUX (plan compta, étape 3, audit C-02).
+ *
+ * Avant : une seule ligne au taux moyen (TVA ÷ HT), arrondi à l'entier. Un ticket à 20 % et
+ * 10 % donnait un taux moyen sans compte propre, donc le compte générique 4455, que la
+ * déclaration ne lisait pas : TVA collectée sous-déclarée sans alerte.
+ *
+ * Maintenant : la TVA de chaque taux des lignes de vente (sale_items.tax_rate) va sur le
+ * compte de ce taux. Le centime d'écart entre la somme des lignes et la TVA d'en-tête (le
+ * ticket est équilibré sur l'en-tête) est porté par le taux le plus élevé. Un ticket sans
+ * détail par taux, ou dont le détail s'écarte de plus de 5 centimes de l'en-tête, retombe sur
+ * le taux moyen, comme avant.
+ */
+export async function saleTvaLines(
+  client: PoolClient | typeof db, saleId: string, headerTax: number, ht: number
+): Promise<GeneratedLine[]> {
+  const r = await client.query(
+    `SELECT tax_rate, ROUND(SUM(tax_amount)::numeric, 2) AS tva
+       FROM sale_items
+      WHERE sale_id = $1 AND tax_rate IS NOT NULL AND COALESCE(tax_amount, 0) <> 0
+      GROUP BY tax_rate ORDER BY tax_rate`, [saleId]);
+  const groups = (r.rows as { tax_rate: string; tva: string }[])
+    .map(g => ({ rate: parseFloat(g.tax_rate), tva: round2(parseFloat(g.tva)) }))
+    .filter(g => g.tva !== 0);
+  const total = round2(headerTax);
+  const sum = round2(groups.reduce((t, g) => t + g.tva, 0));
+  if (groups.length === 0 || Math.abs(sum - total) > 0.05) {
+    return [{ account_code: tvaAccountForRate(computeTvaRate(ht, total), 'collected'), debit: 0, credit: total, label: 'TVA facturee' }];
+  }
+  let biggest = groups.length - 1;
+  groups.forEach((g, i) => { if (g.tva > groups[biggest].tva) biggest = i; });
+  groups[biggest].tva = round2(groups[biggest].tva + (total - sum));
+  return groups.map(g => ({
+    account_code: tvaAccountForRate(g.rate, 'collected'), debit: 0, credit: g.tva, label: `TVA facturee ${g.rate}%`,
+  }));
 }
 
 /* ═══ Resolution recursive d'un account_id depuis une expense/revenue_category ═══ */
@@ -733,7 +771,7 @@ export async function fromSale(
       // collectée ; sans mapping (Ofauria), une seule ligne 7111 au HT (tax=0 → HT=TTC).
       ...revenueLinesFromGroups(await saleRevenueGroups(client, s.id), round2(subtotal - tax), 'Vente à crédit'),
     ];
-    if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA facturee' });
+    if (tax > 0) lines.push(...await saleTvaLines(client, s.id, tax, subtotal - tax));
     if (discount > 0) lines.push({ account_code: '7129', debit: round2(discount), credit: 0, label: 'Remise accordee' });
     return {
       journal_code: 'VE',
@@ -802,10 +840,7 @@ export async function fromSale(
   // seule ligne 7111 au HT (tax=0 → HT=TTC inchangé).
   lines.push(...revenueLinesFromGroups(await saleRevenueGroups(client, s.id), round2(subtotal - tax + (advance?.amount ?? 0)), 'Vente du jour'));
 
-  if (tax > 0) {
-    const tvaCode = tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected');
-    lines.push({ account_code: tvaCode, debit: 0, credit: round2(tax), label: 'TVA facturee' });
-  }
+  if (tax > 0) lines.push(...await saleTvaLines(client, s.id, tax, subtotal - tax));
   if (discount > 0) {
     lines.push({ account_code: '7129', debit: round2(discount), credit: 0, label: 'Remise accordee' });
   }
@@ -907,6 +942,38 @@ export interface PaymentRow {
   remittance_bank_code?: string | null;
 }
 
+/**
+ * Mode de règlement (payments.payment_method, hérité de payment_modes.legacy_method) → compte
+ * de trésorerie et journal par défaut. Plan d'action compta, étape 1 : un mode inconnu ne
+ * retombe plus sur la caisse (5161), il est refusé. `avoir` n'a pas de trésorerie : il a son
+ * propre schéma (fromSupplierAvoirApplication) et n'est donc pas dans cette table.
+ */
+export const PAYMENT_METHOD_POSTING: Readonly<Record<string, {
+  /** Compte des sorties (décaissement). */ out: string;
+  /** Compte des entrées (encaissement). */ in: string;
+  journal_out: GeneratedEntry['journal_code']; journal_in: GeneratedEntry['journal_code'];
+}>> = {
+  cash:     { out: '5161', in: '5161', journal_out: 'CA', journal_in: 'CA' },
+  transfer: { out: '5141', in: '5141', journal_out: 'BQ', journal_in: 'BQ' },
+  bank:     { out: '5141', in: '5141', journal_out: 'BQ', journal_in: 'BQ' },
+  // Carte et paiement mobile sortent de la banque, pas de la caisse (mig 310).
+  card:     { out: '5141', in: '5141', journal_out: 'BQ', journal_in: 'BQ' },
+  mobile:   { out: '5141', in: '5141', journal_out: 'BQ', journal_in: 'BQ' },
+  check:    { out: '5111', in: '5111', journal_out: 'OD', journal_in: 'OD' },
+  traite:   { out: '4415', in: '5113', journal_out: 'OD', journal_in: 'OD' },
+};
+
+/** Trésorerie d'un règlement ; lève une erreur 422 si le mode n'est pas pris en charge. */
+export function paymentMethodPosting(method: string | null | undefined, paymentId?: string) {
+  const posting = method ? PAYMENT_METHOD_POSTING[method] : undefined;
+  if (!posting) {
+    throw Object.assign(
+      new Error(`Mode de règlement non pris en charge : « ${method ?? 'vide'} »${paymentId ? ` (règlement ${paymentId})` : ''}`),
+      { statusCode: 422, code: 'UNSUPPORTED_PAYMENT_METHOD' });
+  }
+  return posting;
+}
+
 /** Compte général et nature (caisse/banque) d'un compte de trésorerie (mig 310). */
 async function treasuryAccount(
   client: PoolClient | typeof db, id: string | null | undefined
@@ -914,6 +981,96 @@ async function treasuryAccount(
   if (!id) return null;
   const r = await client.query(`SELECT account_code, kind FROM treasury_accounts WHERE id = $1`, [id]);
   return r.rows[0] ?? null;
+}
+
+/**
+ * Avoir fournisseur déduit d'un règlement (pseudo-paiement de mode `avoir`, plan compta
+ * étape 2). L'avoir réduit la dette fournisseur ET la charge : il ne sort rien de la
+ * trésorerie. L'ancien repli le créditait en caisse (4411 D / 5161 C), ce qui faisait baisser
+ * la caisse sans sortie d'argent et laissait charge et TVA inchangées.
+ *
+ *   4411 D (montant de l'avoir)
+ *   charge C (HT, ventilée comme la facture : catégorie de chaque ligne)
+ *   TVA récupérable C (au prorata, par taux)
+ *
+ * L'avoir est réputé porter sur la facture qu'il solde : sa ventilation HT / TVA est celle de
+ * cette facture, au prorata de son montant. Le centime d'arrondi va sur la dernière charge.
+ */
+async function fromSupplierAvoirApplication(
+  client: PoolClient | typeof db, p: PaymentRow, amount: number
+): Promise<GeneratedEntry> {
+  const unsupported = (message: string) =>
+    Object.assign(new Error(message), { statusCode: 422, code: 'UNSUPPORTED_AVOIR' });
+  if (p.type !== 'invoice' || !p.invoice_id || !p.supplier_id) {
+    throw unsupported(`Avoir déduit ${p.id} : il doit porter sur une facture fournisseur`);
+  }
+  const inv = (await client.query(
+    `SELECT id, invoice_number, category_id, amount, tax_amount, total_amount FROM invoices WHERE id = $1`,
+    [p.invoice_id])).rows[0];
+  if (!inv) throw unsupported(`Avoir déduit ${p.id} : facture ${p.invoice_id} introuvable`);
+  const total = round2(parseFloat(String(inv.total_amount)) || 0);
+  const avoir = round2(amount);
+  if (total <= 0) throw unsupported(`Avoir déduit ${p.id} : la facture ${inv.invoice_number} n'a pas de montant`);
+  if (avoir > total + 0.005) throw unsupported(`Avoir déduit ${p.id} : supérieur au montant de la facture ${inv.invoice_number}`);
+  const ratio = avoir / total;
+
+  const lines: GeneratedLine[] = [{
+    account_code: '4411', auxiliary_supplier_id: p.supplier_id, debit: avoir, credit: 0,
+    label: `Avoir déduit — ${inv.invoice_number}`, lettrage_key: `inv-${inv.id}`,
+  }];
+
+  // TVA récupérable reprise, par taux (ou au taux global si la facture n'a pas de détail).
+  let tvaCredited = 0;
+  const groups = await tvaGroupsForInvoice(client, inv.id, 'deductible');
+  if (groups.length > 0) {
+    for (const g of groups) {
+      const part = round2(g.tva * ratio);
+      if (part <= 0) continue;
+      tvaCredited = round2(tvaCredited + part);
+      lines.push({ account_code: g.accountCode, debit: 0, credit: part, label: `TVA récupérable reprise ${g.rate}%` });
+    }
+  } else {
+    const tax = parseFloat(String(inv.tax_amount)) || 0;
+    const part = round2(tax * ratio);
+    if (part > 0) {
+      tvaCredited = part;
+      lines.push({
+        account_code: tvaAccountForRate(computeTvaRate(parseFloat(String(inv.amount)) || 0, tax), 'deductible'),
+        debit: 0, credit: part, label: 'TVA récupérable reprise',
+      });
+    }
+  }
+
+  // Charge reprise : ventilation de la facture par compte de charge, au prorata des lignes.
+  const htPart = round2(avoir - tvaCredited);
+  if (htPart < 0) throw unsupported(`Avoir déduit ${p.id} : TVA reprise supérieure au montant de l'avoir`);
+  const items = (await client.query(
+    `SELECT category_id, COALESCE(subtotal, 0) AS subtotal FROM invoice_items WHERE invoice_id = $1 ORDER BY id`,
+    [inv.id])).rows as { category_id: string | null; subtotal: string }[];
+  const byAccount = new Map<string, number>();
+  for (const it of items) {
+    const code = await resolveCategoryAccountCode(client, it.category_id ?? inv.category_id, 'expense');
+    byAccount.set(code, round2((byAccount.get(code) ?? 0) + (parseFloat(it.subtotal) || 0)));
+  }
+  let basis = [...byAccount.entries()].filter(([, v]) => v > 0);
+  if (basis.length === 0) basis = [[await resolveCategoryAccountCode(client, inv.category_id, 'expense'), 1]];
+  const basisTotal = basis.reduce((t, [, v]) => t + v, 0);
+  let distributed = 0;
+  basis.forEach(([code, v], i) => {
+    const part = i === basis.length - 1 ? round2(htPart - distributed) : round2(htPart * v / basisTotal);
+    distributed = round2(distributed + part);
+    if (part > 0) lines.push({ account_code: code, debit: 0, credit: part, label: `Charge reprise — avoir ${inv.invoice_number}` });
+  });
+
+  return {
+    journal_code: 'AC',
+    entry_date: toIsoDate(p.payment_date),
+    description: p.description || `Avoir déduit — facture ${inv.invoice_number}`,
+    source_kind: 'payment',
+    source_id: p.id,
+    store_id: p.store_id,
+    lines,
+  };
 }
 
 /**
@@ -931,6 +1088,8 @@ export async function fromPaymentEmission(
   // Imputation d'un avoir client (O2C L4) : aucun flux de trésorerie, l'écriture de
   // l'avoir porte déjà le crédit 3421.
   if (p.credit_note_id) return null;
+  // Avoir fournisseur déduit d'un règlement (étape 2 du plan compta) : schéma propre, jamais la trésorerie.
+  if (p.payment_method === 'avoir') return fromSupplierAvoirApplication(client, p, amount);
 
   // Virement interne (mig 310, G-D7-17) : mouvement entre nos comptes, ni charge
   // ni tiers. Destination au debit, source au credit (ex. versement : 5141 D / 5161 C).
@@ -985,8 +1144,9 @@ export async function fromPaymentEmission(
     // Encaissement : tresorerie au debit. Cheque / traite recus attendent leur
     // remise en banque (5111 / 5113, soldes par l'ecriture d'encaissement).
     const method = p.payment_method;
-    let treasuryCode = method === 'cash' ? '5161' : method === 'check' ? '5111' : method === 'traite' ? '5113' : '5141';
-    let journal: GeneratedEntry['journal_code'] = method === 'cash' ? 'CA' : method === 'check' || method === 'traite' ? 'OD' : 'BQ';
+    const incoming = paymentMethodPosting(method, p.id);
+    let treasuryCode = incoming.in;
+    let journal: GeneratedEntry['journal_code'] = incoming.journal_in;
     if (['cash', 'transfer', 'bank', 'card', 'mobile'].includes(method) && p.treasury_account_id) {
       const ta = await treasuryAccount(client, p.treasury_account_id);
       if (ta) { treasuryCode = ta.account_code; journal = ta.kind === 'cash' ? 'CA' : 'BQ'; }
@@ -1058,25 +1218,12 @@ export async function fromPaymentEmission(
     debitLine = { account_code: '6181', debit: round2(amount), credit: 0, label: p.description || 'Paiement' };
   }
 
-  // Cote CREDIT : tresorerie ou compte d'attente selon payment_method
-  let creditCode: string;
-  let journal: GeneratedEntry['journal_code'];
-  switch (p.payment_method) {
-    case 'cash':
-      creditCode = '5161'; journal = 'CA'; break;
-    case 'transfer':
-    case 'bank':
-    case 'card':
-    case 'mobile':
-      // Carte et paiement mobile sortent de la banque, pas de la caisse (mig 310).
-      creditCode = '5141'; journal = 'BQ'; break;
-    case 'check':
-      creditCode = '5111'; journal = 'OD'; break;
-    case 'traite':
-      creditCode = '4415'; journal = 'OD'; break;
-    default:
-      creditCode = '5161'; journal = 'CA';
-  }
+  // Cote CREDIT : tresorerie ou compte d'attente selon payment_method.
+  // Un mode inconnu est refuse (etape 1 du plan compta) : l'ancien repli sur la caisse
+  // faussait le solde de caisse sans sortie d'argent.
+  const outgoing = paymentMethodPosting(p.payment_method, p.id);
+  let creditCode = outgoing.out;
+  let journal: GeneratedEntry['journal_code'] = outgoing.journal_out;
   // Compte de tresorerie explicite (mig 310) : pour les sorties immediates
   // (especes, virement, carte), le compte general vient du compte choisi.
   if (['cash', 'transfer', 'bank', 'card', 'mobile'].includes(p.payment_method) && p.treasury_account_id) {
@@ -1217,6 +1364,12 @@ export async function fromAllocation(
   };
 }
 
+/** Politique appliquée à une pièce dont la période est fermée (paramètre ledger.closed_period_policy). */
+async function closedPeriodPolicy(client: PoolClient | typeof db): Promise<'redate' | 'refuse'> {
+  const r = await client.query(`SELECT value->>'policy' AS policy FROM module_parameters WHERE key = 'ledger.closed_period_policy'`);
+  return r.rows[0]?.policy === 'refuse' ? 'refuse' : 'redate';
+}
+
 export async function persistEntry(
   client: PoolClient,
   entry: GeneratedEntry,
@@ -1252,7 +1405,17 @@ export async function persistEntry(
   // Mig 311 (G-D8-16) : date comptable = date de la pièce si sa période est
   // ouverte, sinon premier jour de la période ouverte suivante ; les périodes
   // manquantes sont créées à la demande (plus de blocage au 1er janvier).
-  const accDate = await client.query(`SELECT fn_accounting_date($1::date)::text AS d`, [entry.entry_date]);
+  // Plan compta, étape 8 (audit C-11) : la date de la PIÈCE est conservée sur l'écriture
+  // (document_date) et tout redatage est tracé ; la politique `ledger.closed_period_policy`
+  // permet de refuser la pièce (file, cause PERIOD_CLOSED) au lieu de la redater.
+  const documentDate = toIsoDate(entry.entry_date);
+  const accDate = await client.query(`SELECT fn_accounting_date($1::date)::text AS d`, [documentDate]);
+  const redated = accDate.rows[0].d !== documentDate;
+  if (redated && (await closedPeriodPolicy(client)) === 'refuse') {
+    throw Object.assign(
+      new Error(`La période de la pièce (${documentDate}) est fermée : l'écriture ne peut pas être datée avant le ${accDate.rows[0].d}`),
+      { statusCode: 409, code: 'PERIOD_CLOSED' });
+  }
   entry = { ...entry, entry_date: accDate.rows[0].d };
   const fp = await client.query(
     `SELECT id, status FROM fiscal_periods WHERE $1::DATE BETWEEN start_date AND end_date LIMIT 1`,
@@ -1314,11 +1477,11 @@ export async function persistEntry(
   const insRes = await client.query(
     `INSERT INTO journal_entries (
        entry_number, journal_id, entry_date, fiscal_period_id, description,
-       source_kind, source_id, source_detail, status, store_id, created_by
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10)
+       source_kind, source_id, source_detail, status, store_id, created_by, document_date
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11)
      RETURNING id`,
     [entryNumber, journalId, entry.entry_date, fiscalPeriodId, entry.description,
-     sourceKind, entry.source_id, entry.source_detail ?? null, entry.store_id, opts.userId]
+     sourceKind, entry.source_id, entry.source_detail ?? null, entry.store_id, opts.userId, documentDate]
   );
   const entryId = insRes.rows[0].id;
 
@@ -1348,6 +1511,12 @@ export async function persistEntry(
     `UPDATE journal_entries SET status = 'posted', posted_at = NOW(), posted_by = $2 WHERE id = $1`,
     [entryId, opts.userId]
   );
+  if (redated) {
+    await client.query(
+      `INSERT INTO ledger_audit_log (event, entry_id, entry_number, actor, details)
+       VALUES ('redated', $1, $2, $3, $4::jsonb)`,
+      [entryId, entryNumber, opts.userId, JSON.stringify({ document_date: documentDate, entry_date: entry.entry_date, source_kind: sourceKind })]);
+  }
 
   return { id: entryId, entry_number: entryNumber, created: true };
 }
@@ -1608,7 +1777,7 @@ const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, cu
   kind, credit_reason, credited_invoice_id, source_sale_id, validation_status, reception_voucher_id
   FROM invoices WHERE id = $1`;
 
-const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
+export const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
   employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
   withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id, customer_id,
   (SELECT br.kind FROM bill_remittances br WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_kind,
