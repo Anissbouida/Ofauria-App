@@ -1147,6 +1147,19 @@ export const recipeRepository = {
     // quand la base est fabriquée. La fiche dit donc quelles bases, combien, et ce qu'il y a
     // en stock. Premier niveau seulement, bases stockées (un sous-ensemble fantôme n'a pas de stock).
     const comp = await getCompositionForNeeds(db, recipeId, null);
+    // Matières DIRECTES de la fiche : les seules qui sortent du stock à la production de cet
+    // article. Le reste du cumul est contenu dans les préparations de base et est sorti quand
+    // elles ont été fabriquées — les mêler dans une seule colonne laissait croire le contraire.
+    const directById = new Map<string, number>();
+    for (const ing of comp?.ingredients ?? []) {
+      if (ing.conversionImpossible) continue;
+      directById.set(ing.ingredientId, (directById.get(ing.ingredientId) ?? 0) + ing.qtyPerBatch);
+    }
+    for (const l of lines) {
+      const direct = Math.min(directById.get(l.ingredient_id) ?? 0, l.total_qty);
+      const factor = l.total_qty > 0 ? l.display_qty / l.total_qty : 1;
+      (l as typeof l & { direct_qty: number }).direct_qty = Math.round(direct * factor * 1000) / 1000;
+    }
     const baseSubs = (comp?.subRecipes ?? []).filter(s => s.isBase && !s.isPhantom && !s.conversionImpossible);
     const stockById = new Map<string, number>(baseSubs.length === 0 ? [] : (await db.query(
       `SELECT recipe_id, COALESCE(SUM(quantity_available), 0)::float8 AS qty

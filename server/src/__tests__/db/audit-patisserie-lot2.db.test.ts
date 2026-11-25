@@ -168,7 +168,12 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 2 fournées entières', (
     // La fiche opéra consomme 2,4 kg de crème par cadre : c'est la base qui sort du stock,
     // pas le lait qu'elle contient (qui reste listé dans les matières à plat).
     expect(res.bases).toEqual([{ recipe_id: creme, name: expect.stringContaining('Crème a2'), unit: 'kg', qty: 2.4, stock: 1.5 }]);
-    expect(res.lines.some(l => l.ingredient_id === lait)).toBe(true);
+    // Matières : le chocolat est saisi sur la fiche (sorti à cette production) ; le lait n'est
+    // que dans la crème (déjà sorti à sa fabrication) — part directe nulle.
+    const line = (id: string) => res.lines.find(l => l.ingredient_id === id) as { total_qty: number; direct_qty?: number };
+    expect(line(chocolat).direct_qty).toBeCloseTo(2.4, 3);
+    expect(line(lait).direct_qty).toBe(0);
+    expect(line(lait).total_qty).toBeCloseTo(2.4, 3);
     // Un autre établissement ne voit pas ce stock.
     const other = await recipeRepository.getExplosion(operaRecipe, '00000000-0000-0000-0000-000000000001');
     expect(other.bases[0].stock).toBe(0);

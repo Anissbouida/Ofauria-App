@@ -216,7 +216,10 @@ export const recipesApi = {
   // Explosion à plat (mig 400) — roadmap lot 5
   explosion: (id: string) => api.get(`/recipes/${id}/explosion`).then(r => r.data.data as {
     /** total_qty en unité de stock ; display_qty/display_unit dans l'unité saisie sur les fiches. */
-    lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; display_qty?: number; display_unit?: string; rolled_cost: number }[];
+    lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; display_qty?: number; display_unit?: string; rolled_cost: number;
+      /** Part saisie directement sur la fiche (unité d'affichage) : la seule qui sort du stock à la
+       *  production de l'article ; le reste est contenu dans les préparations de base. */
+      direct_qty?: number }[];
     total_cost: number;
     /** Préparations de base consommées par la production (premier niveau) : quantité sur la même
      *  base que les lignes (une pièce ou une fournée), dans l'unité de la base, et stock disponible. */
