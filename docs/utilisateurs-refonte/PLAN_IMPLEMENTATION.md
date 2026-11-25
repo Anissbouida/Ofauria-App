@@ -39,7 +39,7 @@ plusieurs commits autonomes qui compilent et passent les tests. Migrations numé
 - [x] Lot 0 — f435f45f
 - [x] Lot 1 — module à rubriques, vue d'ensemble, comptes
 - [x] Lot 2 — fiche en page `/users/:id` (connexions externes en lecture seule : elles se rattachent par l'e-mail à chaque connexion, « délier » n'aurait pas d'effet durable)
-- [ ] Lot 3
+- [x] Lot 3 — création en étapes, invitation 72 h (mig 700), page publique `/invitation/:token`, contrôle des conflits avant création
 - [ ] Lot 4
 - [ ] Lot 5
 - [ ] Lot 6
