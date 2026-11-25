@@ -107,26 +107,26 @@ Ordre conseillé : E d'abord, parce que F, G, H et K ajoutent des schémas et qu
 
 | Réf. | Constat | Priorité | Lot | État | Commit | Vérifié le |
 |---|---|---|---|---|---|---|
-| C-01 | Avoir fournisseur en sortie de caisse | P0 | A | À faire | | |
-| C-02 | TVA multi-taux hors déclaration | P0 | A | À faire | | |
+| C-01 | Avoir fournisseur en sortie de caisse | P0 | A | Corrigé (écriture) ; document d'avoir à venir | 14ce9913 | 2026-11-25, tests |
+| C-02 | TVA multi-taux hors déclaration | P0 | A | Corrigé (par taux, sans taux visible, taux datés) | 14ce9913, b41bb3e1 | 2026-11-25, tests |
 | C-03 | Liquidation et crédit de TVA | P0 | B | À valider | | |
 | C-04 | Régime de TVA par défaut | P0 | B | À valider | | |
 | C-05 | Code de TVA non obligatoire | P0 | B | À faire | | |
 | C-06 | Paie comptabilisée sous condition | P0 | B | À valider | | |
-| C-07 | File d'écritures non rejouée | P0 | A | À faire | | |
-| C-08 | Triggers désactivables | P0 | A, C | À faire | | |
+| C-07 | File d'écritures non rejouée | P0 | A | Corrigé pour la file ; fidélité et production à convertir | 5543cbed | 2026-11-25, tests |
+| C-08 | Triggers désactivables | P0 | A, C | Surveillance livrée ; rôle PostgreSQL (étape 20) à faire | 8acbec2c | 2026-11-25, tests |
 | C-09 | Séparation des tâches | P0 | C | À faire | | |
 | C-10 | Deux comptabilités | P0 | D | À faire | | |
-| C-11 | Redatage silencieux | P0 | A | À faire | | |
-| C-12 | Tests manquants | P0 | A | À faire | | |
+| C-11 | Redatage silencieux | P0 | A | Corrigé (date conservée, tracé, politique) | 14ce9913 | 2026-11-25, tests |
+| C-12 | Tests manquants | P0 | A | Partiel : 4 des 7 fichiers prévus | 8acbec2c | 2026-11-25 |
 | I-01 | Chèques émis en 5111 | P1 | B | À valider | | |
 | I-02 | Caisse jamais versée en banque | P1 | F | À faire | | |
 | I-03 | Ventes de production en 7111 | P1 | G | À valider | | |
 | I-04 | Inventaire incomplet | P1 | G | À faire | | |
 | I-05 | Inventaire permanent incohérent | P1 | G | À faire | | |
 | I-06 | Retour en caisse simplifié | P1 | H | À faire | | |
-| I-07 | État des retenues faux | P1 | A | À faire | | |
-| I-08 | États « posted » seul | P1 | A | À faire | | |
+| I-07 | État des retenues faux | P1 | A | Corrigé | 3e7da6f8, 14ce9913 | 2026-11-25, test |
+| I-08 | États « posted » seul | P1 | A | Corrigé (2 états ; garde de lecture à ajouter) | 3e7da6f8 | 2026-11-25 |
 | I-09 | Profils décoratifs, comptes en dur | P1 | E | À faire | | |
 | I-10 | Insertion dupliquée | P1 | E | À faire | | |
 | I-11 | Exercice civil en dur | P1 | I | À faire | | |

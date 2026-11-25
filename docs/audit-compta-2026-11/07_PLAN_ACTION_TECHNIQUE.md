@@ -4,6 +4,25 @@ Date : 24 novembre 2026. Complète `06_FEUILLE_DE_ROUTE.md` : même découpage e
 
 Statut : **plan à valider**. Rien n'est commencé.
 
+## Avancement au 25 novembre 2026 et écarts par rapport au plan
+
+Branche `claude/kalum-accounting-finance-module-a25fcb`, rebasée sur `main` (migration 663 prise par une autre session : les migrations de ce plan sont **664 à 668**). Rien n'est poussé sur `origin`, `main` n'est pas avancé et la base de dev `ofauria_db` n'est pas migrée.
+
+| Étape | État | Écart par rapport au plan |
+|---|---|---|
+| 0 Jeu de référence | Livré | — |
+| 1 Mode inconnu refusé | Livré | — |
+| 2 Avoir fournisseur | **Partiel** | L'écriture est corrigée (4411 D / charge C / TVA récupérable C au prorata de la facture soldée), sans caisse. Le **document d'avoir** (écran, numérotation AVF, imputation) n'est pas fait : le plan a découvert que l'avoir client existe déjà (mig 450, `credit-note.repository.ts`) et qu'il faut le généraliser plutôt que créer une structure parallèle. À reprendre avec ce modèle. Script de reprise `repost-supplier-avoirs.ts` livré (0 avoir en base de dev) |
+| 3 TVA par taux | Livré, **variante** | Une ligne par taux sur le ticket ; 4455 / 3455 lus par la déclaration ; contrôle de clôture bloquant. Un taux inconnu **n'est pas refusé** : il retombe sur le compte générique, désormais visible et bloquant à la clôture (refuser aurait empêché de vendre) |
+| 4 Taux en dur | Livré | Taux légaux datés dans le pack pays (mig 667), un seul tableau taux → compte, garde automatique |
+| 5 File rejouée | Livré | Fidélité et production gardent leur propre capture d'erreur (à convertir) ; écran « À comptabiliser » non fait (le bloc de la clôture reste) |
+| 6 Retenues à la source | Livré | `source_kind` des reversements non modifié (la valeur `manual` + `source_detail` suffit à les identifier) |
+| 7 Extournes dans les états | Livré pour 2 états | Vue `v_ledger_lines` et garde de lecture non faites |
+| 8 Redatage tracé | Livré | — |
+| 9 Tests manquants | **Partiel** | Faits : numérotation concurrente, chaîne altérée, verrou de période, invariant aléatoire. Restent : clôture d'exercice et à-nouveaux, fermeture de caisse → écriture, sécurité HTTP des routes |
+| 10 Surveillance | Livré | — |
+| 11 à 30 | Non commencés | Lots B (attend l'expert-comptable), C, D, E |
+
 ## Comment lire ce plan
 
 - Les étapes sont numérotées dans l'ordre d'exécution. Une étape = un commit, testable seul.
