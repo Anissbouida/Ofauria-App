@@ -1,6 +1,7 @@
 {
  "DELETE /approvals/delegations/:id": null,
  "DELETE /attendance/:id": null,
+ "DELETE /auth/passkeys/:id": null,
  "DELETE /bank-reconciliation/import/profiles/:id": [
   "admin",
   "manager"
@@ -366,6 +367,7 @@
  "GET /auth/oidc/:provider/callback": null,
  "GET /auth/oidc/:provider/start": null,
  "GET /auth/oidc/providers": null,
+ "GET /auth/passkeys": null,
  "GET /auth/pin-users": null,
  "GET /auth/users-list": [
   "admin",
@@ -2839,6 +2841,7 @@
   "admin",
   "manager"
  ],
+ "PATCH /auth/passkeys/:id": null,
  "PATCH /automation/jobs/:key": null,
  "PATCH /complaints/:id": [
   "admin",
@@ -2918,6 +2921,10 @@
  "POST /auth/mfa/enable": null,
  "POST /auth/mfa/setup": null,
  "POST /auth/mfa/verify": null,
+ "POST /auth/passkeys/login/options": null,
+ "POST /auth/passkeys/login/verify": null,
+ "POST /auth/passkeys/register/options": null,
+ "POST /auth/passkeys/register/verify": null,
  "POST /auth/pin-login": null,
  "POST /auth/register": [
   "admin"

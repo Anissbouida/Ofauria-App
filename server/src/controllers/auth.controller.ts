@@ -10,6 +10,7 @@ import { meetsPasswordPolicy } from '../validators/auth.validator.js';
 import { generateToken } from '../utils/jwt.js';
 import jwt from 'jsonwebtoken';
 import { mfaRepository } from '../repositories/mfa.repository.js';
+import { passkeyRepository } from '../repositories/passkey.repository.js';
 
 // OWASP A07-4 : hash bcrypt factice (reel, parsable) utilise pour uniformiser
 // le temps de reponse entre un email inexistant et un password incorrect.
@@ -83,7 +84,7 @@ export function readDeviceTokens(req: { cookies?: Record<string, string> }): str
   return raw.split('.').filter(t => DEVICE_TOKEN_RE.test(t)).slice(0, MAX_DEVICE_TOKENS);
 }
 
-function setDeviceCookie(res: Response, tokens: string[], days: number) {
+export function setDeviceCookie(res: Response, tokens: string[], days: number) {
   res.cookie(DEVICE_COOKIE_NAME, tokens.slice(0, MAX_DEVICE_TOKENS).join('.'), {
     httpOnly: true,
     secure: IS_PROD,
@@ -94,7 +95,7 @@ function setDeviceCookie(res: Response, tokens: string[], days: number) {
 }
 
 /** Libellé lisible du poste (navigateur · système) à partir de l'agent utilisateur. */
-function deviceLabel(ua: string | null): string | null {
+export function deviceLabel(ua: string | null): string | null {
   if (!ua) return null;
   const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
     : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navigateur';
@@ -173,9 +174,11 @@ export const authController = {
       ...(mustChange ? { details: { mustChangePassword: true } } : {}),
     });
 
-    // G6-01 : double authentification activée → code exigé avant d'ouvrir la session.
-    // Le jeton intermédiaire est signé avec une clé distincte : il n'ouvre aucune route.
-    if (user.totp_enabled) {
+    // G6-01 : double authentification activée (application ou passkey, mig 705) → second
+    // facteur exigé avant d'ouvrir la session. Le jeton intermédiaire est signé avec une clé
+    // distincte : il n'ouvre aucune route.
+    const passkeys = await passkeyRepository.countForUser(user.id);
+    if (user.totp_enabled || passkeys > 0) {
       // Poste de confiance encore valable (mig 702) → pas de code sur ce poste.
       if (await mfaRepository.isTrustedDevice(user.id, readDeviceTokens(req))) {
         await authEventRepository.recordFromRequest(req, {
@@ -184,7 +187,10 @@ export const authController = {
         await issueSession(res, user, mustChange);
         return;
       }
-      res.json({ success: true, data: { mfaRequired: true, mfaToken: signMfaToken(user.id, mustChange), trustedDeviceDays: await mfaRepository.trustedDeviceDays() } });
+      res.json({ success: true, data: {
+        mfaRequired: true, mfaToken: signMfaToken(user.id, mustChange), trustedDeviceDays: await mfaRepository.trustedDeviceDays(),
+        methods: { totp: !!user.totp_enabled, passkey: passkeys > 0 },
+      } });
       return;
     }
     await issueSession(res, user, mustChange);
@@ -228,7 +234,8 @@ export const authController = {
       res.status(401).json({ success: false, error: { message: 'Mot de passe incorrect' } }); return;
     }
     const roleCtx = await loginRoleContext(user.id);
-    if ((await mfaRepository.state(user.id, roleCodesOf(roleCtx))).required) {
+    const st = await mfaRepository.state(user.id, roleCodesOf(roleCtx));
+    if (st.required && st.passkeys === 0) {
       res.status(403).json({ success: false, error: { message: 'Votre rôle impose la double authentification' } }); return;
     }
     if (!(await mfaRepository.verify(user.id, String(req.body.code ?? ''))).ok) {
@@ -362,7 +369,8 @@ export const authController = {
     // G6-01 : le PIN ne contourne pas le second facteur — compte protégé ou rôle soumis →
     // connexion par e-mail, puis code.
     const pinRoleCtx = await loginRoleContext(user.id);
-    if (user.totp_enabled || (await mfaRepository.state(user.id, roleCodesOf(pinRoleCtx))).required) {
+    const pinMfa = await mfaRepository.state(user.id, roleCodesOf(pinRoleCtx));
+    if (pinMfa.protected || pinMfa.required) {
       res.status(403).json({ success: false, error: { message: 'Double authentification requise : connectez-vous par e-mail' } });
       return;
     }
@@ -465,18 +473,18 @@ export const authController = {
 
 /* ── G6-01 : double authentification ── */
 type RoleCtx = Awaited<ReturnType<typeof loginRoleContext>>;
-const roleCodesOf = (ctx: RoleCtx) => [...new Set([ctx.roleCode, ctx.primaryBaseRole, ...(ctx.baseRoles ?? []),
+export const roleCodesOf = (ctx: RoleCtx) => [...new Set([ctx.roleCode, ctx.primaryBaseRole, ...(ctx.baseRoles ?? []),
   ...((ctx.roles ?? []) as unknown[]).map(r => (typeof r === 'string' ? r : (r as { code?: string })?.code)).filter((x): x is string => !!x)])]
   .filter((x): x is string => !!x);
 async function mfaSetupRequired(userId: string, ctx: RoleCtx): Promise<boolean> {
   const s = await mfaRepository.state(userId, roleCodesOf(ctx));
-  return s.required && !s.enabled;
+  return s.required && !s.protected;
 }
 const mfaKey = () => `${env.JWT_SECRET}:mfa`;
 export function signMfaToken(userId: string, mustChange: boolean) {
   return jwt.sign({ uid: userId, mc: mustChange, purpose: 'mfa' }, mfaKey(), { expiresIn: '5m' });
 }
-function readMfaToken(token: string): { uid: string; mc: boolean } | null {
+export function readMfaToken(token: string): { uid: string; mc: boolean } | null {
   try {
     const p = jwt.verify(String(token ?? ''), mfaKey()) as { uid: string; mc: boolean; purpose?: string };
     return p.purpose === 'mfa' ? p : null;
@@ -484,7 +492,7 @@ function readMfaToken(token: string): { uid: string; mc: boolean } | null {
 }
 
 /** Ouvre la session (jeton + cookie) et renvoie le profil — commun au mot de passe et au second facteur. */
-async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null; locale?: string | null }, mustChange: boolean) {
+export async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null; locale?: string | null }, mustChange: boolean) {
   // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
   // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
   const roleCtx = await loginRoleContext(user.id);

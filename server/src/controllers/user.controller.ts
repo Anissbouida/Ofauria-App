@@ -16,6 +16,7 @@ import { normalizePermissions, permissionView } from '../services/permission-inp
 import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
 import { logger } from '../utils/logger.js';
 import { mfaRepository } from '../repositories/mfa.repository.js';
+import { passkeyRepository } from '../repositories/passkey.repository.js';
 import { accountAttachments } from '../services/account-profile.js';
 import { invitationRepository } from '../repositories/invitation.repository.js';
 import { enqueueEmail, mailStatus } from '../services/mailer.js';
@@ -77,9 +78,9 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const [users, allRoles, lastLogins, mfaRoles, invitations, trustedDevices] = await Promise.all([
+    const [users, allRoles, lastLogins, mfaRoles, invitations, trustedDevices, passkeys] = await Promise.all([
       userRepository.findAll(), userRepository.allUserRoles(), userRepository.lastLogins(), mfaRepository.requiredRoles(),
-      invitationRepository.openByUser(), mfaRepository.trustedDeviceCounts(),
+      invitationRepository.openByUser(), mfaRepository.trustedDeviceCounts(), passkeyRepository.countsByUser(),
     ]);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
@@ -99,7 +100,9 @@ export const userController = {
         isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
         storeId: u.store_id, createdAt: u.created_at,
         // Sécurité du compte (double authentification, verrouillage, dernière connexion).
-        mfaEnabled: !!u.totp_enabled, mfaRequired: mfaRequiredByRole || mfaRequiredForUser, mfaRequiredByRole, mfaRequiredForUser,
+        // Activée = application d'authentification OU au moins une passkey (mig 705).
+        mfaEnabled: !!u.totp_enabled || (passkeys.get(u.id) ?? 0) > 0, mfaApp: !!u.totp_enabled, mfaPasskeys: passkeys.get(u.id) ?? 0,
+        mfaRequired: mfaRequiredByRole || mfaRequiredForUser, mfaRequiredByRole, mfaRequiredForUser,
         // Postes de confiance encore valables : code non redemandé (mig 702).
         mfaTrustedDevices: trustedDevices.get(u.id) ?? 0,
         lockedUntil: lockedUntil && new Date(lockedUntil).getTime() > now ? lockedUntil : null,
@@ -407,7 +410,7 @@ export const userController = {
     }
     const target = await userRepository.findById(req.params.id);
     if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
-    await mfaRepository.disable(target.id);
+    await mfaRepository.resetAll(target.id);
     await userRepository.bumpTokenVersion(target.id);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'mfa_reset', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,

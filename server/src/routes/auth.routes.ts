@@ -4,9 +4,10 @@ import { authController } from '../controllers/auth.controller.js';
 import { oidcController } from '../controllers/oidc.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema, strongPassword } from '../validators/auth.validator.js';
 import { invitationController } from '../controllers/invitation.controller.js';
+import { passkeyController } from '../controllers/passkey.controller.js';
 
 /** Acceptation d'une invitation : mot de passe choisi, même politique qu'un nouveau compte. */
 const acceptInvitationSchema = z.object({ password: strongPassword }).strict();
@@ -18,6 +19,14 @@ const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(12) });
 const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(2000), rememberDevice: z.boolean().optional() });
 const mfaDisableSchema = mfaCodeSchema.extend({ password: z.string().min(1).max(200) });
 const mfaEmptySchema = z.object({}).passthrough();
+// Passkeys (mig 705) : la réponse de l'appareil est vérifiée par @simplewebauthn, on n'en
+// contrôle ici que la forme générale.
+const webauthnResponse = z.object({ id: z.string().min(1).max(1024), rawId: z.string().max(1024), type: z.literal('public-key'), response: z.object({}).passthrough() }).passthrough();
+const passkeyTicket = z.string().min(20).max(4000);
+const passkeyLoginOptionsSchema = z.object({ mfaToken: z.string().min(20).max(2000).optional() }).strict();
+const passkeyLoginVerifySchema = z.object({ ticket: passkeyTicket, response: webauthnResponse, rememberDevice: z.boolean().optional() }).strict();
+const passkeyRegisterVerifySchema = z.object({ ticket: passkeyTicket, response: webauthnResponse, label: z.string().trim().max(80).optional() }).strict();
+const passkeyRenameSchema = z.object({ label: z.string().trim().min(1).max(80) }).strict();
 import { ipKeyGenerator } from 'express-rate-limit';
 import { emptyBody } from '../validators/common.validator.js';
 
@@ -61,6 +70,14 @@ router.get('/oidc/providers', asyncHandler(async (req, res) => oidcController.pr
 router.get('/oidc/:provider/start', loginLimiter, asyncHandler(oidcController.start));
 router.get('/oidc/:provider/callback', loginLimiter, asyncHandler(oidcController.callback));
 router.get('/mfa/status', authenticate, asyncHandler(authController.mfaStatus));
+// Passkeys (mig 705) : connexion (publique, limitée comme le mot de passe) et « Mes passkeys ».
+router.post('/passkeys/login/options', loginLimiter, validate(passkeyLoginOptionsSchema), asyncHandler(passkeyController.loginOptions));
+router.post('/passkeys/login/verify', loginLimiter, validate(passkeyLoginVerifySchema), asyncHandler(passkeyController.loginVerify));
+router.get('/passkeys', authenticate, asyncHandler(passkeyController.list));
+router.post('/passkeys/register/options', authenticate, validate(mfaEmptySchema), asyncHandler(passkeyController.registerOptions));
+router.post('/passkeys/register/verify', authenticate, validate(passkeyRegisterVerifySchema), asyncHandler(passkeyController.registerVerify));
+router.patch('/passkeys/:id', authenticate, validateUuidParams('id'), validate(passkeyRenameSchema), asyncHandler(passkeyController.rename));
+router.delete('/passkeys/:id', authenticate, validateUuidParams('id'), asyncHandler(passkeyController.remove));
 router.post('/mfa/setup', authenticate, validate(mfaEmptySchema), asyncHandler(authController.mfaSetup));
 router.post('/mfa/enable', authenticate, validate(mfaCodeSchema), asyncHandler(authController.mfaEnable));
 router.post('/mfa/disable', authenticate, validate(mfaDisableSchema), asyncHandler(authController.mfaDisable));

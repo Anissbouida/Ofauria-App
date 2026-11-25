@@ -31,6 +31,10 @@ export type AuthEventType =
   // Postes de confiance (mig 702) : code non redemandé sur un poste mémorisé / postes oubliés.
   | 'mfa_trusted_device'
   | 'mfa_devices_forgotten'
+  // Passkeys (mig 705) : ajout, suppression, échec de connexion.
+  | 'passkey_added'
+  | 'passkey_removed'
+  | 'passkey_failed'
   | 'user_created'
   | 'user_updated'
   // Suppression définitive d'un compte sans historique (trace : e-mail + nom dans details).

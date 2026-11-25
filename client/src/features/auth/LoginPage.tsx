@@ -4,8 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import api, { serverUrl } from '../../api/client';
 import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
-import { ArrowLeft, Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
-import { authApi } from '../../api/auth.api';
+import { ArrowLeft, Delete, Eye, EyeOff, Fingerprint, Lock, Mail } from 'lucide-react';
+import { authApi, passkeyCancelled, passkeysSupported } from '../../api/auth.api';
 import { useT } from '../../i18n';
 import { LanguageSelect } from '../../components/layout/LanguageSwitcher';
 
@@ -15,7 +15,7 @@ const PIN_MAX = 10;
 type PinUser = { id: string; firstName: string; lastInitial: string };
 
 export default function LoginPage() {
-  const { user, loginWithPin, login, verifyMfa } = useAuth();
+  const { user, loginWithPin, login, verifyMfa, loginWithPasskey } = useAuth();
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
@@ -24,6 +24,21 @@ export default function LoginPage() {
   // Poste de confiance (mig 702) : coché par défaut, à décocher sur un poste partagé.
   const [rememberDevice, setRememberDevice] = useState(true);
   const [trustedDeviceDays, setTrustedDeviceDays] = useState(14);
+  // Passkeys (mig 705) : seconds facteurs du compte ; inconnus au retour d'une connexion d'entreprise.
+  const [mfaMethods, setMfaMethods] = useState<{ totp: boolean; passkey: boolean }>({ totp: true, passkey: true });
+  const canPasskey = passkeysSupported();
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  /** Connexion par passkey : sans mfaToken = sans mot de passe, avec = second facteur. */
+  const passkeySignIn = async (token?: string) => {
+    setPasskeyBusy(true);
+    try { await loginWithPasskey(token, !!token && rememberDevice && trustedDeviceDays > 0); }
+    catch (err: unknown) {
+      if (passkeyCancelled(err)) return;
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      notify.error(msg || tRef.current('auth.passkeyFailed'));
+      if (token && /expirée/.test(msg ?? '')) { setMfaToken(null); setMfaCode(''); }
+    } finally { setPasskeyBusy(false); }
+  };
   // G6-02 : fournisseurs d'entreprise configurés ; retour de connexion (?mfa= / ?sso_error=).
   const [ssoProviders, setSsoProviders] = useState<{ provider: string; label: string }[]>([]);
   useEffect(() => {
@@ -127,6 +142,7 @@ export default function LoginPage() {
       if (r?.mfaToken) {
         setMfaToken(r.mfaToken);
         if (typeof r.trustedDeviceDays === 'number') setTrustedDeviceDays(r.trustedDeviceDays);
+        if (r.methods) setMfaMethods(r.methods);
       }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; code?: string; message?: string };
@@ -148,10 +164,15 @@ export default function LoginPage() {
 
   // ═══════ G6-01 : SECOND FACTEUR ═══════
   if (mfaToken) {
+    const showPasskey = canPasskey && mfaMethods.passkey;
     const submitCode = async (e: React.FormEvent) => {
       e.preventDefault();
       setLoading(true);
-      try { await verifyMfa(mfaToken, mfaCode.trim(), rememberDevice && trustedDeviceDays > 0); }
+      try {
+        await verifyMfa(mfaToken, mfaCode.trim(), rememberDevice && trustedDeviceDays > 0);
+        // Connecté par code : proposer une fois d'ajouter une passkey (AppLayout).
+        if (canPasskey && !mfaMethods.passkey) { try { sessionStorage.setItem('kalum_passkey_suggest', '1'); } catch { /* rien */ } }
+      }
       catch (err: unknown) {
         const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
         notify.error(msg || t('auth.invalidCode'));
@@ -162,10 +183,23 @@ export default function LoginPage() {
       <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)' }}>
           <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--ds-accent)' }}>{t('auth.mfaTitle')}</h1>
-          <p className="text-sm mb-4" style={{ color: 'var(--ds-muted)' }}>{t('auth.mfaHelp')}</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--ds-muted)' }}>{t(showPasskey && !mfaMethods.totp ? 'auth.mfaHelpPasskey' : showPasskey ? 'auth.mfaHelpBoth' : 'auth.mfaHelp')}</p>
           <form onSubmit={submitCode} className="space-y-4">
-            <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
-              aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+            {showPasskey && (
+              <button type="button" className="btn-primary w-full py-3 flex items-center justify-center gap-2" disabled={passkeyBusy || loading}
+                autoFocus onClick={() => void passkeySignIn(mfaToken)}>
+                <Fingerprint size={18} /> {passkeyBusy ? t('auth.verifying') : t('auth.usePasskey')}
+              </button>
+            )}
+            {showPasskey && mfaMethods.totp && (
+              <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--ds-muted)' }}>
+                <span className="flex-1 border-t" /> {t('auth.orEnterCode')} <span className="flex-1 border-t" />
+              </div>
+            )}
+            {mfaMethods.totp && (
+              <input className="input" autoFocus={!showPasskey} autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
+                aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+            )}
             {trustedDeviceDays > 0 && (
               <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--ds-ink, inherit)' }}>
                 <input type="checkbox" className="mt-0.5" checked={rememberDevice} onChange={(e) => setRememberDevice(e.target.checked)} />
@@ -175,7 +209,9 @@ export default function LoginPage() {
                 </span>
               </label>
             )}
-            <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? t('auth.verifying') : t('common.validate')}</button>
+            {mfaMethods.totp && (
+              <button type="submit" disabled={loading || mfaCode.trim().length < 6} className={`${showPasskey ? 'btn-secondary' : 'btn-primary'} w-full py-3`}>{loading ? t('auth.verifying') : t('common.validate')}</button>
+            )}
             <button type="button" className="text-sm w-full" style={{ color: 'var(--ds-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>{t('common.back')}</button>
           </form>
         </div>
@@ -216,6 +252,19 @@ export default function LoginPage() {
               {loading ? t('auth.signingIn') : t('auth.signIn')}
             </button>
           </form>
+
+          {/* Passkeys (mig 705) : connexion sans mot de passe, Face ID / Touch ID / Windows Hello. */}
+          {canPasskey && (
+            <>
+              <div className="flex items-center gap-3 text-xs my-4" style={{ color: 'var(--ds-muted)' }}>
+                <span className="flex-1 border-t" /> {t('auth.or')} <span className="flex-1 border-t" />
+              </div>
+              <button type="button" className="btn-secondary w-full py-3 flex items-center justify-center gap-2" disabled={passkeyBusy || loading}
+                onClick={() => void passkeySignIn()}>
+                <Fingerprint size={18} /> {passkeyBusy ? t('auth.verifying') : t('auth.signInWithPasskey')}
+              </button>
+            </>
+          )}
 
           {/* G6-02 : connexion d'entreprise (fournisseurs configurés seulement). */}
           {ssoProviders.length > 0 && (

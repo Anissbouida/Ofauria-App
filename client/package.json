@@ -13,6 +13,7 @@
   "dependencies": {
     "@mmote/niimbluelib": "0.0.1-alpha.38",
     "@ofauria/shared": "*",
+    "@simplewebauthn/browser": "^13.3.0",
     "@tanstack/react-query": "^5.62.0",
     "axios": "^1.7.9",
     "date-fns": "^4.1.0",

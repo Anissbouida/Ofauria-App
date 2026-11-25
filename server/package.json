@@ -37,6 +37,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
     "@ofauria/shared": "*",
+    "@simplewebauthn/server": "^13.3.3",
     "@types/pdfkit": "^0.17.5",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",

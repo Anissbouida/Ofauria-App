@@ -87,7 +87,7 @@ const ACTIONS: Record<AccountAction, ActionSpec> = {
   mfaReset: {
     call: u => usersApi.resetMfa(u.id), done: 'Double authentification réinitialisée',
     confirm: u => ({ title: 'Réinitialiser la double authentification ?', label: 'Réinitialiser', danger: true,
-      message: `À faire si ${fullName(u)} a perdu son téléphone ou supprimé l'application. Son secret et ses codes de secours sont effacés et ses sessions fermées.${u.mfaRequired ? ' Elle reste exigée : elle sera reconfigurée à la prochaine connexion.' : ''}` }),
+      message: `À faire si ${fullName(u)} a perdu son téléphone ou supprimé l'application. Son secret, ses codes de secours${u.mfaPasskeys > 0 ? ` et ses ${u.mfaPasskeys} passkey${u.mfaPasskeys > 1 ? 's' : ''}` : ''} sont effacés et ses sessions fermées.${u.mfaRequired ? ' Elle reste exigée : elle sera reconfigurée à la prochaine connexion.' : ''}` }),
   },
   unlock: { call: u => usersApi.unlock(u.id), done: 'Compte déverrouillé' },
   revoke: {
@@ -205,7 +205,8 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
         <span>
           {u.mfaRequiredByRole ? 'Exigée par le rôle (bouton « Double authentification » de la liste).'
             : u.mfaRequiredForUser ? 'Exigée pour ce compte.'
-            : u.mfaEnabled ? 'Activée par l\'utilisateur.' : 'Code à 6 chiffres d\'une application, en plus du mot de passe.'}
+            : u.mfaEnabled ? 'Activée par l\'utilisateur.' : 'Passkey (Face ID, empreinte) ou code à 6 chiffres d\'une application, en plus du mot de passe.'}
+          {u.mfaEnabled && ` ${[u.mfaApp && 'application d\'authentification', u.mfaPasskeys > 0 && `${u.mfaPasskeys} passkey${u.mfaPasskeys > 1 ? 's' : ''}`].filter(Boolean).join(' + ')}.`}
           {u.mfaEnabled && u.mfaTrustedDevices > 0 && ` ${u.mfaTrustedDevices} poste${u.mfaTrustedDevices > 1 ? 's' : ''} mémorisé${u.mfaTrustedDevices > 1 ? 's' : ''} (code non redemandé).`}
           {self && u.mfaEnabled && ' Votre propre double authentification ne se réinitialise pas ici : demandez-le à un autre administrateur.'}
         </span>

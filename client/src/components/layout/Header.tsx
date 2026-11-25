@@ -1,7 +1,8 @@
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutGrid, LogOut, ChevronDown, User, UserCircle } from 'lucide-react';
+import { LayoutGrid, LogOut, ChevronDown, Fingerprint, User, UserCircle } from 'lucide-react';
+import PasskeysModal from '../../features/auth/PasskeysModal';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
@@ -19,6 +20,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPasskeys, setShowPasskeys] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,6 +90,11 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
               className="w-full text-start px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
               <UserCircle size={16} className="text-gray-400" /> {t('header.mySpace')}
             </button>
+            {/* Passkeys (mig 705) : connexion par Face ID / empreinte, sans mot de passe ni code. */}
+            <button onClick={() => { setShowPasskeys(true); setShowUserMenu(false); }}
+              className="w-full text-start px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
+              <Fingerprint size={16} className="text-gray-400" /> {t('header.passkeys')}
+            </button>
             {user?.role === 'admin' && (
               <>
                 <button onClick={() => { navigate('/users'); setShowUserMenu(false); }}
@@ -108,6 +115,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
           </div>
         )}
       </div>
+      {showPasskeys && <PasskeysModal onClose={() => setShowPasskeys(false)} />}
     </header>
   );
 }

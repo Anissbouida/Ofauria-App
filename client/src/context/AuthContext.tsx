@@ -12,7 +12,9 @@ const WARNING_BEFORE = 2; // Show warning 2 minutes before auto-logout
 interface AuthContextType {
   user: User | null;
   /** G6-01 : rend { mfaToken } quand un second facteur est exigé. */
-  login: (data: LoginRequest) => Promise<{ mfaToken?: string; trustedDeviceDays?: number }>;
+  login: (data: LoginRequest) => Promise<{ mfaToken?: string; trustedDeviceDays?: number; methods?: { totp: boolean; passkey: boolean } }>;
+  /** Passkey (mig 705) : sans mfaToken = connexion sans mot de passe, avec = second facteur. */
+  loginWithPasskey: (mfaToken?: string, rememberDevice?: boolean) => Promise<void>;
   /** rememberDevice : poste de confiance, code non redemandé pendant N jours (mig 702). */
   verifyMfa: (mfaToken: string, code: string, rememberDevice?: boolean) => Promise<void>;
   mfaConfigured: () => void;
@@ -138,8 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Le backend pose le cookie HttpOnly. On garde le user en memoire,
     // pas de token stocke cote client.
     const result = await authApi.login(data);
-    const mfa = result as unknown as { mfaRequired?: boolean; mfaToken?: string; trustedDeviceDays?: number };
-    if (mfa.mfaRequired) return { mfaToken: mfa.mfaToken, trustedDeviceDays: mfa.trustedDeviceDays };
+    const mfa = result as unknown as { mfaRequired?: boolean; mfaToken?: string; trustedDeviceDays?: number; methods?: { totp: boolean; passkey: boolean } };
+    if (mfa.mfaRequired) return { mfaToken: mfa.mfaToken, trustedDeviceDays: mfa.trustedDeviceDays, methods: mfa.methods };
     if (IS_MOBILE_BUILD && result.token) {
       localStorage.setItem('ofauria_token', result.token);
     }
@@ -152,6 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyMfa = async (mfaToken: string, code: string, rememberDevice = false) => {
     const result = await authApi.verifyMfa(mfaToken, code, rememberDevice);
     if (IS_MOBILE_BUILD && result.token) localStorage.setItem('ofauria_token', result.token);
+    setUser(result.user as User);
+    queryClient.clear();
+    refreshSettings();
+  };
+  const loginWithPasskey = async (mfaToken?: string, rememberDevice = false) => {
+    const result = await authApi.loginWithPasskey(mfaToken, rememberDevice);
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();
@@ -178,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, verifyMfa, mfaConfigured, loginWithPin, passwordChanged, logout, isLoading, timeoutWarning, extendSession }}>
+    <AuthContext.Provider value={{ user, login, verifyMfa, loginWithPasskey, mfaConfigured, loginWithPin, passwordChanged, logout, isLoading, timeoutWarning, extendSession }}>
       {children}
     </AuthContext.Provider>
   );

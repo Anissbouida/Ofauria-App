@@ -16,6 +16,16 @@ export const revokedTokenRepository = {
     );
   },
 
+  /** Usage unique : vrai la première fois seulement (défi de passkey, mig 705). */
+  async consume(jti: string, userId: string, expSeconds: number): Promise<boolean> {
+    const r = await db.query(
+      `INSERT INTO revoked_tokens (jti, user_id, expires_at) VALUES ($1, $2, to_timestamp($3))
+       ON CONFLICT (jti) DO NOTHING RETURNING jti`,
+      [jti, userId, expSeconds]
+    );
+    return (r.rowCount ?? 0) > 0;
+  },
+
   async isRevoked(jti: string): Promise<boolean> {
     const result = await db.query(
       'SELECT 1 FROM revoked_tokens WHERE jti = $1 AND expires_at > NOW() LIMIT 1',

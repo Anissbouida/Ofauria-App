@@ -3,6 +3,7 @@ import '../../styles/design-system.css';
 import { useInterfacePreferences } from '../../api/interface-preferences.api';
 import { useState, useRef, useEffect } from 'react';
 import MfaSetup from '../../features/auth/MfaSetup';
+import { PasskeySuggestModal } from '../../features/auth/PasskeysModal';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import './apple-look.css';
 import { useAuth } from '../../context/AuthContext';
@@ -39,6 +40,15 @@ export function CountBadge({ count }: { count: number }) {
       {count > 99 ? '99+' : count}
     </span>
   );
+}
+
+/** Après une connexion par code (LoginPage) : proposer une fois d'ajouter une passkey (mig 705). */
+function PasskeySuggestGate() {
+  const [open, setOpen] = useState(() => {
+    try { return sessionStorage.getItem('kalum_passkey_suggest') === '1'; } catch { return false; }
+  });
+  if (!open) return null;
+  return <PasskeySuggestModal onClose={() => { try { sessionStorage.removeItem('kalum_passkey_suggest'); } catch { /* rien */ } setOpen(false); }} />;
 }
 
 function TimeoutWarningModal() {
@@ -147,6 +157,7 @@ export default function AppLayout() {
       <div className="flex flex-col min-h-screen bg-gray-100">
         <Outlet />
         <TimeoutWarningModal />
+      <PasskeySuggestGate />
       </div>
     );
   }
@@ -194,6 +205,7 @@ export default function AppLayout() {
       </main>
 
       <TimeoutWarningModal />
+      <PasskeySuggestGate />
     </div>
   );
 }

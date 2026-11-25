@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { passkeyRepository } from './passkey.repository.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { decryptSecret, encryptSecret, generateBackupCodes, generateSecret, hashBackupCode, otpauthUrl, verifyTotp } from '../services/totp.js';
@@ -19,9 +20,12 @@ export const mfaRepository = {
     const u = (await db.query(`SELECT totp_enabled, mfa_required, totp_secret_enc IS NOT NULL AS has_secret, jsonb_array_length(totp_backup_codes) AS backups FROM users WHERE id = $1`, [userId])).rows[0];
     const requiredByRole = (await this.requiredRoles()).some(r => roleCodes.includes(r));
     const requiredForUser = !!u?.mfa_required;
+    const passkeys = await passkeyRepository.countForUser(userId);
     return {
       enabled: !!u?.totp_enabled, pending: !!u?.has_secret && !u?.totp_enabled, backupCodesLeft: Number(u?.backups ?? 0),
       required: requiredByRole || requiredForUser, requiredByRole, requiredForUser,
+      // Passkeys (mig 705) : une passkey suffit comme second facteur.
+      passkeys, protected: !!u?.totp_enabled || passkeys > 0,
     };
   },
 
@@ -76,6 +80,12 @@ export const mfaRepository = {
   async disable(userId: string) {
     await db.query(`UPDATE users SET totp_enabled = false, totp_enabled_at = NULL, totp_secret_enc = NULL, totp_backup_codes = '[]'::jsonb WHERE id = $1`, [userId]);
     await this.forgetDevices(userId);
+  },
+
+  /** Réinitialisation par l'administrateur : application, codes de secours, postes ET passkeys. */
+  async resetAll(userId: string) {
+    await this.disable(userId);
+    await passkeyRepository.removeAllForUser(userId);
   },
 
   /* ── Postes de confiance (mig 702) : plus de code demandé sur ce poste pendant N jours ── */

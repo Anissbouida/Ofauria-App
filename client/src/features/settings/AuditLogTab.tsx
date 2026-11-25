@@ -68,6 +68,7 @@ export const AUTH_EVENT_LABELS: Record<string, string> = {
   invitation_sent: 'Invitation envoyée', invitation_accepted: 'Invitation acceptée',
   account_unlocked: 'Compte déverrouillé', token_revoked: 'Sessions fermées', user_deleted: 'Compte supprimé définitivement',
   mfa_trusted_device: 'Connexion depuis un poste mémorisé',
+  passkey_added: 'Passkey ajoutée', passkey_removed: 'Passkey supprimée', passkey_failed: 'Échec de connexion par passkey',
   mfa_reset: 'Double authentification réinitialisée', mfa_requirement_changed: 'Exigence de double authentification modifiée',
   config_export: 'Export de la configuration', data_export: 'Export des données', data_import: 'Import de données',
 };

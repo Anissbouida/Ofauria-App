@@ -8,6 +8,7 @@ import { loginRoleContext } from '../services/access-rights.js';
 import { generateToken } from '../utils/jwt.js';
 import { readDeviceTokens, setAuthCookie, signMfaToken } from './auth.controller.js';
 import { mfaRepository } from '../repositories/mfa.repository.js';
+import { passkeyRepository } from '../repositories/passkey.repository.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -52,7 +53,8 @@ export const oidcController = {
     });
     if (!user) { fail(res, 'compte_inconnu'); return; }
     // Poste de confiance encore valable (mig 702) → pas de code sur ce poste.
-    if (user.totp_enabled && !(await mfaRepository.isTrustedDevice(user.id, readDeviceTokens(req)))) {
+    const protectedAccount = user.totp_enabled || (await passkeyRepository.countForUser(user.id)) > 0;
+    if (protectedAccount && !(await mfaRepository.isTrustedDevice(user.id, readDeviceTokens(req)))) {
       res.redirect(`${front()}/login?mfa=${encodeURIComponent(signMfaToken(user.id, !!user.must_change_password))}`); return;
     }
     const roleCtx = await loginRoleContext(user.id);
