@@ -97,3 +97,28 @@ Le catalogue existant (`parameters-catalog.ts`) demeure la source des définitio
 La simulation compile uniquement les champs admis, vérifie la disponibilité et les modules sélectionnés, utilise le service de paramétrage existant, relit les valeurs enregistrées, présente l'écart avant/après et annule les écritures. Les dérogations d'établissement, atelier, type d'ordre et article ne sont pas écrasées. Les modifications de paramètres sélectionnés depuis le centre historique créent aussi une version avant/après. Les anciennes versions dépourvues de la couche `module_parameters` ne la modifient pas à la restauration.
 
 Validation : 639 tests serveur réussis, 1 028 ignorés et 7 scénarios fonctionnels à compléter ; 26 tests ciblés réussis (7 suites) après renforcement final des verrous, incluant une véritable modification de politique, de paramètre stock et de règle qualité puis annulation sur la base PostgreSQL isolée. Une restauration de version depuis le centre historique a été vérifiée séparément. Compilation shared, serveur et client réussie. Recette navigateur et cycles métier complets encore nécessaires. Aucune modification de la configuration effective d'ÔFAURIA et aucun déploiement ; aucune nouvelle migration dans cet incrément.
+
+## Sixième incrément — publication réelle (lot 13)
+
+Reprise le 24 novembre 2026 après l'arrêt de Codex : le travail non commité du checkout principal a été rapatrié tel quel sur la branche de travail, vérifié puis commité.
+
+| Élément | Réalisé | Limite |
+|---|---|---|
+| Publication | `POST /settings/assistant/:id/apply` : contrôles communs avec la simulation (brouillon verrouillé, jeu compilé à jour, aucune anomalie, référence inchangée, verrou société) puis écriture des secteurs, modules, couches (entreprise, vocabulaire, interfaces), spécialités et paramètres dans **une seule transaction** | Les réponses « À raccorder » (sites, finance, rôles, démonstration, règles non cataloguées) restent dans le brouillon sans effet |
+| Version restaurable | Version « Assistant de configuration — publication » enregistrée après toutes les écritures ; `published_version_id` et `restoreVersionId` (référence du brouillon) conservés dans le jeu de changements | Retour arrière par l'historique des configurations existant (Paramètres › Secteur) |
+| Écran | Étape Révision : bloc « Publication » et bouton « Publier la configuration » (confirmation), actif seulement si le jeu est compilé ; message de réussite avec accès à l'historique | Pas d'approbation à deux personnes (lot 15) |
+| Garde d'architecture | Verrou de configuration déplacé du contrôleur des paramètres vers `settings-center.lockCompanyConfiguration()` (garde G3-07 de nouveau verte) | — |
+| Tests | Nouveau cas PostgreSQL : publication écrite puis annulée, version créée, brouillon fermé, rejeu refusé (409), référence périmée refusée sans aucune écriture | Scénarios métier E2E toujours à rejouer |
+
+Validation : suite serveur complète **642 tests réussis, 0 échec** (1 034 ignorés hors base, 7 scénarios à compléter) ; 4/4 tests du jeu de changements sur la base jetable `kalum_wizard_test_20261124` migrée jusqu'à 679 ; compilation shared/serveur/client et construction Vite réussies.
+
+### Reste à faire (par ordre de valeur)
+
+1. Recette navigateur complète de l'assistant sur une base de démonstration (parcours rapide et avancé, publication, restauration).
+2. Lot 11 — modèles de rôles par secteur : création des rôles proposés à la publication, séparation des tâches.
+3. Lot 3 — sites/établissements créés depuis l'assistant ; lot 10 — exercice et TVA appliqués (packs pays versionnés).
+4. Lot 12 — données de démonstration isolées et annulables.
+5. Lot 15 — approbation des changements sensibles avant publication ; lot 14 — versionnement et éditeur de profils.
+6. Lot 2 — bascule des lectures sur `resolveConfig` (projection `config_values`) ; lot 7 — extension du vocabulaire.
+7. Premier démarrage automatique de l'assistant sur une installation vierge.
+8. Les 7 scénarios de `wizard-industry-scenarios.db.test.ts` (actuellement « à faire »).

@@ -32,7 +32,7 @@ import { wizardParameterField } from '../services/wizard/parameter-definitions.j
 import { listWizardSessions, createWizardSession, saveWizardSession, abandonWizardSession, rebaseWizardSession } from '../services/wizard/sessions.js';
 import { wizardCatalog } from '../services/wizard/catalog.js';
 import { previewWizardSession } from '../services/wizard/preview.js';
-import { compileWizardSession, simulateWizardChangeSet, technicalSimulationAvailable, currentWizardChangeSet } from '../services/wizard/change-set.js';
+import { compileWizardSession, simulateWizardChangeSet, applyWizardChangeSet, technicalSimulationAvailable, currentWizardChangeSet } from '../services/wizard/change-set.js';
 import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, screenDraftSchema, screenScopeSchema, setupSimulateSchema, setupPublishSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
@@ -116,6 +116,10 @@ router.post('/assistant/:id/rebase', authenticate, authorizeSettings('company','
 }));
 router.post('/assistant/:id/simulate', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(z.object({ revision: wizardRevision }).strict()), asyncHandler(async (req, res) => {
   res.json({ success:true, data:await simulateWizardChangeSet(String(req.params.id),req.body.revision,(req as AuthRequest).user!.userId) });
+}));
+// Lot 13 : publication réelle du jeu de changements compilé (une transaction, une version restaurable).
+router.post('/assistant/:id/apply', authenticate, authorizeSettings('company', 'edit'), jsonParser, validateUuidParams('id'), validate(z.object({ revision: wizardRevision }).strict()), asyncHandler(async (req, res) => {
+  res.json({ success:true, data:await applyWizardChangeSet(String(req.params.id),req.body.revision,(req as AuthRequest).user!.userId) });
 }));
 
 // Journal des modifications (mig 328) et des connexions : section « audit ».

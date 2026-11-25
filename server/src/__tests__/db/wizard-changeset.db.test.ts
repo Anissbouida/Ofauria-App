@@ -105,4 +105,53 @@ describe.skipIf(!hasTestDb)('Jeu de changements — simulation transactionnelle 
     })).rejects.toBe(rollback);
     expect((await readAll()).get(key)).toEqual(before);
   },60000);
+  it('publie en une transaction : couches écrites, version créée, brouillon fermé, rejeu et référence périmée refusés',async()=>{
+    const {withTransaction,db}=await import('../../config/database.js');
+    const {specializationRepository}=await import('../../repositories/specialization.repository.js');
+    const {wizardParameters}=await import('../../services/wizard/parameter-operations.js');
+    const initial=await sectors.activation();
+    const params=await wizardParameters();
+    const policy=params.find(p=>p.key==='production.mrp_horizon');
+    expect(policy?.value).toBeTruthy();
+    const days=policy!.value!.days===29?30:29;
+    const answers={company:{reviewed:true,data:{name:'Société publiée',locale:'fr',timezone:'Africa/Casablanca'}},sector:{reviewed:true,data:{primary:initial.sector.code,secondary:[]}},
+      specialties:{reviewed:true,data:{selected:await specializationRepository.active()}},modules:{reviewed:true,data:{selected:[...initial.modules]}},finance:{reviewed:true},roles:{reviewed:true},
+      vocabulary:{reviewed:true,data:{recipe:'Nomenclature publiée'}},operations:{reviewed:true,data:{'production.mrp_horizon:days':String(days)}},rules:{reviewed:true}};
+    const prepare=async()=>{
+      const draft=await sessions.createWizardSession('evolution','quick',fx.userId);ids.push(draft.id);
+      const saved=await sessions.saveWizardSession(draft.id,{mode:'quick',current_step:'review',revision:draft.revision,answers},fx.userId);
+      expect((await changes.compileWizardSession(draft.id,saved.revision,fx.userId)).status).toBe('compiled');
+      return saved;
+    };
+    const rollback=new Error('rollback test');
+    // 1. Publication réussie, puis annulée pour laisser la base de test intacte.
+    const saved=await prepare();
+    await expect(withTransaction(async()=>{
+      const applied=await changes.applyWizardChangeSet(saved.id,saved.revision,fx.userId);
+      expect(applied.status).toBe('applied');
+      expect(applied.simulation).toMatchObject({applied:true,rolledBack:false});
+      const version=(await db.query('SELECT label FROM config_versions WHERE id=$1',[applied.published_version_id])).rows[0];
+      expect(version.label).toBe('Assistant de configuration — publication');
+      expect((await db.query('SELECT legal_name,timezone FROM company_settings WHERE id=1')).rows[0]).toEqual({legal_name:'Société publiée',timezone:'Africa/Casablanca'});
+      expect((await sectors.labelOverrides()).find(r=>r.label_key==='recipe')?.label_value).toBe('Nomenclature publiée');
+      expect((await wizardParameters()).find(p=>p.key==='production.mrp_horizon')!.value).toMatchObject({days});
+      expect((await db.query('SELECT status FROM config_wizard_sessions WHERE id=$1',[saved.id])).rows[0].status).toBe('applied');
+      await expect(changes.applyWizardChangeSet(saved.id,saved.revision,fx.userId)).rejects.toMatchObject({statusCode:409});
+      throw rollback;
+    })).rejects.toBe(rollback);
+    sectors.invalidate();
+    // 2. Une version enregistrée entre-temps rend le jeu périmé : rien n'est écrit.
+    await testPool().query('DELETE FROM config_change_sets WHERE session_id=$1',[saved.id]);
+    await testPool().query(`UPDATE config_wizard_sessions SET status='abandoned' WHERE id=$1`,[saved.id]);
+    const second=await prepare();
+    const nameBefore=(await testPool().query('SELECT legal_name FROM company_settings WHERE id=1')).rows[0].legal_name;
+    await expect(withTransaction(async()=>{
+      await db.query(`INSERT INTO config_versions(created_by,label,snapshot) VALUES (NULL,'Version concurrente','{}'::jsonb)`);
+      await expect(changes.applyWizardChangeSet(second.id,second.revision,fx.userId)).rejects.toMatchObject({statusCode:409});
+      expect((await db.query('SELECT legal_name FROM company_settings WHERE id=1')).rows[0].legal_name).toBe(nameBefore);
+      expect((await db.query('SELECT status FROM config_wizard_sessions WHERE id=$1',[second.id])).rows[0].status).toBe('draft');
+      throw rollback;
+    })).rejects.toBe(rollback);
+    sectors.invalidate();
+  },60000);
 });

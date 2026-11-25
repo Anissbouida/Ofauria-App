@@ -4714,6 +4714,7 @@
  "POST /settings/approval-rules": null,
  "POST /settings/assistant": null,
  "POST /settings/assistant/:id/abandon": null,
+ "POST /settings/assistant/:id/apply": null,
  "POST /settings/assistant/:id/compile": null,
  "POST /settings/assistant/:id/rebase": null,
  "POST /settings/assistant/:id/simulate": null,

@@ -50,6 +50,11 @@ export async function readAll(origins?: Map<string, 'company' | 'default' | 'una
 }
 
 /** Cinq dernières modifications d'un paramètre, d'après le journal du paramétrage. */
+/** Sérialise les écritures de configuration société (même verrou que l'assistant et les politiques). */
+export async function lockCompanyConfiguration() {
+  await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+}
+
 export async function history(def: ParamDef) {
   const exists = (await db.query(`SELECT to_regclass('public.config_audit_log') IS NOT NULL AS ok`)).rows[0].ok;
   if (!exists) return [];

@@ -2,9 +2,9 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { settingsAccess } from '../middleware/settings-access.middleware.js';
 import { DOMAIN_LABELS, PARAMETERS, parameterByKey, validateParameter } from '../services/parameters-catalog.js';
-import { history, readAll, write } from '../services/settings-center.js';
+import { history, lockCompanyConfiguration, readAll, write } from '../services/settings-center.js';
 import { withCurrency } from '../services/currency.js';
-import { db, withTransaction } from '../config/database.js';
+import { withTransaction } from '../config/database.js';
 
 /** Paramètres métier (Paramètres › Paramètres métier, lot 4). */
 export const parametersController = {
@@ -42,7 +42,7 @@ export const parametersController = {
       return;
     }
     const result=await withTransaction(async()=>{
-      await db.query(`SELECT id FROM company_settings WHERE id=1 FOR UPDATE`);
+      await lockCompanyConfiguration();
       const current=(await readAll()).get(def.key);
       if(current==null)return {status:409,error:'Paramètre non disponible sur cette base'} as const;
       const value=validateParameter(def,req.body?.value,current);
