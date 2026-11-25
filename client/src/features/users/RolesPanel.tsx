@@ -231,7 +231,12 @@ export function NewRoleModal({ roles, copyOf, onClose, onCreated }: { roles: Rol
   const card = (k: Start, title: string, text: string, disabled = false) => (
     <button type="button" className={`usr-card${start === k ? ' on' : ''}`} aria-pressed={start === k} disabled={disabled}
       style={disabled ? { opacity: .55, cursor: 'not-allowed' } : undefined}
-      onClick={() => { setStart(k); if (k === 'template' && tpl) setLabel(tpl.label); }}>
+      onClick={() => {
+        setStart(k);
+        if (k === 'template' && tpl && !label.trim()) setLabel(tpl.label);
+        // Le libellé repris du modèle ne suit pas vers une copie ou un rôle vide.
+        if (k !== 'template' && tpl && label === tpl.label) setLabel('');
+      }}>
       <b>{title}{start === k && <Check size={15} aria-hidden="true" style={{ marginLeft: 'auto', color: 'var(--ds-accent)' }} />}</b>
       <small>{text}</small>
     </button>

@@ -286,7 +286,12 @@ function DetailTab({ perms, keys, active, footer, onKeys }: {
   perms: Record<string, RolePermission>; keys: string[]; active: Set<string>; footer: React.ReactNode; onKeys: (k: string[]) => void;
 }) {
   const modulesWithKeys = ROLE_MODULES.filter(m => keysOfModule(m).length && (active.size === 0 || active.has(m) || perms[m]?.canView));
-  const [mod, setMod] = useState<string>(() => modulesWithKeys.find(m => perms[m]?.canView) ?? modulesWithKeys[0] ?? '');
+  // Ouvre sur le module où le rôle détient le plus de permissions.
+  const [mod, setMod] = useState<string>(() => {
+    const held0 = new Set(keys);
+    const score = (m: string) => keysOfModule(m).filter(k => held0.has(k)).length;
+    return [...modulesWithKeys].sort((a, b) => score(b) - score(a))[0] ?? '';
+  });
   const [q, setQ] = useState('');
   const [gapsOnly, setGapsOnly] = useState(false);
   const held = new Set(keys);
@@ -325,10 +330,11 @@ function DetailTab({ perms, keys, active, footer, onKeys }: {
         </div>
       </Toolbar>
       <DataPanel label="Permissions détaillées" footer={footer}>
-        <div className="usr-pad" style={{ paddingBottom: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
-          Niveau du module : <strong style={{ color: 'var(--ds-ink)' }}>{levelLabel(level)}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--ds-hair)', fontSize: 13, color: 'var(--ds-muted)' }}>
+          <span>Niveau d'accès du module : <strong style={{ color: 'var(--ds-ink)' }}>{levelLabel(level)}</strong></span>
+          <span className="ds-grow" />
           {level !== 'custom' && level !== 'none' && gaps > 0 && (
-            <button type="button" className="ds-btn-ghost ds-btn-sm" style={{ marginLeft: 8 }} onClick={() => onKeys(alignKeys(keys, mod, level))}>Revenir au niveau</button>
+            <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => onKeys(alignKeys(keys, mod, level))}>Revenir au niveau ({gaps} écart{gaps > 1 ? 's' : ''})</button>
           )}
         </div>
         {list.length === 0 ? (gapsOnly ? <EmptyState icon={Check} title="Aucun écart" text="Les permissions de ce module suivent son niveau d'accès." /> : <NoResultState onReset={() => setQ('')} />) : (
@@ -497,7 +503,7 @@ function ControlsTab({ role }: { role: RoleRow }) {
             className={`odoo-toggle${profile.mfaRequired ? ' on' : ''}`} onClick={() => void toggleMfa()}><span className="odoo-toggle-knob" /></button>
         </div>
         <div className="usr-row">
-          <div><b>Plafonds d'approbation</b><p>{limits || 'Aucun plafond : au-delà de zéro, la pièce suit le circuit d\'approbation.'}</p></div>
+          <div><b>Plafonds d'approbation</b><p>{limits || 'Aucun plafond défini pour ce rôle.'}</p></div>
           <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/users?tab=controls')}>Modifier</button>
         </div>
         <div className="usr-row">

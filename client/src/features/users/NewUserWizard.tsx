@@ -6,6 +6,7 @@ import { storesApi } from '../../api/stores.api';
 import { Modal, FormField, Alert } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { errorMessage, generatePassword, type UserRow } from './AccountSecurity';
+import { ORIGIN } from './roleAccess';
 
 /**
  * Création d'un compte en cinq étapes, sans numéro (refonte Utilisateurs, lot 3) : identité et
@@ -131,7 +132,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
     <Modal title="Nouvel utilisateur" subtitle={current.lead} onClose={onClose} width={860} locked={create.isPending}
       footer={(
         <div className="ds-form-foot">
-          <span className="ds-grow" style={{ color: invalid[step] ? 'var(--ds-danger)' : undefined }}>{invalid[step] ?? ''}</span>
+          <span className="ds-grow" style={{ color: 'var(--ds-muted)', fontSize: 13 }}>{invalid[step] ?? ''}</span>
           <button type="button" className="odoo-btn-secondary" onClick={() => (idx === 0 ? onClose() : go(STEPS[idx - 1].key))}>{idx === 0 ? 'Annuler' : 'Précédent'}</button>
           {step === 'review'
             ? <button type="button" className="odoo-btn-primary" disabled={!!invalid.identity || !!invalid.roles || !!invalid.security || !!invalid.review || create.isPending} onClick={() => create.mutate()}>
@@ -198,8 +199,8 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
                 <b>{r.label}{on && <Check size={15} aria-hidden="true" style={{ marginLeft: 'auto', color: 'var(--ds-accent)' }} />}</b>
                 <small>{r.code === 'admin' ? 'Tous les modules' : `${r.module_count} module${r.module_count > 1 ? 's' : ''}`}{r.description ? ` · ${r.description}` : ''}</small>
                 <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  <span className={`kl-tag ${r.is_system ? 'x' : 'b'}`}>{r.is_system ? 'Système' : 'Personnalisé'}</span>
-                  {on && f.primary === r.code && <span className="kl-tag g">Principal</span>}
+                  <span className={`kl-tag ${ORIGIN[r.origin ?? (r.is_system ? 'system' : 'custom')].tag}`}>{ORIGIN[r.origin ?? (r.is_system ? 'system' : 'custom')].label}</span>
+                  {on && f.primary === r.code && <span className="kl-tag b">Principal</span>}
                   {mfaPolicy?.requiredRoles?.includes(r.code) && <span className="kl-tag o">2FA exigée</span>}
                 </span>
               </button>
