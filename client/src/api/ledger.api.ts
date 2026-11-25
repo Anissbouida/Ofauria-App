@@ -489,7 +489,8 @@ export interface CashFlowResult {
 export interface TvaLine {
   code: string;
   label: string;
-  tva_rate: string;
+  /** null : compte générique « sans taux » (4455), à classer. */
+  tva_rate: string | null;
   tva_direction: 'collected' | 'deductible';
   amount: string;
 }
@@ -503,6 +504,8 @@ export interface TvaDeclaration {
   // G0-16 : régime appliqué ; en encaissement, TVA facturée à crédit non encore encaissée.
   regime?: { mode: 'debit' | 'encaissement'; since: string | null; missing_since: boolean };
   awaiting_collection?: number;
+  // Plan compta étape 3 : TVA collectée comptabilisée sur un compte sans taux (à classer avant de déclarer).
+  unclassified_collected?: number;
   // Mig 311 : TVA dont le droit n'est pas encore né (facture non soldée) et exclusions.
   pending_payment?: { count: number; amount: number };
   excluded?: { reason: string; count: number; amount: number }[];

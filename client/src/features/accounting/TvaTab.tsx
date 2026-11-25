@@ -77,10 +77,10 @@ export default function TvaTab() {
     if (!data) return;
     const rows: string[][] = [
       ['TVA COLLECTEE', '', ''],
-      ...data.collected.map(c => [c.code, `${c.label} (${c.tva_rate}%)`, c.amount]),
+      ...data.collected.map(c => [c.code, `${c.label} (${c.tva_rate == null ? 'sans taux' : `${c.tva_rate}%`})`, c.amount]),
       ['Total collectee', '', String(data.total_collected.toFixed(2))],
       ['TVA DEDUCTIBLE', '', ''],
-      ...data.deductible.map(d => [d.code, `${d.label} (${d.tva_rate}%)`, d.amount]),
+      ...data.deductible.map(d => [d.code, `${d.label} (${d.tva_rate == null ? 'sans taux' : `${d.tva_rate}%`})`, d.amount]),
       ['Total deductible', '', String(data.total_deductible.toFixed(2))],
       ['TVA DUE', '', String(data.tva_due.toFixed(2))],
     ];
@@ -103,6 +103,12 @@ export default function TvaTab() {
           <StatusBanner tone="info" icon={Percent} title={`Régime des encaissements depuis le ${(data.regime.since ?? '').split('-').reverse().join('/')}`}>
             La TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements.
             {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${money(data.awaiting_collection ?? 0)}.`}
+          </StatusBanner>
+        )}
+        {(data.unclassified_collected ?? 0) !== 0 && (
+          <StatusBanner tone="danger" icon={Ban} title={`TVA sans taux : ${money(data.unclassified_collected ?? 0)}`}>
+            Cette TVA est comptabilisée sur un compte sans taux (4455) : un ticket ou une facture à plusieurs taux, ou un taux sans compte propre.
+            Elle est incluse dans le total, mais elle doit être classée avant de déclarer ; la clôture du mois est bloquée tant qu'elle existe.
           </StatusBanner>
         )}
         {data.regime?.missing_since && (
@@ -176,7 +182,7 @@ export default function TvaTab() {
                 ) : data.collected.map(c => (
                   <tr key={c.code}>
                     <td className="ds-ref" style={{ width: 70 }}>{c.code}</td>
-                    <td>{c.label} <span style={{ color: 'var(--ds-muted)' }}>· {c.tva_rate}%</span></td>
+                    <td>{c.label} <span style={{ color: 'var(--ds-muted)' }}>· {c.tva_rate == null ? 'sans taux' : `${c.tva_rate}%`}</span></td>
                     <td className="ds-num">{n(c.amount)}</td>
                   </tr>
                 ))}
@@ -187,7 +193,7 @@ export default function TvaTab() {
                 ) : data.deductible.map(d => (
                   <tr key={d.code}>
                     <td className="ds-ref" style={{ width: 70 }}>{d.code}</td>
-                    <td>{d.label} <span style={{ color: 'var(--ds-muted)' }}>· {d.tva_rate}%</span></td>
+                    <td>{d.label} <span style={{ color: 'var(--ds-muted)' }}>· {d.tva_rate == null ? 'sans taux' : `${d.tva_rate}%`}</span></td>
                     <td className="ds-num">{n(d.amount)}</td>
                   </tr>
                 ))}
