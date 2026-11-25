@@ -7,6 +7,8 @@ import { SodSection, ApprovalLimitsSection, DelegationsSection } from './Governa
 import RoleActionMatrix from './RoleActionMatrix';
 import UsersOverview, { needsSecurityAction } from './UsersOverview';
 import AccountDrawer from './AccountDrawer';
+import NewUserWizard, { InvitationSentModal } from './NewUserWizard';
+import type { InvitationResult } from '../../api/users.api';
 import { LoginsView } from '../settings/AuditLogTab';
 import { SecurityModePanel } from './RolesPanel';
 import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
@@ -16,23 +18,23 @@ import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
 import { storesApi } from '../../api/stores.api';
 import {
   Plus, Pencil, KeyRound, Settings2, Check, Lock, Users, UserCheck, UserX,
-  ShieldCheck, RotateCcw, Scale, ScanSearch, Wand2, Copy, LogOut,
-  LayoutDashboard, ArrowRightLeft, History, ListChecks, ClipboardCheck, Smartphone,
+  ShieldCheck, RotateCcw, Scale, ScanSearch, LogOut,
+  LayoutDashboard, ArrowRightLeft, History, ListChecks, ClipboardCheck, Smartphone, Mail,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { Field, SubmitButton, HrHeaderSlot } from '../employees/ui';
+import { SubmitButton, HrHeaderSlot } from '../employees/ui';
 import { FilterChips } from '../sales/ListTemplate';
 import {
   Modal, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, SectionHeader, Alert,
 } from '../../components/ds';
 import { useAuth } from '../../context/AuthContext';
 import {
-  MfaPolicyModal, SecuritySection, securityMenuItems, useAccountActions, formatLastLogin, formatDateTime,
-  generatePassword, errorMessage, fullName,
+  MfaPolicyModal, securityMenuItems, useAccountActions, formatLastLogin, formatDateTime,
+  errorMessage, fullName,
 } from './AccountSecurity';
 import '../employees/employees.css';
 import '../sales/sales.css';
@@ -47,8 +49,6 @@ import '../settings/settings.css';
 type UserRow = Record<string, any>;
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-/** Politique de mot de passe d'un nouveau compte (identique au serveur, auth.validator). */
-const strongPasswordOk = (p: string) => p.length >= 12 && p.length <= 128 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
 
 type UsersView = 'overview' | 'accounts' | 'review' | 'delegations' | 'journal' | 'matrix' | 'roles' | 'controls' | 'security' | 'approvals';
 
@@ -149,7 +149,7 @@ export default function UsersPage() {
           onOpen={u => { setPreview(null); openRecord(u); }} onReview={u => setReviewUser(u)} />
       )}
       {reviewUser && <AccessReviewModal userId={reviewUser.id as string} name={fullName(reviewUser)} onClose={() => setReviewUser(null)} />}
-      {editing && <UserFormModal user={null} onClose={() => setEditing(null)} />}
+      {editing && <NewUserWizard onClose={() => setEditing(null)} onOpen={u => { setEditing(null); openRecord(u); }} />}
     </HrHeaderSlot.Provider>
   );
 }
@@ -206,7 +206,7 @@ function useRoleLabel() {
   return { roles, label };
 }
 
-type Situation = 'active' | 'todo' | 'never' | 'inactive' | 'all';
+type Situation = 'active' | 'todo' | 'invited' | 'never' | 'inactive' | 'all';
 type SecurityFilter = '' | 'mfa_on' | 'mfa_todo' | 'mfa_off' | 'locked' | 'pwd' | 'pin';
 const SECURITY_FILTERS: { key: SecurityFilter; label: string }[] = [
   { key: '', label: 'Toute sécurité' },
@@ -230,7 +230,8 @@ const matchSituation = (u: UserRow, s: Situation) =>
   : s === 'inactive' ? !u.isActive
   : !u.isActive ? false
   : s === 'todo' ? needsSecurityAction(u)
-  : s === 'never' ? !u.lastLoginAt
+  : s === 'invited' ? !!u.invitationExpiresAt
+  : s === 'never' ? !u.lastLoginAt && !u.invitationExpiresAt
   : true;
 
 /** Signaux de sécurité d'une ligne : icône colorée + texte (jamais la couleur seule). */
@@ -310,6 +311,12 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
     setSelected(new Set());
   };
   const others = chosen.filter(u => u.id !== selfId);
+  // Invitation (re)envoyée : le lien s'affiche, pour le transmettre si l'e-mail ne part pas.
+  const [sent, setSent] = useState<{ result: InvitationResult; email: string } | null>(null);
+  const resend = async (u: UserRow) => {
+    try { setSent({ result: await usersApi.invite(u.id), email: u.email }); queryClient.invalidateQueries({ queryKey: ['users'] }); }
+    catch (err) { notify.error(errorMessage(err, 'Invitation refusée')); }
+  };
 
   const filtered = !!q || !!roleFilter || !!storeFilter || !!security || situation !== 'active';
   const resetFilters = () => { setQ(''); setRoleFilter(''); setStoreFilter(''); setSecurity(''); setSituation('active'); };
@@ -320,6 +327,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
         chips={[
           { key: 'active', label: 'Actifs', count: count('active') },
           { key: 'todo', label: 'À traiter', count: count('todo') },
+          { key: 'invited', label: 'Invitations en attente', count: count('invited') },
           { key: 'never', label: 'Jamais connectés', count: count('never') },
           { key: 'inactive', label: 'Désactivés', count: count('inactive') },
           { key: 'all', label: 'Tous', count: users.length },
@@ -417,6 +425,9 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {!u.isActive ? <StatusTag tone="cancelled" label="Désactivé" />
                         : u.lockedUntil ? <StatusTag tone="blocked" label="Verrouillé" icon={Lock} title={`Jusqu'à ${formatDateTime(u.lockedUntil)}`} />
+                        : u.invitationExpiresAt ? (new Date(u.invitationExpiresAt).getTime() < Date.now()
+                          ? <StatusTag tone="late" label="Invitation expirée" icon={Mail} />
+                          : <StatusTag tone="todo" label="Invité" icon={Mail} title={`Lien valable jusqu'au ${formatDateTime(u.invitationExpiresAt)}`} />)
                         : <StatusTag tone="done" label="Actif" />}
                     </td>
                     <td className="ds-actions" onClick={e => e.stopPropagation()}>
@@ -427,6 +438,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
                         { label: 'Ouvrir la fiche', icon: Pencil, onSelect: () => onEdit(u) },
                         { label: 'Voir ses droits', icon: ScanSearch, onSelect: () => onReview(u) },
                         { label: 'Droits propres', icon: Settings2, onSelect: () => setPermUser(u) },
+                        ...(u.isActive && (u.invitationExpiresAt || !u.lastLoginAt) ? [{ label: u.invitationExpiresAt ? 'Renvoyer l\'invitation' : 'Envoyer une invitation', icon: Mail, onSelect: () => void resend(u) }] : []),
                         ...securityMenuItems(u, (a, x) => void run(a, x), selfId).map((it, i) => (i === 0 ? { ...it, separator: true } : it)),
                       ]} />
                     </td>
@@ -439,207 +451,11 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
       )}
 
       {permUser && <PermissionsModal user={permUser} roleLabel={roleLabel(permUser.role)} onClose={() => setPermUser(null)} />}
+      {sent && <InvitationSentModal result={sent.result} email={sent.email} onClose={() => setSent(null)} />}
     </>
   );
 }
 
-
-/* ============ FICHE UTILISATEUR ============ */
-
-function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const { user: me } = useAuth();
-  const { roles, label: roleLabelOf } = useRoleLabel();
-  const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
-  // Lien espace employé : fiches salariées disponibles. currentLink = celle déjà
-  // reliée à ce compte ; effEmployeeId reflète le lien actuel tant que l'admin
-  // n'a pas touché au champ (évite d'écraser le lien avant chargement de la liste).
-  const { data: employees = [], isFetched: empFetched } = useQuery<Array<{ id: string; name: string; user_id: string | null }>>({
-    queryKey: ['employees-link'], queryFn: usersApi.employeesForLink,
-  });
-  const currentLink = employees.find(e => e.user_id === (user?.id as string))?.id ?? '';
-  const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const effEmployeeId = employeeId === null ? currentLink : employeeId;
-  const initialRoles = (Array.isArray(user?.roles) && (user!.roles as string[]).length
-    ? (user!.roles as string[]) : (user?.role ? [user.role as string] : ['cashier']));
-  const [form, setForm] = useState({
-    firstName: (user?.firstName as string) ?? '', lastName: (user?.lastName as string) ?? '', email: (user?.email as string) ?? '',
-    password: '', pinCode: '', storeId: (user?.storeId as string) ?? '',
-  });
-  const [roleCodes, setRoleCodes] = useState<string[]>(initialRoles);
-  const [primaryRole, setPrimaryRole] = useState<string>((user?.role as string) || initialRoles[0]);
-  const [removePin, setRemovePin] = useState(false);
-  // Création : mot de passe provisoire à changer (par défaut) et double authentification exigée.
-  const [mustChangePassword, setMustChangePassword] = useState(true);
-  const [mfaRequired, setMfaRequired] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }));
-  const generate = () => { set('password', generatePassword()); setShowPassword(true); };
-  const copyPassword = async () => {
-    try { await navigator.clipboard.writeText(form.password); notify.success('Mot de passe copié'); }
-    catch { notify.error('Copie impossible : sélectionnez le mot de passe à la main'); }
-  };
-
-  // G0-06 : tout nouveau PIN compte 6 à 10 chiffres.
-  const pinInvalid = !!form.pinCode && !/^\d{6,10}$/.test(form.pinCode);
-  // Même politique que pour un nouveau compte (serveur : auth.validator) ; vide = inchangé en modification.
-  const passwordInvalid = (!user || !!form.password) && !strongPasswordOk(form.password);
-  const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid || roleCodes.length === 0;
-
-  const save = useMutation({
-    mutationFn: () => {
-      const data: Record<string, unknown> = {
-        firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(),
-        roles: roleCodes, primaryRole, storeId: form.storeId || null,
-      };
-      // N'envoyer le lien fiche que si la liste est chargée (sinon on risquerait de le vider).
-      if (empFetched) data.employeeId = effEmployeeId || null;
-      if (form.password) data.password = form.password;
-      if (!user) { data.mustChangePassword = mustChangePassword; data.mfaRequired = mfaRequired; }
-      // PIN vide : inchangé en modification (l'ancien formulaire l'effaçait), absent à la création.
-      if (form.pinCode) data.pinCode = form.pinCode;
-      else if (removePin) data.pinCode = null;
-      return user ? usersApi.update(user.id as string, data) : usersApi.create(data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      notify.success(user ? 'Utilisateur mis à jour' : 'Utilisateur créé');
-      onClose();
-    },
-    onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
-  });
-
-  // Changement de rôle principal : le serveur efface les droits propres du compte (ils
-  // remplacent ceux du rôle) et ferme ses sessions. On le dit avant d'enregistrer.
-  const submit = async () => {
-    const oldPrimary = user?.role as string | undefined;
-    if (user && oldPrimary && primaryRole !== oldPrimary) {
-      const own = await usersApi.getPermissions(user.id as string).catch(() => []);
-      const hasOwn = Array.isArray(own) && own.length > 0;
-      const ok = await confirm(
-        `Le rôle principal passe de « ${roleLabelOf(oldPrimary)} » à « ${roleLabelOf(primaryRole)} ». La page d'accueil et le contrôle des écrans suivront le nouveau rôle.`
-        + (hasOwn ? ' Les droits propres de ce compte seront effacés : ceux de ses rôles s\'appliqueront.' : '')
-        + ' Ses sessions ouvertes seront fermées.',
-        { title: 'Changer le rôle principal ?', confirmLabel: 'Changer le rôle principal' },
-      );
-      if (!ok) return;
-    }
-    save.mutate();
-  };
-
-  const roleChoices = roles.length
-    ? roles.filter(r => (r.is_active && r.available !== false) || roleCodes.includes(r.code)).map(r => [r.code, r.label] as const)
-    : Object.entries(ROLE_LABELS);
-  const toggleRole = (code: string) => {
-    const next = roleCodes.includes(code) ? roleCodes.filter(c => c !== code) : [...roleCodes, code];
-    setRoleCodes(next);
-    if (!next.includes(primaryRole)) setPrimaryRole(next[0] ?? '');
-  };
-
-  return (
-    <Modal subtitle="Utilisateurs" title={user ? `${user.firstName} ${user.lastName}` : 'Nouvel utilisateur'}
-      aside={user && <StatusTag tone={user.isActive ? 'done' : 'cancelled'} label={user.isActive ? 'Actif' : 'Désactivé'} />}
-      width={620} onClose={onClose} locked={save.isPending}
-      footer={<>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
-        <SubmitButton pending={save.isPending} disabled={invalid} onClick={() => void submit()}>
-          {user ? 'Enregistrer' : 'Créer le compte'}
-        </SubmitButton>
-      </>}>
-      <div className="ds-form-grid">
-        <Field label="Prénom" required><input id="user-first-name" className="ds-input" value={form.firstName} onChange={e => set('firstName', e.target.value)} autoFocus /></Field>
-        <Field label="Nom" required><input id="user-last-name" className="ds-input" value={form.lastName} onChange={e => set('lastName', e.target.value)} /></Field>
-      </div>
-      <Field label="E-mail" required hint="Identifiant de connexion administrateur">
-        <input id="user-email" type="email" className="ds-input" value={form.email} onChange={e => set('email', e.target.value)} />
-      </Field>
-      <div className="ds-form-grid">
-        <Field label={user ? 'Nouveau mot de passe' : 'Mot de passe'} required={!user} hint={form.password && passwordInvalid ? '12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial' : user ? 'Vide = inchangé' : (mustChangePassword ? 'Provisoire : à changer à la 1re connexion' : '12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial')}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input id="user-password" type={showPassword ? 'text' : 'password'} className="ds-input" aria-invalid={!!(form.password && passwordInvalid) || undefined} autoComplete="new-password"
-              style={showPassword ? { fontFamily: 'ui-monospace, monospace' } : undefined}
-              value={form.password} onChange={e => set('password', e.target.value)} placeholder={user ? '••••••••' : ''} />
-            <button type="button" className="odoo-btn-secondary" style={{ height: 40 }} onClick={generate} title="Générer un mot de passe sûr" aria-label="Générer un mot de passe sûr">
-              <Wand2 size={13} />
-            </button>
-            {form.password && showPassword && (
-              <button type="button" className="odoo-btn-secondary" style={{ height: 40 }} onClick={() => void copyPassword()} title="Copier" aria-label="Copier le mot de passe">
-                <Copy size={13} />
-              </button>
-            )}
-          </div>
-        </Field>
-        <Field label="Code PIN" hint={user ? (user.hasPin ? (removePin ? 'Sera retiré à l\'enregistrement' : (user.pinWeak ? 'À renouveler (6 chiffres au moins) ; vide = inchangé' : 'Défini ; vide = inchangé')) : 'Non défini ; 6 à 10 chiffres') : '6 à 10 chiffres, connexion en caisse'}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input id="user-pin" inputMode="numeric" maxLength={10} className="ds-input" aria-invalid={!!(pinInvalid) || undefined}
-              style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.2em' }} autoComplete="off" disabled={removePin}
-              value={form.pinCode} onChange={e => set('pinCode', e.target.value.replace(/\D/g, ''))} placeholder="123456" />
-            {user?.hasPin && (
-              <button type="button" className={removePin ? 'odoo-btn-secondary' : 'ds-btn-danger'} style={{ whiteSpace: 'nowrap', height: 40 }}
-                onClick={() => { setRemovePin(!removePin); set('pinCode', ''); }}>
-                {removePin ? 'Garder' : 'Retirer'}
-              </button>
-            )}
-          </div>
-        </Field>
-      </div>
-      <Field label="Rôles" required hint="Plusieurs rôles cumulent leurs droits (le plus permissif gagne). Droits par défaut : onglet Rôles et contrôle.">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {roleChoices.map(([code, label]) => {
-            const on = roleCodes.includes(code);
-            return (
-              <button key={code} type="button" className="odoo-filter-chip" aria-pressed={on} onClick={() => toggleRole(code)}
-                style={{ background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: on ? 600 : undefined, borderColor: on ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.25rem 0.625rem', fontSize: 12 }}>
-                {on && <Check size={11} />} {label}
-              </button>
-            );
-          })}
-        </div>
-      </Field>
-      <div className="ds-form-grid">
-        <Field label="Rôle principal" hint="Fixe le périmètre technique (écrans, filtres) du compte">
-          <select id="user-primary-role" className="ds-input" value={primaryRole} onChange={e => setPrimaryRole(e.target.value)} disabled={roleCodes.length <= 1}>
-            {roleCodes.map(code => {
-              const label = roleChoices.find(([c]) => c === code)?.[1] ?? ROLE_LABELS[code as keyof typeof ROLE_LABELS] ?? code;
-              return <option key={code} value={code}>{label}</option>;
-            })}
-          </select>
-        </Field>
-        <Field label="Établissement" hint="Boutique ou site de rattachement">
-          <select id="user-store" className="ds-input" value={form.storeId} onChange={e => set('storeId', e.target.value)}>
-            <option value="">Aucun</option>
-            {stores.map(s => <option key={s.id as string} value={s.id as string}>{s.name as string}{s.city ? ` (${s.city})` : ''}</option>)}
-          </select>
-        </Field>
-      </div>
-      {!user && (
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
-            <input id="user-must-change" type="checkbox" checked={mustChangePassword} onChange={e => setMustChangePassword(e.target.checked)} />
-            <span><strong>Changer le mot de passe à la première connexion</strong><br />
-              <span style={{ color: 'var(--ds-muted)' }}>Vous communiquez un mot de passe provisoire ; l'utilisateur choisit le sien en arrivant.</span></span>
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
-            <input id="user-mfa-required" type="checkbox" checked={mfaRequired} onChange={e => setMfaRequired(e.target.checked)} />
-            <span><strong>Exiger la double authentification</strong><br />
-              <span style={{ color: 'var(--ds-muted)' }}>Application d'authentification à configurer dès la première connexion (en plus des rôles qui l'imposent).</span></span>
-          </label>
-        </div>
-      )}
-      <Field label="Fiche salarié" hint="Relie ce compte à sa fiche pour l'espace employé (heures, bulletins, congés). Aucune = pas d'espace employé.">
-        <select id="user-employee" className="ds-input" value={effEmployeeId} onChange={e => setEmployeeId(e.target.value)}>
-          <option value="">Aucune</option>
-          {employees.map(e => {
-            const linkedElsewhere = !!e.user_id && e.user_id !== (user?.id as string);
-            return <option key={e.id} value={e.id} disabled={linkedElsewhere}>{e.name}{linkedElsewhere ? ' (déjà lié à un compte)' : ''}</option>;
-          })}
-        </select>
-      </Field>
-      {user && <SecuritySection userId={user.id as string} selfId={me?.id} onDeleted={onClose} />}
-    </Modal>
-  );
-}
 
 /* ============ DROITS PROPRES ============ */
 

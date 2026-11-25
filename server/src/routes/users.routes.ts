@@ -73,6 +73,8 @@ router.delete('/delegations/:id', authenticate, can('users.delete'), asyncHandle
 
 router.get('/', authenticate, can('users.view'), userController.list);
 router.post('/', authenticate, can('users.create'), validate(createUserSchema), userController.create);
+// Vérification des rôles d'un futur compte (lot 3) : conflits de séparation des tâches, sans écriture.
+router.post('/sod-check', authenticate, can('users.view'), validate(z.object({ roles: z.array(z.string().max(40)).max(50) }).strict()), asyncHandler(userController.sodCheck));
 router.put('/:id', authenticate, can('users.edit'), validate(updateUserSchema), asyncHandler(userController.update));
 router.delete('/:id', authenticate, can('users.delete'), asyncHandler(userController.remove));
 // Sécurité d'un compte : 2FA, verrouillage, sessions, mot de passe, suppression définitive.
@@ -83,6 +85,7 @@ router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can(
 router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
 router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), asyncHandler(userController.hardDelete));
 // Fiche du compte (refonte Utilisateurs, lot 2) : rattachements et préférences réglées par l'administrateur.
+router.post('/:id/invitations', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.invite));
 router.get('/:id/profile', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.profile));
 router.put('/:id/preferences', authenticate, validateUuidParams('id'), can('users.edit'), validate(userPreferencesSchema), asyncHandler(userController.setPreferences));
 

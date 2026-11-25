@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, KeyRound, Lock, Plus, ShieldAlert, TriangleAlert, Users, Wand2, Copy } from 'lucide-react';
+import { ExternalLink, KeyRound, Lock, Mail, Plus, ShieldAlert, TriangleAlert, Users, Wand2, Copy } from 'lucide-react';
 import { APPROVAL_DOC_TYPES, APPROVAL_DOCUMENT_LABELS, MODULE_LABELS, WORKSPACES, type AppModule, type ApprovalDocumentType } from '@ofauria/shared';
 import { currencySymbol } from '../../utils/money';
 import { usersApi, rolesApi, accessReviewApi } from '../../api/users.api';
@@ -17,6 +17,8 @@ import { AccessRightsView, AccessHistoryView } from './AccessReviewPanel';
 import { SecuritySection, MfaTag, errorMessage, fullName, formatLastLogin, formatDateTime, generatePassword, type UserRow } from './AccountSecurity';
 import { PermissionsModal } from './UsersPage';
 import { fmtDate } from './UsersOverview';
+import { InvitationSentModal } from './NewUserWizard';
+import type { InvitationResult } from '../../api/users.api';
 import '../settings/settings.css';
 import './users.css';
 
@@ -86,6 +88,9 @@ export default function UserRecordPage() {
               {self && <StatusTag tone="progress" label="Vous" />}
               {!u.isActive ? <StatusTag tone="cancelled" label="Désactivé" />
                 : u.lockedUntil ? <StatusTag tone="blocked" label="Verrouillé" icon={Lock} />
+                : u.invitationExpiresAt ? (new Date(u.invitationExpiresAt).getTime() < Date.now()
+                  ? <StatusTag tone="late" label="Invitation expirée" icon={Mail} />
+                  : <StatusTag tone="todo" label="Invité" icon={Mail} />)
                 : <StatusTag tone="done" label="Actif" />}
             </h1>
             <p>{roleLabel(u.role)} · {store ?? (u.role === 'admin' ? 'Tous les établissements' : 'Sans établissement')}{u.createdAt ? ` · compte créé le ${fmtDate(u.createdAt)}` : ''}</p>
@@ -403,9 +408,25 @@ function SecurityTab({ u, selfId, onDeleted }: { u: UserRow; selfId?: string; on
     try { await navigator.clipboard.writeText(password); notify.success('Mot de passe copié'); }
     catch { notify.error('Copie impossible : sélectionnez le mot de passe à la main'); }
   };
+  const [sent, setSent] = useState<InvitationResult | null>(null);
+  const invite = useMutation({
+    mutationFn: () => usersApi.invite(u.id),
+    onSuccess: r => { setSent(r); queryClient.invalidateQueries({ queryKey: ['users'] }); },
+    onError: err => notify.error(errorMessage(err, 'Invitation refusée')),
+  });
+  const invitationExpired = !!u.invitationExpiresAt && new Date(u.invitationExpiresAt).getTime() < Date.now();
 
   return (
     <>
+      {u.isActive && (u.invitationExpiresAt || !u.lastLoginAt) && (
+        <Alert tone={invitationExpired ? 'danger' : u.invitationExpiresAt ? 'warning' : 'info'} icon={Mail}
+          action={<button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={invite.isPending} onClick={() => invite.mutate()}>{u.invitationExpiresAt ? 'Renvoyer l\'invitation' : 'Envoyer une invitation'}</button>}>
+          {invitationExpired ? `Invitation expirée le ${formatDateTime(u.invitationExpiresAt)} : le compte ne peut pas se connecter.`
+            : u.invitationExpiresAt ? `Invitation en attente, lien valable jusqu'au ${formatDateTime(u.invitationExpiresAt)}.`
+            : 'Ce compte ne s\'est jamais connecté. Une invitation lui permet de choisir son mot de passe.'}
+        </Alert>
+      )}
+      {sent && <InvitationSentModal result={sent} email={u.email as string} onClose={() => setSent(null)} />}
       <DataPanel label="Mot de passe et code PIN">
         <div className="usr-pad">
           <fieldset className="ds-fieldset"><legend>Mot de passe et code PIN</legend>

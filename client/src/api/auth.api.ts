@@ -13,5 +13,8 @@ export const authApi = {
   logout: () => api.post('/auth/logout').then(r => r.data),
   usersList: () => api.get('/auth/users-list').then(r => r.data.data) as Promise<{ id: string; firstName: string; lastName: string; role: string }[]>,
   me: () => api.get('/auth/me').then(r => r.data.data),
+  /** Invitation d'un nouveau compte (refonte Utilisateurs, lot 3) : routes publiques. */
+  invitation: (token: string) => api.get(`/auth/invitations/${encodeURIComponent(token)}`).then(r => r.data.data) as Promise<{ status: 'valid' | 'expired' | 'used' | 'revoked' | 'unknown'; email?: string; firstName?: string; expiresAt?: string; message?: string }>,
+  acceptInvitation: (token: string, password: string) => api.post(`/auth/invitations/${encodeURIComponent(token)}/accept`, { password }).then(r => r.data.data as { email: string }),
   register: (data: Record<string, string>) => api.post('/auth/register', data).then(r => r.data.data),
 };

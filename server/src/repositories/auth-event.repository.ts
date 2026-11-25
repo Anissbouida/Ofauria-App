@@ -43,7 +43,10 @@ export type AuthEventType =
   // Exports et imports de l'ecran Parametres > Donnees (lot 7).
   | 'config_export'
   | 'data_export'
-  | 'data_import';
+  | 'data_import'
+  // Invitation d'un nouveau compte (refonte Utilisateurs, lot 3, mig 700).
+  | 'invitation_sent'
+  | 'invitation_accepted';
 
 export interface AuthEventInput {
   eventType: AuthEventType;

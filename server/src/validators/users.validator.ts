@@ -18,7 +18,8 @@ const pin = z.union([z.string().max(20), z.number()]).nullish();
 /* Création d'un compte — user.controller.create (le mot de passe est haché : il doit exister). */
 export const createUserSchema = body({
   email: z.string().trim().min(1, 'Email requis').max(255),
-  password: strongPassword,
+  // Absent quand le compte est invité (invite: true) : la personne choisit son mot de passe.
+  password: strongPassword.optional(), invite: z.boolean().optional(),
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
   pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),

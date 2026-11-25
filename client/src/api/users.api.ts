@@ -14,6 +14,10 @@ export const usersApi = {
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`, {}).then(r => r.data.data),
   setMustChangePassword: (id: string, value: boolean) => api.put(`/users/${id}/must-change-password`, { value }).then(r => r.data.data),
   /** Politique : rôles qui doivent activer la double authentification. */
+  /** Conflits de séparation des tâches entre des rôles, avant création (n'écrit rien). */
+  sodCheck: (roles: string[]) => api.post('/users/sod-check', { roles }).then(r => r.data.data as { mode: 'off' | 'log' | 'enforce'; violations: { code: string; label: string; severity: string }[] }),
+  /** (Ré)envoi d'une invitation de 72 h ; rend le chemin du lien et si l'e-mail est parti. */
+  invite: (id: string) => api.post(`/users/${id}/invitations`, {}).then(r => r.data.data as InvitationResult),
   /** Fiche d'un compte : rattachements (ateliers, essais, circuits, délégations, connexions externes) et préférences. */
   profile: (id: string) => api.get(`/users/${id}/profile`).then(r => r.data.data as AccountProfile),
   setPreferences: (id: string, data: { locale?: 'fr' | 'ar' | 'en' | null; workspace?: string | null }) =>
@@ -33,6 +37,8 @@ export const usersApi = {
 };
 
 /** Rôle (table roles, mig 330) : 9 rôles système + rôles créés. */
+export interface InvitationResult { token: string; path: string; expiresAt: string; emailQueued: boolean; mailConfigured: boolean }
+
 export interface AccountProfile {
   workshops: { code: string; label: string; via: 'user' | 'role'; roleCode: string | null }[];
   pilots: { moduleKey: string; via: 'user' | 'role'; roleCode: string | null }[];

@@ -98,7 +98,12 @@ export default function UsersOverview({ onOpenAccount, onGo }: {
         action: { label: 'Désactiver', onClick: () => void run('deactivate', u) },
       });
       const age = daysSince(u.createdAt);
-      if (u.id !== me?.id && !u.lastLoginAt && age !== null && age >= 7) t.push({
+      if (u.invitationExpiresAt && new Date(u.invitationExpiresAt).getTime() < Date.now()) t.push({
+        key: `inv-${u.id}`, tone: 'late', icon: Clock, situation: 'Invitation expirée', who: name,
+        detail: 'Le lien n\'a pas servi ; le compte ne peut pas se connecter', since: fmtDate(u.invitationExpiresAt),
+        action: { label: 'Ouvrir', onClick: () => onOpenAccount(u) },
+      });
+      if (u.id !== me?.id && !u.lastLoginAt && !u.invitationExpiresAt && age !== null && age >= 7) t.push({
         key: `never-${u.id}`, tone: 'draft', icon: UserX, situation: 'Jamais connecté', who: name,
         detail: `Compte créé il y a ${age} jours, jamais utilisé`, since: fmtDate(u.createdAt),
         action: { label: 'Ouvrir', onClick: () => onOpenAccount(u) },

@@ -5,7 +5,11 @@ import { oidcController } from '../controllers/oidc.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema } from '../validators/auth.validator.js';
+import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema, strongPassword } from '../validators/auth.validator.js';
+import { invitationController } from '../controllers/invitation.controller.js';
+
+/** Acceptation d'une invitation : mot de passe choisi, même politique qu'un nouveau compte. */
+const acceptInvitationSchema = z.object({ password: strongPassword }).strict();
 import { makeLimiter } from '../middleware/rate-limit.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { z } from 'zod';
@@ -69,6 +73,9 @@ router.get('/pin-users', pinUsersLimiter, authController.pinUsers);
 // connectés (audit Paramètres, lot 1).
 router.get('/users-list', authenticate, can('users.auth.view'), authController.activeUsers);
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
+// Invitation d'un nouveau compte (refonte Utilisateurs, lot 3) : routes publiques, limitées en fréquence.
+router.get('/invitations/:token', pinUsersLimiter, asyncHandler(invitationController.peek));
+router.post('/invitations/:token/accept', loginLimiter, validate(acceptInvitationSchema), asyncHandler(invitationController.accept));
 router.post('/register', authenticate, can('users.auth.register'), validate(registerSchema), authController.register);
 router.post('/logout', authenticate, validate(emptyBody), authController.logout);
 router.get('/me', authenticate, authController.me);

@@ -51,7 +51,8 @@ api.interceptors.response.use(
       } else {
         localStorage.removeItem('ofauria_token');
         localStorage.removeItem('ofauria_user');
-        if (!window.location.pathname.startsWith('/login')) {
+        // Pages publiques (connexion, lien d'invitation) : pas de renvoi vers la connexion.
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/invitation/')) {
           // Constat 121 : la page de connexion dit pourquoi on y revient, et si la dernière
           // action (une écriture) n'a pas été enregistrée — plus de perte silencieuse.
           try {

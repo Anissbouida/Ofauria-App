@@ -357,6 +357,7 @@
  "GET /attendance/monthly-recap": null,
  "GET /attendance/overtime-summary": null,
  "GET /attendance/summary": null,
+ "GET /auth/invitations/:token": null,
  "GET /auth/me": null,
  "GET /auth/mfa/status": null,
  "GET /auth/oidc/:provider/callback": null,
@@ -2897,6 +2898,7 @@
  "POST /attendance": null,
  "POST /attendance/bulk": null,
  "POST /auth/change-password": null,
+ "POST /auth/invitations/:token/accept": null,
  "POST /auth/login": null,
  "POST /auth/logout": null,
  "POST /auth/mfa/disable": null,
@@ -4873,6 +4875,9 @@
  "POST /users": [
   "admin"
  ],
+ "POST /users/:id/invitations": [
+  "admin"
+ ],
  "POST /users/:id/mfa-reset": [
   "admin"
  ],
@@ -4892,6 +4897,9 @@
   "admin"
  ],
  "POST /users/sod": [
+  "admin"
+ ],
+ "POST /users/sod-check": [
   "admin"
  ],
  "POST /weekly-payroll/:id/pay": null,

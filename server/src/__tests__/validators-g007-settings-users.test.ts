@@ -69,7 +69,8 @@ describe('Utilisateurs et rôles (users.routes)', () => {
   it('compte : corps de UsersPage accepté, mot de passe fort requis à la création, PIN null = retiré', () => {
     const body = { firstName: 'A', lastName: 'B', email: 'a@b.ma', roles: ['cashier'], primaryRole: 'cashier', storeId: null, employeeId: null, password: 'Kalum-Test-2026', pinCode: '123456' };
     ok(U.createUserSchema, body);
-    ko(U.createUserSchema, { ...body, password: undefined });
+    // Sans mot de passe : accepté par le schéma (compte invité) ; le contrôleur exige alors invite: true.
+    ok(U.createUserSchema, { ...body, password: undefined, invite: true });
     ko(U.createUserSchema, { ...body, password: 'abcd' });
     ok(U.updateUserSchema, { password: '' });
     ko(U.updateUserSchema, { password: 'court' });

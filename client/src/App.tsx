@@ -62,6 +62,7 @@ import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import MaintenancePage from './features/maintenance/MaintenancePage';
 import UsersPage from './features/users/UsersPage';
 import UserRecordPage from './features/users/UserRecordPage';
+import AcceptInvitationPage from './features/auth/AcceptInvitationPage';
 import SettingsPage from './features/settings/SettingsPage';
 import ConfigurationWizard from './features/settings/ConfigurationWizard';
 import AccountingPage from './features/accounting/AccountingPage';
@@ -95,6 +96,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Lien d'invitation d'un nouveau compte (refonte Utilisateurs, lot 3) : page publique. */}
+            <Route path="/invitation/:token" element={<AcceptInvitationPage />} />
             {/* Portail client (phase 10.3) : page publique, hors app interne, jeton Bearer. */}
             <Route path="/portail" element={<PortalPage />} />
             <Route element={<AppLayout />}>

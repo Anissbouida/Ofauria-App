@@ -17,6 +17,36 @@ import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance
 import { logger } from '../utils/logger.js';
 import { mfaRepository } from '../repositories/mfa.repository.js';
 import { accountAttachments } from '../services/account-profile.js';
+import { invitationRepository } from '../repositories/invitation.repository.js';
+import { enqueueEmail, mailStatus } from '../services/mailer.js';
+import crypto from 'crypto';
+
+/**
+ * Invitation (refonte Utilisateurs, lot 3) : jeton de 72 h, e-mail mis en file quand l'envoi est
+ * configuré. Le lien est aussi rendu à l'administrateur pour qu'il puisse le transmettre lui-même.
+ */
+async function sendInvitation(req: AuthRequest, user: { id: string; email: string; first_name?: string | null }) {
+  const { token, expiresAt } = await invitationRepository.create(user.id, req.user?.userId);
+  const origin = (req.get('origin') || process.env.APP_URL || '').replace(/\/+$/, '');
+  const path = `/invitation/${token}`;
+  const status = await mailStatus();
+  let queued = false;
+  if (status.configured && origin) {
+    const until = new Date(expiresAt).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
+    await enqueueEmail({
+      to: user.email, toName: user.first_name ?? null, userId: user.id, createdBy: req.user?.userId ?? null,
+      type: 'invitation', referenceType: 'user', referenceId: user.id,
+      subject: 'Votre accès à Kalum',
+      text: `Bonjour${user.first_name ? ` ${user.first_name}` : ''},\n\nUn compte Kalum a été créé pour vous. Choisissez votre mot de passe en ouvrant ce lien :\n\n${origin}${path}\n\nLe lien est valable jusqu'au ${until}. Si vous n'attendiez pas ce message, ignorez-le.`,
+    });
+    queued = true;
+  }
+  await authEventRepository.recordFromRequest(req, {
+    eventType: 'invitation_sent', userId: req.user?.userId, targetUserId: user.id, email: user.email, success: true,
+    details: { emailQueued: queued, expiresAt },
+  });
+  return { token, path, expiresAt, emailQueued: queued, mailConfigured: status.configured };
+}
 import { readInterfacePreferences, setPersonalInterfacePreferences } from '../services/interface-preferences.js';
 
 type Guarded = 'deactivate' | 'delete' | 'demote';
@@ -47,8 +77,9 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const [users, allRoles, lastLogins, mfaRoles] = await Promise.all([
+    const [users, allRoles, lastLogins, mfaRoles, invitations] = await Promise.all([
       userRepository.findAll(), userRepository.allUserRoles(), userRepository.lastLogins(), mfaRepository.requiredRoles(),
+      invitationRepository.openByUser(),
     ]);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
@@ -73,6 +104,8 @@ export const userController = {
         failedLoginCount: (u as { failed_login_count?: number }).failed_login_count ?? 0,
         lastLoginAt: lastLogins.get(u.id) ?? null,
         locale: (u as { locale?: string | null }).locale ?? null,
+        // Invitation encore ouverte (lot 3) : date de fin, passée si le lien a expiré.
+        invitationExpiresAt: invitations.get(u.id) ?? null,
       };
     });
     res.json({ success: true, data: safe });
@@ -113,7 +146,13 @@ export const userController = {
       res.status(400).json({ success: false, error: { message: NEW_PIN_MESSAGE } });
       return;
     }
-    const passwordHash = await hashPassword(password);
+    // Invitation : un mot de passe aléatoire que personne ne connaît, remplacé à l'acceptation.
+    const invite = req.body.invite === true;
+    if (!invite && !password) {
+      res.status(400).json({ success: false, error: { message: 'Mot de passe requis, ou invitation par e-mail' } });
+      return;
+    }
+    const passwordHash = await hashPassword(invite ? crypto.randomBytes(32).toString('base64url') : password);
     const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId }, req.user?.userId);
     if (pinCode) {
       const pinHash = await hashPin(String(pinCode));
@@ -121,7 +160,7 @@ export const userController = {
     }
     await userRepository.setRoleCodes(user.id, roleCodes, primaryRole, req.user?.userId);
     // Options de création : mot de passe provisoire à changer, double authentification exigée.
-    if (req.body.mustChangePassword === true) await userRepository.setMustChangePassword(user.id, true);
+    if (req.body.mustChangePassword === true && !invite) await userRepository.setMustChangePassword(user.id, true);
     if (req.body.mfaRequired === true) await mfaRepository.setRequiredForUser(user.id, true);
     // Lien espace employé (employees.user_id) si une fiche est choisie.
     if (req.body.employeeId !== undefined) {
@@ -139,10 +178,12 @@ export const userController = {
       details: { role: updated!.role, roles: roleCodes, hasPin: !!updated!.pin_code, mustChangePassword: req.body.mustChangePassword === true, mfaRequired: req.body.mfaRequired === true, ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}) },
     });
 
+    const invitation = invite ? await sendInvitation(req, updated!) : null;
     res.status(201).json({
       success: true, data: {
         id: updated!.id, email: updated!.email, firstName: updated!.first_name, lastName: updated!.last_name,
         role: updated!.role, roles: roleCodes, isActive: updated!.is_active, hasPin: !!updated!.pin_code, storeId: updated!.store_id,
+        invitation,
       },
     });
   },
@@ -455,6 +496,28 @@ export const userController = {
   /** Fiches salariés actives (sélecteur de lien espace employé). Admin. */
   async employeesForLink(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await userRepository.employeesForLink() });
+  },
+
+  /**
+   * Vérification avant création (lot 3) : conflits de séparation des tâches entre les rôles
+   * choisis, et mode de contrôle (en mode Bloquer, la création serait refusée). N'écrit rien.
+   */
+  async sodCheck(req: AuthRequest, res: Response) {
+    const roles = Array.isArray(req.body?.roles) ? (req.body.roles as unknown[]).map(String) : [];
+    const mode = await sodEnforcementMode();
+    const violations = mode === 'off' || roles.length < 2 ? [] : await evaluateRoleCodesSod(roles);
+    res.json({ success: true, data: { mode, violations } });
+  },
+
+  /** (Ré)envoi d'une invitation : annule la précédente et en crée une nouvelle de 72 h. */
+  async invite(req: AuthRequest, res: Response) {
+    const user = await userRepository.findById(req.params.id);
+    if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    if (!user.is_active || (user as { is_system?: boolean }).is_system) {
+      res.status(400).json({ success: false, error: { message: 'Réactivez d\'abord le compte pour l\'inviter' } });
+      return;
+    }
+    res.json({ success: true, data: await sendInvitation(req, user) });
   },
 
   /**

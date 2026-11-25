@@ -48,3 +48,24 @@
 .usr-side { padding: 16px 18px; display: grid; gap: 12px; font-size: 13px; }
 .usr-side h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ds-ink); }
 .usr-pad { padding: 16px 20px; display: grid; gap: 12px; }
+
+/* Création d'un compte : étapes en pastilles sans numéro, cartes de choix (lot 3). */
+.usr-steps { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 4px; }
+.usr-steps button {
+  height: 32px; padding: 0 12px; border: 0; border-radius: var(--ds-r-pill); font: inherit; font-size: 13px;
+  background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); color: var(--ds-body);
+  display: inline-flex; gap: 6px; align-items: center; cursor: pointer;
+}
+.usr-steps button:disabled { opacity: .5; cursor: not-allowed; }
+.usr-steps button.done { color: var(--ds-ink); }
+.usr-steps button.done svg { color: var(--ds-success); }
+.usr-steps button.on { background: var(--ds-tint); box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-ink); font-weight: 600; }
+.usr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.usr-card {
+  text-align: left; border: 0; border-radius: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep);
+  padding: 12px 14px; display: grid; gap: 6px; align-content: start; cursor: pointer; font: inherit; color: var(--ds-body);
+}
+.usr-card:hover { box-shadow: inset 0 0 0 1px var(--ds-line), var(--ds-shadow); }
+.usr-card b { font-size: 14px; color: var(--ds-ink); font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.usr-card small { font-size: 12.5px; color: var(--ds-muted); line-height: 1.35; }
+.usr-card.on { background: var(--ds-tint); box-shadow: inset 0 0 0 2px var(--ds-accent); }
