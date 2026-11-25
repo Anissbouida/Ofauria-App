@@ -108,6 +108,17 @@ export const APPROVAL_DOC_TYPES = {
       },
     },
   },
+  // Plan compta, étape 22 (audit C-09) : changement du RIB d'un fournisseur déjà pourvu d'un RIB.
+  bank_detail_change: {
+    label: 'Changement de RIB d\'un fournisseur',
+    effect: 'Le nouveau RIB devient le RIB du fournisseur, utilisé par les prochains virements.',
+    fields: {
+      party_kind: {
+        label: 'Tiers', kind: 'enum',
+        options: [{ value: 'supplier', label: 'Fournisseur' }],
+      },
+    },
+  },
   payment_run: {
     label: 'Campagne de paiement fournisseurs',
     effect: 'La campagne est approuvée : le fichier de virement peut être édité.',

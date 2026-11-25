@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import type { CreateSupplierInput, UpdateSupplierInput } from '../validators/supplier.validator.js';
+import { bankDetailChangeRepository } from './bank-detail-change.repository.js';
 
 /**
  * Fournisseurs — référentiel (refonte Achats D1, lot 1 : G-D1-01/04/17/19).
@@ -297,6 +298,13 @@ export const supplierRepository = {
   },
 
   async update(id: string, data: UpdateSupplierInput, userId: string | null) {
+    // Plan compta, étape 22 (audit C-09) : le changement du RIB d'un fournisseur déjà pourvu d'un RIB
+    // est une demande à approuver ; le RIB courant ne change pas tant qu'elle est en attente.
+    let ribHeld = false;
+    if (data.rib !== undefined && userId) {
+      const decision = await bankDetailChangeRepository.decideSupplierChange(id, { rib: data.rib, bankName: data.bankName }, userId);
+      if (decision.action === 'hold') { ribHeld = true; data = { ...data, rib: undefined, bankName: undefined }; }
+    }
     const mapping: Record<string, string> = {
       name: 'name', legalName: 'legal_name', legalForm: 'legal_form', vatRegime: 'vat_regime',
       parentSupplierId: 'parent_supplier_id', contactName: 'contact_name', phone: 'phone', email: 'email',
@@ -306,7 +314,11 @@ export const supplierRepository = {
     const fields: string[] = []; const values: unknown[] = []; let i = 1;
     for (const [key, col] of Object.entries(mapping)) {
       const v = (data as Record<string, unknown>)[key];
-      if (v !== undefined) { fields.push(`${col} = $${i++}`); values.push(v); }
+      if (v !== undefined) {
+        // Date du dernier changement de RIB appliqué (gel des campagnes de paiement, payment.rib_freeze_days).
+        if (key === 'rib') fields.push(`rib_changed_at = CASE WHEN COALESCE(rib, '') <> '' AND rib IS DISTINCT FROM $${i} THEN now() ELSE rib_changed_at END`);
+        fields.push(`${col} = $${i++}`); values.push(v);
+      }
     }
     const client = await db.getClient();
     try {
@@ -319,7 +331,8 @@ export const supplierRepository = {
       }
       if (data.identifiers !== undefined) await replaceIdentifiers(client, id, userId, data.identifiers);
       await client.query('COMMIT');
-      return this.findById(id);
+      const saved = await this.findById(id);
+      return ribHeld && saved ? { ...saved, rib_pending_approval: true } : saved;
     } catch (err) {
       await client.query('ROLLBACK');
       translatePgError(err);

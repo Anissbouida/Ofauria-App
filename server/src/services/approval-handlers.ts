@@ -8,6 +8,7 @@ import { creditNoteRepository } from '../repositories/credit-note.repository.js'
 import { openingInventoryCheckRepository } from '../repositories/opening-inventory-check.repository.js';
 import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
+import { bankDetailChangeRepository } from '../repositories/bank-detail-change.repository.js';
 
 /**
  * Effets des approbations par type de pièce (lot 8). Importé une fois par
@@ -64,6 +65,12 @@ registerApprovalHandler('invoice_cancel', {
 // (jamais celui du demandeur : le moteur interdit l'auto-approbation). Refusée → reste brouillon.
 registerApprovalHandler('journal_entry', {
   async onApproved(request, actorId) { await manualEntryRepository.postApproved(request.doc_id, actorId); },
+});
+
+// Plan compta, étape 22 : changement de RIB fournisseur approuvé → le RIB courant change ; refusé → il reste.
+registerApprovalHandler('bank_detail_change', {
+  async onApproved(request, actorId) { await bankDetailChangeRepository.apply(request.doc_id, actorId); },
+  async onRejected(request, actorId, reason) { await bankDetailChangeRepository.reject(request.doc_id, actorId, reason); },
 });
 
 registerApprovalHandler('inventory_count', {
