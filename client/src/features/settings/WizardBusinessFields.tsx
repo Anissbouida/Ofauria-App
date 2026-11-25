@@ -123,6 +123,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   const navigate = useNavigate();
   const stores = useQuery({ queryKey: ['stores'], queryFn: storesApi.list, enabled: step === 'company' });
   const [search, setSearch] = useState('');
+  const [showAllTerms, setShowAllTerms] = useState(false);
   const download = async (entity: string) => {
     const { blob, filename } = await settingsApi.download(`import/${entity}/template`);
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
@@ -336,12 +337,13 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     const proposed = (key: string, fallback: string) => main?.labels?.[key] ?? fallback;
     return <>
       <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th style={{ width: '38%' }}>Votre terme</th><th style={{ width: 90 }}></th></tr></thead><tbody>
-        {VOCAB.map(v => { const val = text(data[v.key]), changed = val !== proposed(v.key, v.fallback);
+        {(showAllTerms ? VOCABULARY_KEYS : VOCAB).map(v => { const val = v.key in data ? text(data[v.key]) : proposed(v.key, v.fallback), changed = val !== proposed(v.key, v.fallback);
           return <tr key={v.key}><td className="ds-strong">{v.designates}</td><td>{proposed(v.key, v.fallback)}</td>
             <td><input className="ds-input sm" style={{ width: '100%' }} aria-label={`Terme pour ${v.designates}`} value={val} disabled={disabled} onChange={e => set(v.key, e.target.value)} /></td>
             <td>{changed && <Tag tone="o">Modifié</Tag>}</td></tr>; })}
       </tbody></table></div>
-      <p className="mq-sub" style={{ margin: 0 }}>Les mots changent à l’écran, sur les documents et les rapports. Les autres termes se règlent dans Paramètres › Vocabulaire.</p>
+      <div className="wz-bar"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setShowAllTerms(v => !v)}>{showAllTerms ? `Termes principaux (${VOCAB.length})` : `Tous les termes (${VOCABULARY_KEYS.length})`}</button>
+        <span className="mq-sub">Les mots changent à l’écran, sur les documents et les rapports.</span></div>
     </>;
   }
 

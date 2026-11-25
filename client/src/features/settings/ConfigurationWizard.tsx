@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Info, Play, Sparkles, TriangleAlert } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { allowedSettingsSections, hasWizardSettingsScope, ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, type AppModule } from '@ofauria/shared';
@@ -53,6 +53,7 @@ const hhmm = (iso?: string) => iso ? new Date(iso).toLocaleTimeString('fr-FR', {
 
 export default function ConfigurationWizard() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { canEdit, canView, getModuleConfig } = usePermissions();
@@ -72,7 +73,19 @@ export default function ConfigurationWizard() {
   const onReview = session?.current_step === 'review';
   const preview = useQuery({ queryKey: ['wizard-impact', session?.id, session?.revision], queryFn: () => wizardApi.preview(session!.id), enabled: allowed && onReview && !dirty });
   const changeSet = useQuery({ queryKey: ['wizard-changeset', session?.id, session?.revision], queryFn: () => wizardApi.changeset(session!.id), enabled: allowed && onReview && !dirty });
-  const open = (s: WizardSession) => { setSession(s); setAnswers(s.answers); setError(''); };
+  const open = (s: WizardSession) => {
+    setSession(s); setAnswers(s.answers); setError('');
+    // Le brouillon ouvert est dans l'adresse : un rechargement le rouvre à la même étape.
+    if (params.get('brouillon') !== s.id) setParams(p => { const n = new URLSearchParams(p); n.set('brouillon', s.id); return n; }, { replace: true });
+  };
+  const close = () => { setSession(null); setAnswers({}); setParams(p => { const n = new URLSearchParams(p); n.delete('brouillon'); return n; }, { replace: true }); };
+  useEffect(() => {
+    const id = params.get('brouillon');
+    if (session || !id || !drafts.data) return;
+    const found = drafts.data.find(d => d.id === id);
+    if (found) open(found); else close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts.data, params]);
   const invalidate = () => { void qc.invalidateQueries({ queryKey: ['configuration-wizard'] }); void qc.invalidateQueries({ queryKey: ['settings', 'setup'] }); };
 
   /** Une seule opération à la fois ; l'erreur s'affiche dans le bandeau. */
@@ -94,7 +107,7 @@ export default function ConfigurationWizard() {
   }
   async function abandon() {
     if (!session || lock.current || !(await confirm('Abandonner ce brouillon ? La configuration active reste inchangée.', { title: 'Abandonner la préparation', confirmLabel: 'Abandonner' }))) return;
-    await run(async () => { await wizardApi.abandon(session.id, session.revision); setSession(null); setAnswers({}); invalidate(); });
+    await run(async () => { await wizardApi.abandon(session.id, session.revision); close(); invalidate(); });
   }
   /** Révision marquée vue, puis jeu de changements compilé sur cette révision exacte. */
   async function compiled(): Promise<{ target: WizardSession; cs: WizardChangeSet } | undefined> {
@@ -124,7 +137,7 @@ export default function ConfigurationWizard() {
     await run(async () => {
       const result = await wizardApi.apply(r.target.id, r.target.revision);
       setPublished(String(result.published_version_id ?? ''));
-      setSession(null); setAnswers({});
+      close();
       void qc.invalidateQueries(); // menus, modules et libellés dépendent de la configuration publiée
     });
   }
@@ -149,7 +162,7 @@ export default function ConfigurationWizard() {
   const crumbBar = (tag?: string) => <div className="odoo-control-bar odoo-settings-bar">
     <div className="odoo-breadcrumb" aria-label="Fil d’Ariane"><button type="button" className="odoo-btn-link" onClick={() => navigate('/settings')}>Paramètres</button><span className="odoo-breadcrumb-separator">›</span><span>Activité et modules</span><span className="odoo-breadcrumb-separator">›</span><span className="odoo-breadcrumb-current">Assistant de configuration</span></div>
     <div style={{ flex: 1 }} />{tag && <span className="kl-tag x">{tag}</span>}</div>;
-  const banner = error && <Alert tone="danger" icon={<TriangleAlert size={16} />} action={session && <button className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={async () => { const r = await drafts.refetch(); const latest = r.data?.find(s => s.id === session.id); if (latest) open(latest); else { setSession(null); setError(''); } }}>Recharger le brouillon</button>}>{error}</Alert>;
+  const banner = error && <Alert tone="danger" icon={<TriangleAlert size={16} />} action={session && <button className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={async () => { const r = await drafts.refetch(); const latest = r.data?.find(s => s.id === session.id); if (latest) open(latest); else { close(); setError(''); } }}>Recharger le brouillon</button>}>{error}</Alert>;
 
   if (!allowed) return <div className="wz-app">{crumbBar()}<div className="wz-page"><Alert tone="danger">Accès interdit aux paramètres de configuration.</Alert></div></div>;
 
