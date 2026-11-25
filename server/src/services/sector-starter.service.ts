@@ -106,14 +106,15 @@ export type StarterResult = {
 
 type Client = Awaited<ReturnType<typeof db.getClient>>;
 
-async function insertRefs(client: Client, tableId: string, refs: StarterRef[] | undefined): Promise<number> {
+/** Mig 698 : une valeur de pack est rattachée à son secteur ; elle suit donc ses changements. */
+async function insertRefs(client: Client, tableId: string, refs: StarterRef[] | undefined, sectorCode: string): Promise<number> {
   let created = 0;
   for (const [i, r] of (refs ?? []).entries()) {
     const res = await client.query(
-      `INSERT INTO ref_entries (table_id, code, label, display_order, metadata)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO ref_entries (table_id, code, label, display_order, metadata, origin, system_label, sectors)
+       VALUES ($1, $2, $3::varchar, $4, $5, 'system', $3::varchar, ARRAY[$6::text])
        ON CONFLICT (table_id, code) DO NOTHING RETURNING id`,
-      [tableId, r.code, r.label, 200 + i * 10, JSON.stringify(r.metadata ?? {})]);
+      [tableId, r.code, r.label, 200 + i * 10, JSON.stringify(r.metadata ?? {}), sectorCode]);
     if (res.rows[0]) created++;
   }
   return created;
@@ -205,9 +206,9 @@ export async function loadSectorStarter(sectorCode: string, userId?: string, opt
         [c.name, c.slug]);
       if (r.rows[0]) result.categories++;
     }
-    result.units = await insertRefs(client, 'units', pack.units);
-    result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes);
-    result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes);
+    result.units = await insertRefs(client, 'units', pack.units, sectorCode);
+    result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes, sectorCode);
+    result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes, sectorCode);
     if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
     if (pack.demo && opts.demo !== false) result.demo = await loadDemo(client, pack.demo);
     if (pack.layers) {

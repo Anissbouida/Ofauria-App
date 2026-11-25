@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, RotateCw, History, Download,
-  Database, Wallet, Package, Factory, Users,
+  Database, Wallet, Package, Factory, Users, Layers, RefreshCw, Undo2,
 } from 'lucide-react';
 import { referentielApi } from '../../api/referentiel.api';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -36,7 +36,11 @@ const ACTIONS: Record<string, { tone: StatusTone; label: string }> = {
   update: { tone: 'progress', label: 'Modification' },
   deactivate: { tone: 'cancelled', label: 'Désactivation' },
   reactivate: { tone: 'todo', label: 'Réactivation' },
+  follow_sector: { tone: 'progress', label: 'Retour au réglage du secteur' },
+  restore_label: { tone: 'progress', label: 'Libellé d\'origine rétabli' },
 };
+// Mig 698 : une valeur du catalogue d'un autre secteur, jamais activée par la société.
+const isOtherSector = (e: Row) => e.is_active === false && e.tier === 'sector' && e.applicable === false && e.activation === 'auto';
 const LEVEL_LABELS = ['Catégorie', 'Sous-catégorie', 'Type'];
 // Familles de mesure pour le référentiel « units » (conversions, mig 470).
 // L'unité de base de chaque famille a un facteur 1 (g, ml, unité).
@@ -71,10 +75,29 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const { ingredientsLc } = useProdTerms();
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
+  const { canEdit } = usePermissions();
+  const [showAll, setShowAll] = useState(false);
   const { data, isLoading } = useQuery({ queryKey: ['ref-dashboard'], queryFn: referentielApi.dashboard });
+  const { data: scope } = useQuery({ queryKey: ['ref-scope'], queryFn: referentielApi.scope });
+  const sync = useMutation({
+    mutationFn: referentielApi.scopeSync,
+    onSuccess: r => {
+      queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['ref-scope'] });
+      queryClient.invalidateQueries({ queryKey: ['ref'] });
+      notify.success(r.activated + r.deactivated > 0
+        ? `Référentiels réalignés : ${r.activated} valeur(s) activée(s), ${r.deactivated} désactivée(s)`
+        : 'Les référentiels sont déjà alignés sur le secteur');
+    },
+    onError: () => notify.error('Réalignement impossible'),
+  });
   if (isLoading) return <LoadingState bare />;
 
-  const tables = (data?.tables || []) as Row[];
+  const allTables = (data?.tables || []) as Row[];
+  // Mig 698 : seules les tables utiles au secteur et aux modules actifs sont proposées.
+  const hiddenCount = allTables.filter(t => t.relevant === false).length;
+  const tables = showAll ? allTables : allTables.filter(t => t.relevant !== false);
   const recent = (data?.recentChanges || []) as Row[];
   const totalActive = tables.reduce((s, t) => s + (Number(t.active_count) || 0), 0);
   const totalInactive = tables.reduce((s, t) => s + (Number(t.inactive_count) || 0), 0);
@@ -87,8 +110,32 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      {scope && scope.sectors.length > 0 && (
+        <div role="note" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', border: '1px solid var(--ds-sep)', borderRadius: 8, background: 'var(--ds-bg)', fontSize: 13 }}>
+          <Layers size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+          <span>
+            Référentiels adaptés à <strong>{scope.sectors.map(x => x.label).join(' + ')}</strong>
+            {scope.specializations.length > 0 && <> · spécialités : {scope.specializations.map(x => x.label).join(', ')}</>}.
+            {' '}<span style={{ color: 'var(--ds-muted)' }}>Valeurs communes, valeurs du secteur et valeurs que vous ajoutez.</span>
+          </span>
+          <div style={{ flex: 1 }} />
+          {canEdit('settings') && (
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={sync.isPending} onClick={() => sync.mutate()}
+              title="Active les valeurs du secteur configuré et désactive celles des autres secteurs (jamais une valeur utilisée, ni un choix fait à la main)"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <RefreshCw size={13} aria-hidden="true" /> Réaligner sur le secteur
+            </button>
+          )}
+        </div>
+      )}
       <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder="Rechercher une table…" />
+        {hiddenCount > 0 && (
+          <label htmlFor="ref-show-all-tables" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input id="ref-show-all-tables" type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+            Afficher les {hiddenCount} tables hors secteur ou module inactif
+          </label>
+        )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
           {tables.length} tables · {totalActive} valeurs actives{totalInactive > 0 ? ` · ${totalInactive} inactives` : ''}
@@ -100,7 +147,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
         // que les listes des autres modules (barre d'outils + panneau standard).
         <DataPanel label="Tables du référentiel">
           <table className="odoo-table">
-            <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 140 }}>État</th><th style={{ width: 44 }}><span className="sr-only">Ouvrir</span></th></tr></thead>
+            <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 240 }}>État</th><th style={{ width: 44 }}><span className="sr-only">Ouvrir</span></th></tr></thead>
             {sections.map(s => {
               const Icon = s.icon;
               const isCollapsed = !search && collapsed[s.key];
@@ -125,7 +172,14 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
                       </td>
                       <td style={{ color: 'var(--ds-muted)' }}>{String(t.description || '')}</td>
                       <td className="ds-num">{Number(t.active_count) || 0}</td>
-                      <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive${Number(t.inactive_count) > 1 ? 's' : ''}`} />}</td>
+                      <td>
+                        <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                          {t.relevant === false && <StatusTag tone="draft" label="Hors secteur" />}
+                          {Number(t.sector_count) > 0 && <span className="odoo-tag odoo-tag-blue">{Number(t.sector_count)} du secteur</span>}
+                          {Number(t.custom_count) > 0 && <span className="odoo-tag odoo-tag-purple">{Number(t.custom_count)} personnalisée{Number(t.custom_count) > 1 ? 's' : ''}</span>}
+                          {Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive${Number(t.inactive_count) > 1 ? 's' : ''}`} />}
+                        </span>
+                      </td>
                       <td><ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /></td>
                     </tr>
                   ))}
@@ -168,21 +222,27 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   const confirm = useConfirm();
   const { canCreate, canEdit, canDelete } = usePermissions();
   const [showInactive, setShowInactive] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const [search, setSearch] = useState('');
   const [showAudit, setShowAudit] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState<null | { id: string | null; label: string; code: string; description: string; color: string; metadata: Row }>(null);
 
-  const { data, isLoading } = useQuery({ queryKey: ['ref-entries', tableId, showInactive], queryFn: () => referentielApi.entries(tableId, showInactive) });
+  // Toujours chargé avec les inactives : le filtre se fait ici (inactives, catalogue des autres secteurs).
+  const { data, isLoading } = useQuery({ queryKey: ['ref-entries', tableId], queryFn: () => referentielApi.entries(tableId, true) });
   const { data: audit } = useQuery({ queryKey: ['ref-audit', tableId], queryFn: () => referentielApi.audit(tableId), enabled: showAudit });
 
   const table = data?.table as Row | undefined;
-  const entries = (data?.entries || []) as Row[];
+  const allEntries = (data?.entries || []) as Row[];
+  // Mig 698 : le catalogue des autres secteurs ne s'affiche que sur demande ; les valeurs
+  // désactivées par la société suivent « Afficher les inactives ».
+  const catalogCount = allEntries.filter(isOtherSector).length;
+  const entries = allEntries.filter(e => (isOtherSector(e) ? showCatalog : e.is_active !== false || showInactive));
   const isNative = table?.source === 'native';
   const isHierarchical = tableId === 'expense_categories' || tableId === 'revenue_categories';
 
   const invalidate = () => {
-    for (const key of [['ref-entries', tableId], ['ref-dashboard'], ['ref-audit', tableId], ['expense-categories'], ['categories']]) {
+    for (const key of [['ref-entries', tableId], ['ref-dashboard'], ['ref-audit', tableId], ['expense-categories'], ['categories'], ['ref', tableId]]) {
       queryClient.invalidateQueries({ queryKey: key });
     }
   };
@@ -204,7 +264,17 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   });
   const reactivate = useMutation({
     mutationFn: (id: string) => referentielApi.reactivate(tableId, id),
-    onSuccess: () => { invalidate(); notify.success('Valeur réactivée'); },
+    onSuccess: () => { invalidate(); notify.success('Valeur activée'); },
+  });
+  const followSector = useMutation({
+    mutationFn: (id: string) => referentielApi.followSector(tableId, id),
+    onSuccess: () => { invalidate(); notify.success('La valeur suit de nouveau le secteur'); },
+    onError: () => notify.error('Action impossible'),
+  });
+  const restoreLabel = useMutation({
+    mutationFn: (id: string) => referentielApi.restoreLabel(tableId, id),
+    onSuccess: () => { invalidate(); notify.success('Libellé d\'origine rétabli'); },
+    onError: () => notify.error('Action impossible'),
   });
 
   // Lignes à afficher, dans l'ordre de l'arborescence (catégorie > sous-catégorie > type).
@@ -235,7 +305,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   if (isLoading) return <LoadingState bare />;
 
   const activeCount = entries.filter(e => e.is_active !== false).length;
-  const inactiveCount = entries.filter(e => e.is_active === false).length;
+  const inactiveCount = entries.filter(e => e.is_active === false && !isOtherSector(e)).length;
   const hasCode = !isHierarchical && entries.some(e => e.code);
   const openNew = (parent?: Row) => setForm({
     id: null, label: '', code: '', description: '', color: '',
@@ -278,6 +348,13 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
         {!isNative && (
           <label htmlFor="ref-show-inactive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <input id="ref-show-inactive" type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactives
+          </label>
+        )}
+        {!isNative && (catalogCount > 0 || showCatalog) && (
+          <label htmlFor="ref-show-catalog" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+            title="Valeurs livrées pour d'autres secteurs : vous pouvez en activer une au besoin">
+            <input id="ref-show-catalog" type="checkbox" checked={showCatalog} onChange={e => setShowCatalog(e.target.checked)} />
+            Catalogue des autres secteurs{catalogCount > 0 ? ` (${catalogCount})` : ''}
           </label>
         )}
         <div style={{ flex: 1 }} />
@@ -358,14 +435,18 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                             {Boolean((e.metadata as Row).is_base) && ' · base'}
                           </span>
                         )}
-                        {inactive && <StatusTag tone="cancelled" label="Inactive" />}
+                        {e.tier === 'sector' && <span className="odoo-tag odoo-tag-blue" title={`Valeur livrée pour : ${[...(e.sectors as string[] || []), ...(e.specializations as string[] || [])].join(', ')}`}>{isOtherSector(e) ? 'Autre secteur' : 'Secteur'}</span>}
+                        {e.tier === 'custom' && <span className="odoo-tag odoo-tag-purple" title="Valeur ajoutée par votre société">Personnalisée</span>}
+                        {Boolean(e.overridden) && <span className="odoo-tag" title={`Libellé d'origine : ${String(e.system_label)}`}>Libellé modifié</span>}
+                        {e.activation === 'forced_on' && e.tier === 'sector' && e.applicable === false && <span className="odoo-tag" title="Activée à la main alors qu'elle relève d'un autre secteur">Activée à la main</span>}
+                        {inactive && !isOtherSector(e) && <StatusTag tone="cancelled" label="Inactive" />}
                       </span>
                     </td>
                     <td className="ds-actions">
                       {inactive ? (
                         canEdit('settings') && (
                           <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Réactiver ${e.label}`} disabled={reactivate.isPending} onClick={() => reactivate.mutate(id)}>
-                            <RotateCw size={13} aria-hidden="true" /> Réactiver
+                            <RotateCw size={13} aria-hidden="true" /> {isOtherSector(e) ? 'Activer' : 'Réactiver'}
                           </button>
                         )
                       ) : (
@@ -377,6 +458,8 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                           )}
                           <RowMenu label={`Plus d'actions pour ${e.label}`} items={[
                             ...(canHaveChildren && canCreate('settings') ? [{ label: level === 1 ? 'Ajouter une sous-catégorie' : 'Ajouter un type', icon: Plus, onSelect: () => openNew(e) }] : []),
+                            ...(canEdit('settings') && e.overridden ? [{ label: 'Rétablir le libellé d\'origine', icon: Undo2, onSelect: () => restoreLabel.mutate(id) }] : []),
+                            ...(canEdit('settings') && !isNative && e.origin === 'system' && e.activation !== 'auto' ? [{ label: 'Suivre le secteur', icon: Layers, onSelect: () => followSector.mutate(id) }] : []),
                             ...(canDelete('settings') ? [{ label: isNative ? 'Supprimer' : 'Désactiver', icon: Trash2, danger: true, onSelect: () => deactivate(e, depth) }] : []),
                           ]} />
                         </span>

@@ -8,7 +8,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import WizardBusinessFields, { draftData, draftProfiles, proposedRoleTemplates, PreviewBox, Tag, Alert, profileIcon } from './WizardBusinessFields';
-import WizardImpact from './WizardImpact';
+import WizardImpact, { WizardReferentials } from './WizardImpact';
 import './configuration-wizard.css';
 
 /* Assistant de configuration — reproduction de la maquette validée
@@ -265,6 +265,7 @@ export default function ConfigurationWizard() {
       ] as const).filter(r => steps.some(s => s.key === r[0])).map(r => <tr key={r[0]}><td className="ds-strong">{r[1]}</td><td>{r[2]}</td><td className="ds-actions"><button type="button" className="odoo-btn-link" disabled={busy} onClick={() => go(r[0])}>Modifier</button></td></tr>)}
     </tbody></table></div>
     {preview.data?.impact && <WizardImpact impact={preview.data.impact} />}
+    {preview.data?.referentials && <WizardReferentials preview={preview.data.referentials} />}
     {changeSet.data?.operations.some(o => o.execution === 'pending') && <Alert tone="info">Préparé dans le brouillon, sans effet à l’activation pour l’instant : {[...new Set(changeSet.data.operations.filter(o => o.execution === 'pending').map(o => stepLabel(o.step)))].join(', ')}.</Alert>}
     {changeSet.data?.simulation && <Alert tone="success" icon={<Check size={16} />}>{changeSet.data.simulation.note}</Alert>}
     {(pendingApproval || changeSet.data?.status === 'pending_approval') && <Alert tone="info" action={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/approvals')}>Voir les approbations</button>}><strong>En attente d’approbation.</strong> Ce changement retire des modules ou des capacités, ou change de secteur : un administrateur doit l’approuver. Il sera activé à son accord ; un refus laisse le brouillon modifiable.</Alert>}

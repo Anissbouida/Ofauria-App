@@ -86,10 +86,10 @@ export const specializationRepository = {
       }
       for (const [i, t] of (content.step_types ?? []).entries()) {
         const r = await client.query(
-          `INSERT INTO ref_entries (table_id, code, label, display_order, metadata)
-           VALUES ('production_step_types', $1, $2, $3, $4)
+          `INSERT INTO ref_entries (table_id, code, label, display_order, metadata, origin, system_label, specializations)
+           VALUES ('production_step_types', $1, $2::varchar, $3, $4, 'system', $2::varchar, ARRAY[$5::text])
            ON CONFLICT (table_id, code) DO NOTHING RETURNING id`,
-          [t.code, t.label, 300 + i * 10, JSON.stringify(t.metadata ?? {})]);
+          [t.code, t.label, 300 + i * 10, JSON.stringify(t.metadata ?? {}), code]);
         if (r.rows[0]) result.stepTypes++;
       }
       await client.query(

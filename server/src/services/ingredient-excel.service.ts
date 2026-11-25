@@ -93,10 +93,20 @@ function normalizeUnit(raw: unknown, extraUnits: ReadonlySet<string>): Ingredien
   return null;
 }
 
-function normalizeCategory(raw: unknown): string | null {
+/**
+ * Familles acceptées en plus de la liste historique : celles du référentiel
+ * `ingredient_categories` actives pour le secteur de la société (mig 698), par code ou par
+ * libellé. Sans cela, l'import d'une société hors boulangerie refusait ses propres familles.
+ */
+export type ExtraCategories = ReadonlyMap<string, string>;
+
+function normalizeCategory(raw: unknown, extra: ExtraCategories = new Map()): string | null {
   if (raw === null || raw === undefined) return null;
   const s = String(raw).trim();
   if (!s) return null;
+  if (extra.has(s)) return s;
+  if (extra.has(s.toLowerCase())) return s.toLowerCase();
+  for (const [code, label] of extra) if (label.toUpperCase() === s.toUpperCase()) return code;
   // Match exact sur le slug
   if (CATEGORY_VALUES.has(s)) return s;
   if (CATEGORY_VALUES.has(s.toLowerCase())) return s.toLowerCase();
@@ -136,7 +146,7 @@ function parseAllergens(v: unknown): { codes: string[]; unknown: string[] } {
  * Parse un workbook xlsx d'ingredients. Premiere feuille utilisee.
  * Premiere ligne = en-tete (ignoree). Lignes vides ignorees.
  */
-export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): Promise<ParsedIngredientsWorkbook> {
+export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set(), extraCategories: ExtraCategories = new Map()): Promise<ParsedIngredientsWorkbook> {
   const wb = await XLSX.read(buffer);
   const sheetName = wb.SheetNames[0];
   if (!sheetName) {
@@ -196,11 +206,11 @@ export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: Readon
       continue;
     }
 
-    const category = normalizeCategory(rawCategory);
+    const category = normalizeCategory(rawCategory, extraCategories);
     if (!category) {
       errors.push({
         sourceRow,
-        message: `Catégorie invalide (colonne B) : "${rawCategory ?? ''}". Valeurs autorisees : ${INGREDIENT_CATEGORIES.map(c => c.value).join(', ')}`,
+        message: `Catégorie invalide (colonne B) : "${rawCategory ?? ''}". Valeurs autorisees : ${(extraCategories.size ? [...extraCategories.keys()] : INGREDIENT_CATEGORIES.map(c => c.value)).join(', ')}`,
       });
       continue;
     }

@@ -1,5 +1,19 @@
 import api from './client';
 
+export interface RefScope {
+  lineage: string[];
+  sectors: { code: string; label: string; primary: boolean }[];
+  specializations: { code: string; label: string }[];
+  modules: string[];
+  history: { id: number; created_at: string; reason: string; activated: number; deactivated: number; kept_in_use: number }[];
+}
+export interface RefScopePreview {
+  lineage: string[];
+  activated: number;
+  deactivated: number;
+  tables: { table_id: string; label: string; activated: string[]; deactivated: string[]; active_after: number }[];
+}
+
 export const referentielApi = {
   /** Dashboard stats */
   dashboard: () =>
@@ -32,6 +46,27 @@ export const referentielApi = {
   /** Reactivate a soft-deleted entry */
   reactivate: (tableName: string, id: string) =>
     api.put(`/params/${tableName}/${id}/reactivate`).then(r => r.data.data),
+
+  /** Mig 698 — secteurs, spécialités et modules qui pilotent les référentiels + dernières synchronisations. */
+  scope: () =>
+    api.get('/params/scope').then(r => r.data.data) as Promise<RefScope>,
+
+  /** Mig 698 — effet d'un choix de secteurs/spécialités sur les référentiels, sans rien écrire. */
+  scopePreview: (sectors: string[], specializations: string[] = []) =>
+    api.get('/params/scope/preview', { params: { sectors: sectors.join(','), specializations: specializations.join(',') } })
+      .then(r => r.data.data) as Promise<RefScopePreview>,
+
+  /** Mig 698 — réaligne les valeurs « automatiques » sur le secteur configuré. */
+  scopeSync: () =>
+    api.post('/params/scope/sync', {}).then(r => r.data.data) as Promise<{ activated: number; deactivated: number; kept_in_use: number }>,
+
+  /** Mig 698 — rend une valeur au réglage du secteur. */
+  followSector: (tableName: string, id: string) =>
+    api.put(`/params/${tableName}/${id}/follow-sector`, {}).then(r => r.data.data),
+
+  /** Mig 698 — annule la surcharge du libellé d'une valeur livrée. */
+  restoreLabel: (tableName: string, id: string) =>
+    api.put(`/params/${tableName}/${id}/restore-label`, {}).then(r => r.data.data),
 
   /** Reorder entries */
   reorder: (tableName: string, orderedIds: string[]) =>

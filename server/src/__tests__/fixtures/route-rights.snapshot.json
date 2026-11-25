@@ -1327,6 +1327,8 @@
  ],
  "GET /params/:tableName/audit": null,
  "GET /params/dashboard": null,
+ "GET /params/scope": null,
+ "GET /params/scope/preview": null,
  "GET /params/tables": null,
  "GET /params/units/active": null,
  "GET /payment-runs": [
@@ -3699,6 +3701,7 @@
   "manager"
  ],
  "POST /params/:tableName": null,
+ "POST /params/scope/sync": null,
  "POST /payment-runs": [
   "admin",
   "manager"
@@ -5155,6 +5158,8 @@
  ],
  "PUT /params/:tableName/:id": null,
  "PUT /params/:tableName/:id/reactivate": null,
+ "PUT /params/:tableName/:id/follow-sector": null,
+ "PUT /params/:tableName/:id/restore-label": null,
  "PUT /params/:tableName/reorder": null,
  "PUT /payment-runs/transfer-format/:treasuryAccountId": [
   "admin",

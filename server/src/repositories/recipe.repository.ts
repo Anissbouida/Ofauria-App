@@ -348,6 +348,7 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT id, code, label, color, display_order
        FROM recipe_categories
+       WHERE is_active
        ORDER BY display_order, label`
     );
     return result.rows;

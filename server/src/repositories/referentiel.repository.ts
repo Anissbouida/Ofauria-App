@@ -20,8 +20,11 @@ export const refTableRepository = {
         WHEN rt.id = 'expense_categories' THEN (SELECT COUNT(*) FROM expense_categories WHERE is_active = true)
         WHEN rt.id = 'revenue_categories' THEN (SELECT COUNT(*) FROM revenue_categories WHERE is_active = true)
         WHEN rt.id = 'product_categories' THEN (SELECT COUNT(*) FROM categories)
-        WHEN rt.id = 'production_categories' THEN (SELECT COUNT(*) FROM recipe_categories)
-        ELSE 0 END::int AS active_count
+        WHEN rt.id = 'production_categories' THEN (SELECT COUNT(*) FROM recipe_categories WHERE is_active)
+        ELSE 0 END::int AS active_count,
+        (SELECT COUNT(*) FROM ref_entries re WHERE re.table_id = rt.id AND re.is_active
+            AND cardinality(re.sectors) + cardinality(re.specializations) > 0)::int AS sector_count,
+        (SELECT COUNT(*) FROM ref_entries re WHERE re.table_id = rt.id AND re.is_active AND re.origin = 'company')::int AS custom_count
       FROM ref_tables rt
       ORDER BY rt.display_order, rt.label
     `);
@@ -40,12 +43,22 @@ export const refEntryRepository = {
   async findAll(tableId: string, includeInactive = false) {
     const filter = includeInactive ? '' : ' AND re.is_active = true';
     const result = await db.query(
-      `SELECT re.* FROM ref_entries re
+      `SELECT re.*,
+              fn_ref_applicable(re.sectors, re.specializations, fn_active_sector_lineage(),
+                fn_active_specializations()) AS applicable
+         FROM ref_entries re
        WHERE re.table_id = $1${filter}
        ORDER BY re.display_order, re.label`,
       [tableId]
     );
     return result.rows;
+  },
+
+  /** Valeurs actives d'une table (celles du secteur de la société, mig 698) : code → libellé. */
+  async activeLabels(tableId: string): Promise<Map<string, string>> {
+    const result = await db.query(
+      `SELECT code, label FROM ref_entries WHERE table_id = $1 AND is_active AND code IS NOT NULL`, [tableId]);
+    return new Map(result.rows.map((r: Record<string, unknown>) => [r.code as string, r.label as string]));
   },
 
   async findById(tableId: string, id: string) {
@@ -71,8 +84,8 @@ export const refEntryRepository = {
     }
 
     const result = await db.query(
-      `INSERT INTO ref_entries (table_id, code, label, description, color, icon, display_order, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO ref_entries (table_id, code, label, description, color, icon, display_order, metadata, origin, activation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'company', 'forced_on') RETURNING *`,
       [tableId, data.code || null, data.label, data.description || null,
        data.color || null, data.icon || null, order, JSON.stringify(data.metadata || {})]
     );
@@ -106,7 +119,7 @@ export const refEntryRepository = {
   /** Soft-delete: deactivate an entry */
   async deactivate(tableId: string, id: string) {
     const result = await db.query(
-      `UPDATE ref_entries SET is_active = false, updated_at = NOW()
+      `UPDATE ref_entries SET is_active = false, activation = 'forced_off', updated_at = NOW()
        WHERE table_id = $1 AND id = $2 RETURNING *`,
       [tableId, id]
     );
@@ -116,11 +129,36 @@ export const refEntryRepository = {
   /** Reactivate an entry */
   async reactivate(tableId: string, id: string) {
     const result = await db.query(
-      `UPDATE ref_entries SET is_active = true, updated_at = NOW()
+      `UPDATE ref_entries SET is_active = true, activation = 'forced_on', updated_at = NOW()
        WHERE table_id = $1 AND id = $2 RETURNING *`,
       [tableId, id]
     );
     return result.rows[0];
+  },
+
+  /**
+   * Mig 698 : rend la valeur au réglage du secteur (activation « auto »). Elle redevient
+   * active si elle s'applique aux profils et spécialités de la société, inactive sinon.
+   */
+  async followSector(tableId: string, id: string) {
+    const result = await db.query(
+      `UPDATE ref_entries SET activation = 'auto', updated_at = NOW(),
+              is_active = fn_ref_applicable(sectors, specializations, fn_active_sector_lineage(),
+                            fn_active_specializations())
+       WHERE table_id = $1 AND id = $2 AND origin = 'system' RETURNING *`,
+      [tableId, id]
+    );
+    return result.rows[0] || null;
+  },
+
+  /** Mig 698 : annule la surcharge du libellé d'une valeur livrée. */
+  async restoreLabel(tableId: string, id: string) {
+    const result = await db.query(
+      `UPDATE ref_entries SET label = system_label, updated_at = NOW()
+       WHERE table_id = $1 AND id = $2 AND system_label IS NOT NULL RETURNING *`,
+      [tableId, id]
+    );
+    return result.rows[0] || null;
   },
 
   /** Reorder entries within a table */
@@ -177,6 +215,7 @@ const expenseCategoriesAdapter = {
       display_order: r.display_order,
       is_active: r.is_active,
       metadata: { requires_po: r.requires_po, level: r.level, parent_id: r.parent_id, default_tax_code: r.default_tax_code ?? null },
+      sectors: r.sectors ?? [],
       created_at: r.created_at,
       updated_at: r.created_at,
       // Hierarchy fields
@@ -254,6 +293,7 @@ const revenueCategoriesAdapter = {
       display_order: r.display_order,
       is_active: r.is_active,
       metadata: { level: r.level, parent_id: r.parent_id },
+      sectors: r.sectors ?? [],
       created_at: r.created_at,
       updated_at: r.created_at,
       _level: r.level,
@@ -354,6 +394,7 @@ const productCategoriesAdapter = {
 const productionCategoriesAdapter = {
   async findAll() {
     const result = await db.query('SELECT * FROM recipe_categories ORDER BY display_order, label');
+    // Mig 698 : is_active suit le secteur (catégories boulangères masquées ailleurs).
     return result.rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       table_id: 'production_categories',
@@ -363,8 +404,9 @@ const productionCategoriesAdapter = {
       color: r.color,
       icon: null,
       display_order: r.display_order,
-      is_active: true,
+      is_active: r.is_active !== false,
       metadata: {},
+      sectors: r.sectors ?? [],
       created_at: r.created_at,
       updated_at: r.created_at,
     }));
@@ -463,7 +505,9 @@ export const refDashboardRepository = {
     // Get orphan detection for generic ref_entries (entries never used)
     // We can't generically detect usage for all tables, so this returns basic stats
     const genericStats = await db.query(`
-      SELECT re.table_id, COUNT(*) FILTER (WHERE re.is_active = false)::int as inactive_count
+      -- Mig 698 : seules les valeurs désactivées par la société comptent ; le catalogue des
+      -- autres secteurs (inactif par construction) n'est pas une anomalie.
+      SELECT re.table_id, COUNT(*) FILTER (WHERE re.is_active = false AND re.activation = 'forced_off')::int as inactive_count
       FROM ref_entries re
       GROUP BY re.table_id
     `);

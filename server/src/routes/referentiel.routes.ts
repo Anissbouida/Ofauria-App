@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { refTableController, refEntryController, refDashboardController } from '../controllers/referentiel.controller.js';
+import { refTableController, refEntryController, refDashboardController, refScopeController } from '../controllers/referentiel.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
@@ -22,6 +22,12 @@ router.get('/units/active', authenticate, asyncHandler(async (_req, res) => {
   res.json({ success: true, data: await activeUnits() });
 }));
 
+// Portée sectorielle des référentiels (mig 698) : contexte, aperçu d'un choix de secteur,
+// resynchronisation. Déclarées avant « /:tableName ».
+router.get('/scope', authenticate, authorizeSettings('referentiel'), asyncHandler(refScopeController.context));
+router.get('/scope/preview', authenticate, authorizeSettings('referentiel'), asyncHandler(refScopeController.preview));
+router.post('/scope/sync', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReactivateSchema), asyncHandler(refScopeController.sync));
+
 // CRUD on entries of a specific table
 // Lecture ouverte au groupe WAREHOUSE (inclut le magasinier) : les référentiels sont des
 // listes de valeurs non sensibles, et le magasinier a besoin de lire p.ex. les types de
@@ -33,6 +39,8 @@ router.put('/:tableName/reorder', authenticate, authorizeSettings('referentiel',
 router.get('/:tableName/audit', authenticate, authorizeSettings('referentiel'), asyncHandler(refEntryController.audit));
 router.put('/:tableName/:id', authenticate, authorizeSettings('referentiel', 'edit'), validate(refEntrySchema), asyncHandler(refEntryController.update));
 router.put('/:tableName/:id/reactivate', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReactivateSchema), asyncHandler(refEntryController.reactivate));
+router.put('/:tableName/:id/follow-sector', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReactivateSchema), asyncHandler(refScopeController.followSector));
+router.put('/:tableName/:id/restore-label', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReactivateSchema), asyncHandler(refScopeController.restoreLabel));
 router.delete('/:tableName/:id', authenticate, authorizeSettings('referentiel', 'delete'), asyncHandler(refEntryController.remove));
 
 export default router;

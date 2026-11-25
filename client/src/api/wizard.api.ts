@@ -36,7 +36,7 @@ export interface WizardSession {
 }
 export const wizardApi = {
   catalog: () => api.get('/settings/assistant/catalog').then(r => r.data.data as WizardCatalog),
-  preview: (id: string) => api.get(`/settings/assistant/${id}/preview`).then(r => r.data.data as { revision: number; issues: WizardSession['issues']; impact: ModuleImpact | null }),
+  preview: (id: string) => api.get(`/settings/assistant/${id}/preview`).then(r => r.data.data as { revision: number; issues: WizardSession['issues']; impact: ModuleImpact | null; referentials?: import('./referentiel.api').RefScopePreview }),
   list: () => api.get('/settings/assistant').then(r => r.data.data as WizardSession[]),
   create: (kind: WizardSession['kind'], mode: WizardMode) => api.post('/settings/assistant', { kind, mode }).then(r => r.data.data as WizardSession),
   save: (id: string, input: Pick<WizardSession, 'mode' | 'current_step' | 'revision' | 'answers'>) => api.put(`/settings/assistant/${id}`, input).then(r => r.data.data as WizardSession),

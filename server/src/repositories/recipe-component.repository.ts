@@ -117,17 +117,11 @@ export const recipeComponentRepository = {
   // Rôles configurables (ref_entries table_id='component_roles')
   async listRoles() {
     const r = await db.query(
-      // M8-06 : rôles du secteur actif (ou de son secteur de base) ; sans metadata.sectors = tous.
-      `WITH s AS (
-         SELECT cs.sector_pack AS code, sp.base_sector FROM company_settings cs
-           LEFT JOIN sector_packs sp ON sp.code = cs.sector_pack WHERE cs.id = 1
-       )
-       SELECT code, label, description, display_order
+      // Mig 698 : le rattachement au secteur est porté par is_active (synchronisation
+      // fn_ref_sync_sectors) ; l'ancien filtre metadata.sectors (M8-06) n'a plus lieu d'être.
+      `SELECT code, label, description, display_order
        FROM ref_entries e
        WHERE table_id = 'component_roles' AND is_active = true
-         AND (NOT (COALESCE(e.metadata, '{}'::jsonb) ? 'sectors')
-              OR NOT EXISTS (SELECT 1 FROM s)
-              OR EXISTS (SELECT 1 FROM s WHERE e.metadata->'sectors' ? s.code OR (s.base_sector IS NOT NULL AND e.metadata->'sectors' ? s.base_sector)))
        ORDER BY display_order, label`
     );
     return r.rows;

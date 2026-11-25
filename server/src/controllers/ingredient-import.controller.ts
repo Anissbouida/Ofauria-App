@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { capitalizeFirst } from '../utils/text.js';
+
+import { refEntryRepository } from '../repositories/referentiel.repository.js';
 import {
   parseIngredientWorkbook,
   generateIngredientWorkbook,
@@ -154,7 +156,7 @@ export const ingredientImportController = {
       return;
     }
     try {
-      const parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
+      const parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes(), await refEntryRepository.activeLabels('ingredient_categories'));
       const plan = await buildPlan(parsed.rows);
 
       res.json({
@@ -197,7 +199,7 @@ export const ingredientImportController = {
     }
     let parsed;
     try {
-      parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
+      parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes(), await refEntryRepository.activeLabels('ingredient_categories'));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur de parsing';
       res.status(400).json({ success: false, error: { message: msg } });

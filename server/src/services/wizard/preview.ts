@@ -3,6 +3,7 @@ import { sectorRepository } from '../../repositories/sector.repository.js';
 import { impactPreview } from '../module-impact.js';
 import { wizardCatalog, validateWizardCatalog } from './catalog.js';
 import { wizardIssues, type WizardAnswers, type WizardMode } from './steps.js';
+import { refScopePreview } from '../referential-scope.js';
 
 /** Read-only impact of a saved draft. Not a transaction simulation or approval. */
 export async function previewWizardSession(id: string) {
@@ -19,7 +20,12 @@ export async function previewWizardSession(id: string) {
   try {
     const features = answers.modules?.data?.features;
     const plan = await sectorRepository.previewWizardSelection(primary, Array.isArray(secondary) ? secondary : [], modules, Array.isArray(features) ? features : undefined);
-    return { revision: row.revision, issues, impact: await impactPreview(plan.diff, sectorRepository.featureLabel(plan.current)) };
+    // Mig 698 : référentiels que l'activation fera apparaître ou disparaître (secteurs + spécialités).
+    const specialties = answers.specialties?.data?.selected;
+    const referentials = await refScopePreview(
+      [primary, ...(Array.isArray(secondary) ? secondary : [])].filter((c): c is string => typeof c === 'string'),
+      Array.isArray(specialties) ? specialties.filter((c): c is string => typeof c === 'string') : []);
+    return { revision: row.revision, issues, impact: await impactPreview(plan.diff, sectorRepository.featureLabel(plan.current)), referentials };
   } catch (e) {
     if ((e as { statusCode?: number }).statusCode !== 409) throw e;
     issues.push({ step: 'modules', severity: 'blocking', message: (e as Error).message });

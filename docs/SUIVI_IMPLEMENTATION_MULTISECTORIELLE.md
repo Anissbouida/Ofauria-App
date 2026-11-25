@@ -152,3 +152,19 @@ Validation : 648 tests serveur réussis, 0 échec ; 6 tests purs des modèles ; 
 | Recette | Les 7 scénarios de `wizard-industry-scenarios.db.test.ts` passent de bout en bout, activation comprise |
 
 Restent : lot 14 (versions et éditeur de profils), lot 2 (bascule des lectures sur le résolveur), données de démonstration isolées et purgeables, archétypes de rôles neutres. Après un changement de `shared/`, redémarrer le serveur Vite du checkout principal.
+
+## Neuvième incrément — 25 novembre 2026 : référentiels pilotés par le secteur (mig 698)
+
+Détail : [`AUDIT_REFERENTIELS_SECTORIELS.md`](AUDIT_REFERENTIELS_SECTORIELS.md).
+
+| Élément | Réalisé |
+|---|---|
+| Cause | Les valeurs des référentiels étaient posées par les migrations pour toute société : une société BTP voyait Farines, Boulanger, Pétrin |
+| Modèle | Trois niveaux par valeur (commun, sectoriel, personnalisé), héritage par `base_sector`, union des activités, spécialités, surcharge du libellé, activation automatique ou forcée |
+| Mécanisme | `fn_ref_sync_sectors()` déclenchée par tout changement de `company_sectors` ou `company_specializations` ; les écrans continuent de lire `is_active` |
+| Intégrité | Rien n'est supprimé ; une valeur utilisée par des données reste active ; journal `ref_sector_sync_log` |
+| Catalogue | Familles d'articles, unités, fonctions, équipements, étapes et activités pour les 13 profils de l'assistant |
+| Écrans | Paramètres › Référentiel (bandeau du secteur, étiquettes, catalogue des autres secteurs) ; étape Révision de l'assistant (listes proposées et retirées) |
+| Tests | `referentiels-sectoriels.db.test.ts` : 12 cas, dont l'aller-retour BTP → boulangerie sans écart |
+
+Reste : rôles d'accès boulangers dans `shared`, énumérations serveur qui doublent un référentiel, vocabulaire « fournée » en dur, contenants de production posés pour toute société (liste complète au § 5 de l'audit).

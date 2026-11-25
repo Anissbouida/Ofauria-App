@@ -64,6 +64,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
 type Pipeline = Record<string, any>;
 
 /** Extract error message from Axios error or plain Error */
+/**
+ * Responsables proposables : les rôles de fabrication historiques s'il y en a, sinon tous les
+ * utilisateurs. Hors boulangerie, ces rôles n'existent pas : la liste restait vide.
+ */
+function responsibleCandidates<T extends { role?: unknown }>(users: T[]): T[] {
+  const makers = users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role)));
+  return makers.length ? makers : users;
+}
+
 function getErrorMsg(err: unknown): string {
   const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
   return axiosErr?.response?.data?.error?.message || (err as Error)?.message || 'Erreur inconnue';
@@ -1064,7 +1073,7 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
             size="md"
             value={responsibleUserId}
             onChange={setResponsibleUserId}
-            options={users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => ({
+            options={responsibleCandidates(users).map(u => ({
               id: String(u.id),
               label: `${String(u.firstName || u.first_name)} ${String(u.lastName || u.last_name)}`.trim(),
             }))}

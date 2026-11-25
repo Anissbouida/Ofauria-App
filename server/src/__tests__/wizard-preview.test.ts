@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../config/database.js', () => ({ db: { query: vi.fn() } }));
 vi.mock('../repositories/sector.repository.js', () => ({ sectorRepository: { previewWizardSelection: vi.fn(), featureLabel: vi.fn() } }));
 vi.mock('../services/module-impact.js', () => ({ impactPreview: vi.fn() }));
+// Mig 698 : l'aperçu des référentiels a sa propre suite (db/referentiels-sectoriels).
+vi.mock('../services/referential-scope.js', () => ({ refScopePreview: vi.fn(async () => ({ lineage: [], tables: [], activated: 0, deactivated: 0 })) }));
 vi.mock('../services/wizard/catalog.js', () => ({ wizardCatalog: vi.fn(), validateWizardCatalog: vi.fn(() => []) }));
 import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
