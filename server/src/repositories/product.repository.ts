@@ -5,6 +5,28 @@ const foldSql = (expr: string) =>
   `translate(lower(${expr}), 'àáâäãåçèéêëìíîïñòóôöõùúûüýÿ', 'aaaaaaceeeeiiiinooooouuuuyy')`;
 
 export const productRepository = {
+  /**
+   * Fiche produit en blocs (refonte Stock) : stock par établissement, lots actifs, numéros de
+   * série, ventes des 30 derniers jours, fiches techniques. Lecture seule.
+   */
+  async overview(id: string) {
+    const [stock, lots, serials, sales, recipes] = await Promise.all([
+      db.query(`SELECT s.name AS store_name, pss.stock_quantity::float8 AS stock, COALESCE(pss.vitrine_quantity, 0)::float8 AS vitrine,
+                       COALESCE(pss.reserved_quantity, 0)::float8 AS reserved
+                  FROM product_store_stock pss JOIN stores s ON s.id = pss.store_id WHERE pss.product_id = $1 ORDER BY s.name`, [id]),
+      db.query(`SELECT id, lot_number, produced_at, expires_at, status, quantity_total::float8 AS quantity_total,
+                       (COALESCE(backroom_qty, 0) + COALESCE(vitrine_qty, 0))::float8 AS remaining
+                  FROM product_lots WHERE product_id = $1 AND status IN ('active', 'pending_release')
+                 ORDER BY expires_at NULLS LAST, produced_at DESC LIMIT 50`, [id]),
+      db.query(`SELECT status, COUNT(*)::int AS n FROM product_serials WHERE product_id = $1 GROUP BY status`, [id]),
+      db.query(`SELECT COALESCE(SUM(si.quantity), 0)::float8 AS quantity, COALESCE(SUM(si.subtotal), 0)::float8 AS amount, COUNT(DISTINCT si.sale_id)::int AS tickets
+                  FROM sale_items si JOIN sales sa ON sa.id = si.sale_id
+                 WHERE si.product_id = $1 AND sa.created_at >= now() - interval '30 days'`, [id]),
+      db.query(`SELECT id, name, archived_at IS NOT NULL AS archived FROM recipes WHERE product_id = $1 ORDER BY archived_at NULLS FIRST, name LIMIT 10`, [id]),
+    ]);
+    return { stock: stock.rows, lots: lots.rows, serials: serials.rows, sales: sales.rows[0], recipes: recipes.rows };
+  },
+
   async findAll(params: { categoryId?: number; categoryIds?: number[]; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
     const conditions: string[] = [];
     const values: unknown[] = [];

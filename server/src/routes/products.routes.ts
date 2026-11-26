@@ -1,4 +1,5 @@
 import { conversionHandlers, createConversionSchema, updateConversionSchema } from '../controllers/item-conversions.controller.js';
+import { productRepository } from '../repositories/product.repository.js';
 import { Router, json as expressJson } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -39,6 +40,10 @@ router.post('/:id/conversions', authenticate, validateUuidParams('id'), can('pro
 router.put('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('products.edit'), validate(updateConversionSchema), asyncHandler(productConversions.update));
 router.delete('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('products.edit'), asyncHandler(productConversions.remove));
 router.get('/:id', authenticate, asyncHandler(productController.getById));
+// Refonte Stock : fiche produit en blocs (stock, lots, séries, ventes, fiches techniques).
+router.get('/:id/overview', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await productRepository.overview(String(req.params.id)) });
+}));
 router.post('/', authenticate, can('products.create'), validate(createProductSchema), asyncHandler(productController.create));
 // Import CSV (export Loyverse) + suppression en masse.
 // Parser local elargi : ces deux routes sont exclues du parser global 10 Ko

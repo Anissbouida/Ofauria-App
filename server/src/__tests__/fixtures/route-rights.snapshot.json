@@ -1921,6 +1921,7 @@
  "GET /products/:id/conversions": null,
  "GET /products/:id/effective-deadline": null,
  "GET /products/:id/label-data": null,
+ "GET /products/:id/overview": null,
  "GET /products/:id/pricing-tiers": null,
  "GET /products/:id/recycle-destinations": null,
  "GET /products/:id/stock-history": null,

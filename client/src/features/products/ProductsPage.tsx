@@ -1,6 +1,7 @@
 import { useWorkshops } from '../../api/production.api';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import SalesPageShell from '../sales/SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
@@ -99,6 +100,8 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Record<string, any> | null>(null);
+  const navigate = useNavigate();
+  const [searchParamsForEdit, setSearchParamsForEdit] = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'low' | 'out'>('all');
   const [sortKey, setSortKey] = useState<string>('name');
@@ -235,6 +238,14 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
   });
 
   const products = productsData?.data || [];
+  // Fiche produit (refonte Stock) : « Modifier » y renvoie ici avec ?edit=<id>.
+  const editId = searchParamsForEdit.get('edit');
+  useEffect(() => {
+    if (!editId || !products.length) return;
+    const found = products.find((x: Record<string, any>) => x.id === editId);
+    if (found) { setEditingProduct(found); setShowForm(true); }
+    searchParamsForEdit.delete('edit'); setSearchParamsForEdit(searchParamsForEdit, { replace: true });
+  }, [editId, products.length]);
 
   // Stats
   const totalProducts = products.length;
@@ -379,7 +390,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
                 className={`bg-white rounded-xl border shadow-sm overflow-hidden group hover:shadow-md transition-all cursor-pointer ${
                   !isAvailable ? 'border-gray-200 opacity-60' : isOut ? 'border-red-200' : isLow ? 'border-amber-200' : 'border-gray-100'
                 }`}
-                onClick={() => { setEditingProduct(p); setShowForm(true); }}
+                onClick={() => navigate(`/products/${p.id}`)}
               >
                 {/* Image */}
                 <div className="relative aspect-square bg-gray-50 overflow-hidden">
@@ -488,7 +499,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
                 const isOut = stock <= 0;
 
                 return (
-                  <tr key={p.id as string} className={selectedIds.has(p.id as string) ? 'ds-selected' : undefined} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
+                  <tr key={p.id as string} className={selectedIds.has(p.id as string) ? 'ds-selected' : undefined} onClick={() => navigate(`/products/${p.id}`)}>
                     <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={selectedIds.has(p.id as string)}
                         onChange={() => toggleSelect(p.id as string)}
@@ -575,7 +586,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
                       })()}
                     </td>
                     <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" onClick={() => { setEditingProduct(p); setShowForm(true); }} className="odoo-btn-secondary ds-btn-sm">Modifier</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowForm(true); }} className="odoo-btn-secondary ds-btn-sm">Modifier</button>
                       <RowMenu label={`Plus d'actions sur ${p.name as string}`} items={[
                         { label: p.is_available ? 'Désactiver' : 'Activer', icon: p.is_available ? EyeOff : Eye, onSelect: () => toggleMutation.mutate(p.id as string) },
                         { label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => askDelete(p.id as string) },
