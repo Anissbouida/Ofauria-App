@@ -27,7 +27,9 @@ const big = { fontSize: 22, padding: '18px 22px', borderRadius: 14, minHeight: 6
 export default function OperatorStationPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { sectorLabel } = usePermissions();
+  const { sectorLabel, hasFeature } = usePermissions();
+  // Audit des profils : « pesée » seulement avec la capacité Pesée, sinon « préparation ».
+  const weighWord = hasFeature('pesage') ? 'la pesée' : 'la préparation';
   const [planId, setPlanId] = useState<string | null>(null);
   const [lineId, setLineId] = useState<string | null>(null);
   const [entry, setEntry] = useState('');
@@ -104,7 +106,7 @@ export default function OperatorStationPage() {
 
             {bon && bon.status === 'genere' && (
               <button type="button" className="odoo-btn-primary" style={big} disabled={prepare.isPending} onClick={() => prepare.mutate()}>
-                <Scale size={24} /> Commencer la pesée ({sectorLabel('doc_bon_sortie', 'Bon de sortie')} {bon.numero})
+                <Scale size={24} /> Commencer {weighWord} ({sectorLabel('doc_bon_sortie', 'Bon de sortie')} {bon.numero})
               </button>
             )}
 
@@ -135,7 +137,7 @@ export default function OperatorStationPage() {
                       ))}
                     </div>
                     <button type="button" className="odoo-btn-primary" style={{ ...big, fontSize: 26 }} disabled={!entryOk || weigh.isPending} onClick={() => weigh.mutate()}>
-                      <Check size={28} /> Valider la pesée
+                      <Check size={28} /> Valider {weighWord}
                     </button>
                   </div>
                 )}

@@ -854,7 +854,7 @@ export default function PlanDetailPage() {
               <th>N° lot</th>
               <th>Date de production</th>
               <th>Produit par</th>
-              <th>DLC</th>
+              {hasFeature('dlc_ddm') && <th>DLC</th>}
               <th>Cycle de vie</th>
               <th>Statut</th>
               <th style={{ width: 110 }}></th>
@@ -957,11 +957,11 @@ export default function PlanDetailPage() {
                     {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : empty}
                   </td>
                   <td style={{ color: 'var(--ds-muted)' }}>{isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : empty}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  {hasFeature('dlc_ddm') && <td style={{ whiteSpace: 'nowrap' }}>
                     {isProduced && dlcDate
                       ? (dlcDate <= now ? <StatusTag tone="late" label="Expiré" /> : <span style={{ color: 'var(--ds-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
                       : empty}
-                  </td>
+                  </td>}
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {isProduced ? (
                       saleType === 'dlv' ? <span className="odoo-tag odoo-tag-green">Multi-jours (DLC)</span>
@@ -1629,7 +1629,7 @@ export default function PlanDetailPage() {
                       <thead><tr>
                         <th>{T.ingredient}</th>
                         <th className="ds-num">Pour la {T.recipeLc}</th>
-                        <th className="ds-num">À peser</th>
+                        <th className="ds-num">{hasFeature('pesage') ? 'À peser' : 'À sortir'}</th>
                       </tr></thead>
                       <tbody>
                         {recipeIngredients.map((ri, idx) => {

@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import type { ReactNode } from 'react';
 import { money } from '../../utils/money';
 import { format } from 'date-fns';
@@ -62,6 +63,8 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
 
 export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] }) {
   const T = useProdTerms();
+  // Audit des profils : colonne DLC des lots consommés avec la capacité Dates limites.
+  const dlcOn = usePermissions().hasFeature('dlc_ddm');
   if (usage.length === 0) return null;
   // Mig 663 : les lots sont rattachés à l'article de l'ordre qui les a consommés. Un groupe
   // par article ; les sorties anciennes non rattachées restent dans « Plan entier ».
@@ -90,7 +93,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
               <th>Lot fournisseur</th>
               <th>Fournisseur</th>
               <th>Reçu le</th>
-              <th>DLC</th>
+              {dlcOn && <th>DLC</th>}
               <th className="ds-num">Quantité utilisée</th>
             </tr>
           </thead>
@@ -114,11 +117,11 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
                     <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(u.supplier_lot_number as string) || <span style={{ color: 'var(--ds-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
                     <td style={{ color: 'var(--ds-muted)' }}>{u.supplier_name ? String(u.supplier_name) : '—'}</td>
                     <td style={{ color: 'var(--ds-muted)' }}>{u.received_at ? format(new Date(u.received_at as string), 'dd/MM/yyyy') : '—'}</td>
-                    <td>
+                    {dlcOn && <td>
                       {expDate
                         ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--ds-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
                         : '—'}
-                    </td>
+                    </td>}
                     <td className="ds-num">
                       <strong>{parseFloat(u.quantity_used as string).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}</strong>
                       <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{(u.ingredient_unit as string) || ''}</span>
