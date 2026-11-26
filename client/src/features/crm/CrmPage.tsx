@@ -258,7 +258,7 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
       }} />}>
       <FormSection title="Affaire">
         <FormField label="Affaire" htmlFor="op-title" required error={titleError}>
-          <input id="op-title" className="ds-input" maxLength={200} value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. : buffet d'inauguration 200 personnes" autoFocus />
+          <input id="op-title" className="ds-input" maxLength={200} value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. : projet d'équipement des bureaux" autoFocus />
         </FormField>
       </FormSection>
       <FormSection title="Client ou prospect">

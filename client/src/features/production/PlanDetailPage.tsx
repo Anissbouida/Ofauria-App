@@ -1443,7 +1443,7 @@ export default function PlanDetailPage() {
                   onChange={(e) => setBannerRejectReason(e.target.value)}
                   autoFocus
                   rows={2}
-                  placeholder="Ex : quantité insuffisante sur la farine, lot mal identifié..."
+                  placeholder="Ex : quantité insuffisante, lot mal identifié..."
                 />
                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                   <button onClick={() => { setBannerRejecting(false); setBannerRejectReason(''); }} className="odoo-btn-secondary">

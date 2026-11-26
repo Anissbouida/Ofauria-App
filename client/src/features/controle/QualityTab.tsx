@@ -259,7 +259,7 @@ export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = ''
               options={activeTemplates.map(t => ({ id: String(t.id), label: t.name as string }))} />
           </FormField>
           <FormField label="Date" htmlFor="insp-date"><input id="insp-date" className="ds-input" type="date" value={date} onChange={e => setDate(e.target.value)} /></FormField>
-          <FormField label="Intitulé" htmlFor="insp-title" required><input id="insp-title" className="ds-input" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. Lot farine LI-260610" /></FormField>
+          <FormField label="Intitulé" htmlFor="insp-title" required><input id="insp-title" className="ds-input" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. Lot LI-260610" /></FormField>
           <FormField label="Référence (optionnel)" htmlFor="insp-ref"><input id="insp-ref" className="ds-input" type="text" value={reference} onChange={e => setReference(e.target.value)} /></FormField>
         </div>
       </FormSection>

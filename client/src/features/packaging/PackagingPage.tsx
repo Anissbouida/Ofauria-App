@@ -340,7 +340,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
           <FormField label="Nom" htmlFor="pkg-f1" required>
             <input id="pkg-f1" type="text" required value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Caissette alvéolée brownie"
+              placeholder="Ex : carton d'emballage 40×30"
               className="ds-input" />
           </FormField>
 

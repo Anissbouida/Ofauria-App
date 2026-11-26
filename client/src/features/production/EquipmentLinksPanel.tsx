@@ -69,7 +69,7 @@ function NewEquipmentForm({ onDone }: { onDone: () => void }) {
   });
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--ds-border, #e5e7eb)', fontSize: 13 }}>
-      <input className="ds-input sm" style={{ width: 200 }} placeholder="Nom (Four à sole 1…)" value={f.nom} aria-label="Nom de l'équipement"
+      <input className="ds-input sm" style={{ width: 200 }} placeholder="Nom (Machine 1…)" value={f.nom} aria-label="Nom de l'équipement"
         onChange={e => setF(x => ({ ...x, nom: e.target.value }))} />
       <select className="ds-input sm" style={{ width: 'auto' }} value={f.type} aria-label="Type d'équipement" onChange={e => setF(x => ({ ...x, type: e.target.value }))}>
         <option value="">Type…</option>

@@ -1,3 +1,4 @@
+import { useProjectTerms } from './useProjectTerms';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +24,7 @@ const SCALES: Record<Scale, { label: string; days: number; col: number }> = {
 const day = (d: string) => new Date(`${d.slice(0, 10)}T00:00:00`);
 
 export default function ProjectsPlanning() {
+  const PT = useProjectTerms();
   const navigate = useNavigate();
   const [scale, setScale] = useState<Scale>('six');
   const [shift, setShift] = useState(0);
@@ -79,9 +81,9 @@ export default function ProjectsPlanning() {
       </div>
 
       {!projects.length ? (
-        <StatusBanner tone="info" icon={GanttChartSquare} title="Aucun projet ouvert">Les projets en brouillon, en cours ou en pause s’affichent ici.</StatusBanner>
+        <StatusBanner tone="info" icon={GanttChartSquare} title={`Aucun ${PT.projectLc} ouvert`}>Les projets en brouillon, en cours ou en pause s’affichent ici.</StatusBanner>
       ) : (
-        <section className="prj-panel prj-gantt" aria-label="Planning des projets">
+        <section className="prj-panel prj-gantt" aria-label={`Planning : ${PT.projectsLc}`}>
           <div className="prj-gantt-inner">
             <div className="prj-gantt-row head">
               <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '12px', fontWeight: 500, color: 'var(--ds-muted)' }}>Projet / tâche</div>

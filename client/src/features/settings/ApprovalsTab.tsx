@@ -143,7 +143,7 @@ export default function ApprovalsTab() {
           <SectionHeader title={<span id="approval-new-title">Nouvelle règle</span>} />
           <div className="ds-form-grid">
             <FormField label="Libellé" htmlFor="approval-new-label" required>
-              <input id="approval-new-label" className="ds-input" value={draft.label} placeholder="Ex. BC fournisseur farine" onChange={e => setDraft({ ...draft, label: e.target.value })} />
+              <input id="approval-new-label" className="ds-input" value={draft.label} placeholder="Ex. BC fournisseur principal" onChange={e => setDraft({ ...draft, label: e.target.value })} />
             </FormField>
             <FormField label="Type de pièce" htmlFor="approval-new-doctype" required>
               <select id="approval-new-doctype" className="ds-input" value={draft.docType} onChange={e => setDraft({ ...draft, docType: e.target.value as ApprovalDocType, condition: null })}>

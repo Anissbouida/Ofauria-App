@@ -1039,7 +1039,7 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
         </table>
       </DataPanel>
       <FormField label="Commentaire (imprimé sur l'avoir)" htmlFor="cn-note">
-        <input id="cn-note" type="text" value={note} onChange={e => setNote(e.target.value)} className="ds-input" placeholder="ex. 12 baguettes rendues le 03/11" />
+        <input id="cn-note" type="text" value={note} onChange={e => setNote(e.target.value)} className="ds-input" placeholder="ex. 12 articles retournés le 03/11" />
       </FormField>
     </Modal>
   );

@@ -189,7 +189,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             {/* ── Identification ── */}
             <Section icon={<Package size={13} />} title="Identification">
               <Field label={title ? "Nom de l'article" : `Nom (${ingTermLc})`} required error={err('name')}>
-                <input className="ds-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : Farine T55" autoFocus />
+                <input className="ds-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : article acheté" autoFocus />
               </Field>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '0.75rem' }}>
                 <Field label="Unité de stock">
@@ -262,7 +262,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
                 <Field label="Catégorie" required={mode === 'create'} error={err('categoryId')}>
                   <SearchSelect options={categoryOptions} value={form.categoryId}
-                    onChange={id => set('categoryId', id)} placeholder="Rechercher : farine, beurre…" width="100%" />
+                    onChange={id => set('categoryId', id)} placeholder="Rechercher une catégorie…" width="100%" />
                 </Field>
                 <Field label="Fournisseur habituel">
                   <input className="ds-input" list="ingredient-form-suppliers" value={form.supplier}

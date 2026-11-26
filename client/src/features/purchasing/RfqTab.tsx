@@ -201,7 +201,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
           <FormSection title="Demande">
             <FormField label="Objet" htmlFor="rfq-title" required error={titleTouched && !title.trim() ? 'Indiquez l\'objet de la demande de prix.' : undefined}>
               <input id="rfq-title" className="ds-input" value={title} maxLength={200} aria-required="true" onChange={e => setTitle(e.target.value)} onBlur={() => setTitleTouched(true)}
-                placeholder="Ex. : Farine et beurre novembre, Four à sole neuf…" autoFocus />
+                placeholder="Ex. : Fournitures de novembre, équipement neuf…" autoFocus />
             </FormField>
             <div className="ds-form-grid">
               <FormField label="Réponse avant le" htmlFor="rfq-deadline">

@@ -1,3 +1,4 @@
+import { useProjectTerms } from './useProjectTerms';
 import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,10 +40,11 @@ const PAGE_LEADS: Record<string, string> = {
 };
 
 export default function ProjectsPage() {
+  const PT = useProjectTerms();
   const { hasModule, sectorLabel } = usePermissions();
   const views: ModuleView<View>[] = [
     { key: 'overview', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard' },
-    { key: 'projects', label: 'Projets', icon: FolderKanban, section: 'operations' },
+    { key: 'projects', label: PT.projects, icon: FolderKanban, section: 'operations' },
     { key: 'planning', label: 'Planning', icon: GanttChartSquare, section: 'operations' },
     { key: 'tasks', label: 'Tâches ouvertes', icon: ListChecks, section: 'operations' },
     { key: 'time', label: 'Temps passé', icon: Timer, section: 'operations' },
@@ -56,7 +58,7 @@ export default function ProjectsPage() {
   return (
     <ModuleShell title={sectorLabel('projects', 'Projets')} views={views} current={current} onSelect={select} flush
       actions={(current?.key === 'projects' || current?.key === 'overview') ? (
-        <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouveau projet</button>
+        <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouveau · {PT.projectLc}</button>
       ) : undefined}>
       <ModulePage title={current?.label} summary={current ? PAGE_LEADS[current.key] : undefined}>
         {current?.key === 'overview' && <Overview />}
@@ -143,6 +145,7 @@ type Layout = 'cards' | 'list';
 const LAYOUT_KEY = 'kalum.projects.layout';
 
 function ProjectList({ onPlanning }: { onPlanning: () => void }) {
+  const PT = useProjectTerms();
   const { user } = useAuth();
   const [chip, setChip] = useState<Chip>('open');
   const [layout, setLayoutState] = useState<Layout>(() => { try { return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'cards'; } catch { return 'cards'; } });
@@ -171,7 +174,7 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
   const done = all.filter(p => p.status === 'completed' && projectRevenue(p) > 0);
   const doneRev = done.reduce((t, p) => t + projectRevenue(p), 0);
   const doneMargin = doneRev ? Math.round((doneRev - done.reduce((t, p) => t + projectCost(p), 0)) / doneRev * 100) : null;
-  const CHIPS: Array<[Chip, string]> = [['open', 'Actifs'], ['attention', 'À surveiller'], ['mine', 'Mes projets'], ['completed', 'Terminés'], ['all', 'Tous']];
+  const CHIPS: Array<[Chip, string]> = [['open', 'Actifs'], ['attention', 'À surveiller'], ['mine', `Mes ${PT.projectsLc}`], ['completed', 'Terminés'], ['all', 'Tous']];
 
   return (
     <div className="prj">
@@ -180,7 +183,7 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
         <KpiCard label="À surveiller" value={attention.length} tone={attention.length ? 'red' : undefined}
           sub={attention.length ? `${lateCount} en retard · ${attention.length - lateCount} autre${attention.length - lateCount > 1 ? 's' : ''}` : 'rien à signaler'} />
         <KpiCard label="Heures ce mois" value={ov ? `${h1(ov.time.hours)} h` : '…'} sub={ov ? `coût ${money(ov.time.cost, { decimals: 0 })}` : undefined} />
-        <KpiCard label="Marge des projets terminés" value={doneMargin === null ? '—' : `${doneMargin} %`}
+        <KpiCard label={`Marge · ${PT.projectsLc} terminés`} value={doneMargin === null ? '—' : `${doneMargin} %`}
           tone={doneMargin === null ? undefined : doneMargin < 0 ? 'red' : 'green'}
           sub={`${done.length} projet${done.length > 1 ? 's' : ''} facturé${done.length > 1 ? 's' : ''}`} />
       </KpiGrid>
@@ -196,7 +199,7 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
       <div className="prj-toolbar">
         <label className="prj-search">
           <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-          <input type="search" aria-label="Rechercher un projet" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, nom, client…" />
+          <input type="search" aria-label={`Rechercher : ${PT.projectLc}`} value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, nom, client…" />
         </label>
         <div className="prj-views" role="group" aria-label="Affichage">
           <button type="button" className={layout === 'cards' ? 'active' : ''} aria-pressed={layout === 'cards'} onClick={() => setLayout('cards')}><LayoutGrid size={14} /> Cartes</button>
@@ -207,14 +210,14 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
 
       {isLoading ? <Loading /> : !rows.length ? (
         (all.length || search)
-          ? <NoResultState text="Aucun projet ne correspond aux filtres." onReset={() => { setChip('all'); setSearchInput(''); setSearch(''); }} />
-          : <EmptyState icon={FolderKanban} title="Aucun projet" text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
+          ? <NoResultState text={`Aucun ${PT.projectLc} ne correspond aux filtres.`} onReset={() => { setChip('all'); setSearchInput(''); setSearch(''); }} />
+          : <EmptyState icon={FolderKanban} title={`Aucun ${PT.projectLc}`} text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
       ) : layout === 'cards' ? (
         <div className="prj-cards">{rows.map(p => <ProjectCard key={p.id} p={p} />)}</div>
       ) : (
-        <DataPanel label="Projets" footer={<TableFooter note={`${rows.length} projet${rows.length > 1 ? 's' : ''}`} />}>
+        <DataPanel label={PT.projects} footer={<TableFooter note={`${rows.length} projet${rows.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th>Responsable</th></tr></thead>
+            <thead><tr><th>N°</th><th>{PT.project}</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th>Responsable</th></tr></thead>
             <tbody>{rows.map(p => <ProjectRow key={p.id} p={p} />)}</tbody>
           </table>
         </DataPanel>
@@ -225,6 +228,7 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
 }
 
 function Overview() {
+  const PT = useProjectTerms();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<PeriodKey>('month');
   const [from, setFrom] = useState(''); const [to, setTo] = useState('');
@@ -241,7 +245,7 @@ function Overview() {
       </div>
       {/* Tableau de bord au gabarit commun : indicateurs, puis sections ; les tâches à traiter en tableau standard. */}
       <KpiGrid>
-        <KpiCard label="Projets en cours" value={inProgress} tone={data.projects.overdue > 0 ? 'red' : undefined}
+        <KpiCard label={`${PT.projects} en cours`} value={inProgress} tone={data.projects.overdue > 0 ? 'red' : undefined}
           sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer · ${data.projects.overdue} en retard`} />
         <KpiCard label="Tâches ouvertes" value={data.tasks.open} sub={`${data.tasks.overdue} en retard`} tone={data.tasks.overdue > 0 ? 'red' : undefined} />
         <KpiCard label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${money(data.time.cost, { decimals: 0 })}`} />
@@ -253,7 +257,7 @@ function Overview() {
       {tasks.length === 0 ? <EmptyState icon={CheckCircle2} title="Aucune tâche ouverte" /> : (
         <DataPanel label="Prochaines tâches">
           <table className="odoo-table">
-            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Statut</th><th>Échéance</th></tr></thead>
+            <thead><tr><th>Tâche</th><th>{PT.project}</th><th>Affectée à</th><th>Statut</th><th>Échéance</th></tr></thead>
             <tbody>
               {tasks.map(t => (
                 <tr key={t.id} onClick={() => navigate(`/projects/${t.project_id}`)} style={{ cursor: 'pointer' }}>
@@ -269,9 +273,9 @@ function Overview() {
         </DataPanel>
       )}
 
-      <SectionHeader title="Projets en cours" note={data.active.length ? String(data.active.length) : undefined} />
+      <SectionHeader title={`${PT.projects} en cours`} note={data.active.length ? String(data.active.length) : undefined} />
       {data.active.length === 0
-        ? <EmptyState icon={FolderKanban} title="Aucun projet en cours" text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
+        ? <EmptyState icon={FolderKanban} title={`Aucun ${PT.projectLc} en cours`} text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
         : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
     </div>
   );
@@ -280,6 +284,7 @@ function Overview() {
 const TASKS_LAYOUT_KEY = 'kalum.projects.openTasksLayout';
 
 function OpenTasks() {
+  const PT = useProjectTerms();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { canEdit } = usePermissions();
@@ -321,7 +326,7 @@ function OpenTasks() {
       ) : (
         <DataPanel label="Tâches ouvertes" footer={<TableFooter note={`${tasks.length} tâche${tasks.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th className="ds-num">Heures (h)</th></tr></thead>
+            <thead><tr><th>Tâche</th><th>{PT.project}</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th className="ds-num">Heures (h)</th></tr></thead>
             <tbody>{tasks.map(t => (
               <tr key={t.id}>
                 <td className="ds-strong">{t.title}</td>
@@ -345,6 +350,7 @@ function OpenTasks() {
 }
 
 function TimeSheet() {
+  const PT = useProjectTerms();
   const qc = useQueryClient();
   const { canEdit } = usePermissions();
   const [period, setPeriod] = useState<PeriodKey>('month');
@@ -388,7 +394,7 @@ function TimeSheet() {
         <DataPanel label="Saisies de temps"
           footer={<TableFooter page={page} pageSize={50} total={data.total} onPage={setPage} note={`${data.total} saisie${data.total > 1 ? 's' : ''}`} />}>
             <table className="odoo-table">
-              <thead><tr><th>Date</th><th>Personne</th><th>Projet</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+              <thead><tr><th>Date</th><th>Personne</th><th>{PT.project}</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{data.rows.map(t => (
                 <tr key={t.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE d MMM', { locale: fr })}</td>
@@ -410,6 +416,7 @@ function TimeSheet() {
 }
 
 function Profitability() {
+  const PT = useProjectTerms();
   const navigate = useNavigate();
   const { data, isLoading } = useQuery({ queryKey: ['projects', 'profitability'], queryFn: () => projectsApi.list({ pageSize: '100' }) });
   if (isLoading || !data) return <Loading />;
@@ -427,10 +434,10 @@ function Profitability() {
         <Kpi label="Marge moyenne" value={rev ? `${Math.round(m / rev * 100)} %` : '—'} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
       </KpiGrid>
       <p className="prj-note">Recette = forfait, ou heures facturables × taux. Coûts = heures × coût horaire + factures fournisseurs rattachées.</p>
-      {rows.length === 0 ? <EmptyState icon={BarChart3} title="Aucun projet" text="La rentabilité s'affiche dès le premier projet créé." /> : (
+      {rows.length === 0 ? <EmptyState icon={BarChart3} title={`Aucun ${PT.projectLc}`} text="La rentabilité s'affiche dès le premier projet créé." /> : (
       <DataPanel label="Rentabilité par projet" footer={<TableFooter note={`${rows.length} projet${rows.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
-          <thead><tr><th>Projet</th><th>Client</th><th>Statut</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th className="ds-num">Marge ({currencySymbol()})</th><th>Marge (%)</th></tr></thead>
+          <thead><tr><th>{PT.project}</th><th>Client</th><th>Statut</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th className="ds-num">Marge ({currencySymbol()})</th><th>Marge (%)</th></tr></thead>
           <tbody>{rows.map(p => {
             const r = projectRevenue(p); const c = projectCost(p); const mm = r - c; const pct = r ? Math.round((mm / r) * 100) : null;
             return (

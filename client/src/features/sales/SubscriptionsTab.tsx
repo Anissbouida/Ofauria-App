@@ -146,7 +146,7 @@ function SubForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           <SearchSelect options={custOptions} value={customerId} onChange={setCustomerId} placeholder="Choisir un client…" ariaLabel="Client" width="100%" size="md" />
         </FormField>
         <FormField label="Libellé" htmlFor="sub-label" required>
-          <input id="sub-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Contrat pain quotidien" className="ds-input" />
+          <input id="sub-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Contrat de maintenance annuel" className="ds-input" />
         </FormField>
         <div className="ds-form-grid">
           <FormField label={`Montant HT par échéance (${currencySymbol()})`} htmlFor="sub-amount" required>

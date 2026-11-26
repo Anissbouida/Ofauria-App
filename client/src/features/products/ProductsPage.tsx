@@ -1133,7 +1133,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Name */}
                 <FormField label="Nom du produit" htmlFor="product-name" required>
                   <input id="product-name" className="ds-input"
-                    value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Croissant au beurre" />
+                    value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Ex : article vendu" />
                 </FormField>
 
                 {/* Nature de l'article (mig 469) — pilote le reste de la fiche */}

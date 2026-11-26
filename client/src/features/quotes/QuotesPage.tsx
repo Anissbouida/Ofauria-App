@@ -337,7 +337,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
       <FormSection title="En-tête du devis">
         <div className="ds-form-grid cols-4">
           <FormField label="Objet" htmlFor="qf-title">
-            <input id="qf-title" className="ds-input" maxLength={200} value={head.title} onChange={e => setHead({ ...head, title: e.target.value })} placeholder="Ex. : buffet mariage 120 personnes" />
+            <input id="qf-title" className="ds-input" maxLength={200} value={head.title} onChange={e => setHead({ ...head, title: e.target.value })} placeholder="Ex. : aménagement des locaux" />
           </FormField>
           <FormField label="Date du devis" htmlFor="qf-date" required>
             <input id="qf-date" className="ds-input" type="date" value={head.quoteDate} onChange={e => setHead({ ...head, quoteDate: e.target.value })} />

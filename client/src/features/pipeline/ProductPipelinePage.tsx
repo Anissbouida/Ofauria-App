@@ -1047,7 +1047,7 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
         })} />}>
       <FormSection title="Produit">
         <FormField label="Nom du produit" htmlFor="pp-new-name" required>
-          <input id="pp-new-name" value={name} onChange={e => setName(e.target.value)} className="ds-input" placeholder="Ex: Croissant aux amandes" />
+          <input id="pp-new-name" value={name} onChange={e => setName(e.target.value)} className="ds-input" placeholder="Ex : nouvel article" />
         </FormField>
         <FormField label="Description" htmlFor="pp-new-desc">
           <textarea id="pp-new-desc" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="ds-input" placeholder="Description du nouveau produit..." />

@@ -364,7 +364,7 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
     <Modal title={promo ? promo.name : copyOf ? `Copie de ${copyOf.name}` : 'Nouvelle promotion'} onClose={onClose} width={820} locked={save.isPending}
       footer={<FormFooter dirty={dirty} onCancel={onClose} onSubmit={() => save.mutate()} disabled={f.name.trim().length < 2} busy={save.isPending} />}>
       <FormField label="Nom" htmlFor="pr-name" required error={nameError}>
-        <input id="pr-name" className="ds-input" maxLength={120} value={f.name} onChange={e => set('name', e.target.value)} placeholder="Ex. : Happy hour viennoiseries" autoFocus />
+        <input id="pr-name" className="ds-input" maxLength={120} value={f.name} onChange={e => set('name', e.target.value)} placeholder="Ex. : Remise de fin de saison" autoFocus />
       </FormField>
 
       <FormSection title="Règle">

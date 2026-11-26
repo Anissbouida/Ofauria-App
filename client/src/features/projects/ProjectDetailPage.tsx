@@ -1,3 +1,4 @@
+import { useProjectTerms } from './useProjectTerms';
 import { money, currencySymbol } from '../../utils/money';
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ const STATUS_TONE: Record<ProjectStatus, StatusTone> = { draft: 'draft', active:
 const fmtDay = (d: string | null | undefined) => (d ? format(new Date(d), 'd MMM yyyy', { locale: fr }) : null);
 
 export default function ProjectDetailPage() {
+  const PT = useProjectTerms();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -52,7 +54,7 @@ export default function ProjectDetailPage() {
   const delTask = useMutation({ mutationFn: (taskId: string) => projectsApi.deleteTask(taskId), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const delTime = useMutation({ mutationFn: (tid: string) => projectsApi.deleteTime(tid), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
 
-  if (isLoading || !p) return <div className="odoo-scope"><LoadingState bare label="Chargement du projet…" /></div>;
+  if (isLoading || !p) return <div className="odoo-scope"><LoadingState bare label={`Chargement : ${PT.projectLc}…`} /></div>;
 
   const tasks = p.tasks ?? [];
   const pct = p.task_count ? Math.round((p.task_done / p.task_count) * 100) : 0;
@@ -307,7 +309,7 @@ export default function ProjectDetailPage() {
               </div>
             </section>
 
-            <BudgetPanel projectId={p.id} editable={editable} title={sectorLabel('project', 'Projet') === 'Chantier' ? 'Déboursé du chantier' : 'Déboursé'} />
+            <BudgetPanel projectId={p.id} editable={editable} title={`Déboursé · ${PT.projectLc}`} />
 
             <section className="prj-panel">
               <h2>Informations</h2>
