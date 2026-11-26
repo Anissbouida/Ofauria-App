@@ -37,7 +37,7 @@ export default function SalesLayout() {
     salesView('returns', RotateCcw, 'Caisse'),
     salesView('sessions', Lock, 'Caisse'),
     { key: 'crm', label: 'Pipeline', icon: Target, section: 'operations', group: 'Ventes pro', href: '/crm', hidden: !hasModule('crm') },
-    { key: 'quotes', label: 'Devis', icon: FileSignature, section: 'operations', group: 'Ventes pro', href: '/quotes', hidden: !hasModule('orders') || !isDirection },
+    { key: 'quotes', label: 'Devis', icon: FileSignature, section: 'operations', group: 'Ventes pro', href: '/quotes', hidden: !hasModule('sales') || !isDirection },
     { key: 'orders', label: 'Commandes', icon: ClipboardList, section: 'operations', group: 'Ventes pro', href: '/orders', hidden: !hasModule('orders') },
     // Contrats-cadres / commandes ouvertes (phase 11, D3-37) : engagement B2B suivi par appels.
     { key: 'sales-contracts', label: 'Contrats-cadres', icon: Handshake, section: 'operations', group: 'Ventes pro', href: '/sales-contracts', hidden: !hasModule('orders') || !isDirection },

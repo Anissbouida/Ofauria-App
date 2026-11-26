@@ -16,7 +16,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, useModuleView, useCapabilityScreens, type ModuleView } from '../../components/layout/ModuleShell';
 import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from '../controle/KlUi';
@@ -57,13 +57,13 @@ const STAGES: Array<StageDef & { key: InterventionStatus }> = [
 export default function MaintenancePage() {
   const { hasModule } = usePermissions();
   const [params, setParams] = useSearchParams();
-  const views: ModuleView<View>[] = [
+  const views: ModuleView<View>[] = useCapabilityScreens('maintenance', [
     { key: 'overview', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard' },
     { key: 'interventions', label: 'Interventions', icon: Wrench, section: 'operations' },
     { key: 'plans', label: "Plans d'entretien", icon: CalendarClock, section: 'operations' },
     { key: 'equipment', label: 'Coût par équipement', icon: BarChart3, section: 'reports' },
     { key: 'assets', label: 'Immobilisations', icon: Building2, section: 'setup', href: '/accounting?tab=immobilisations', external: true, hidden: !hasModule('accounting') },
-  ];
+  ]);
   const { current, select } = useModuleView(views);
   const { canEdit, sectorLabel } = usePermissions();
   const [creating, setCreating] = useState(false);

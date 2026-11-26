@@ -15,6 +15,8 @@ import {
 import { AlertTriangle } from 'lucide-react';
 import { Alert, DataPanel, KpiCard, KpiGrid, LoadingState, SearchBar, SectionHeader, Toolbar } from '../../components/ds';
 import { Navigate, useSearchParams } from 'react-router-dom';
+import { needsMet, screenNeeds } from '@ofauria/shared';
+import { usePermissions } from '../../context/PermissionsContext';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
 
@@ -76,8 +78,12 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
   const [params] = useSearchParams();
+  const { moduleActive, hasFeature } = usePermissions();
   const requested = params.get('tab');
-  const activeTab: Tab = fixedTab ?? (tabs.some(t => t.key === requested && t.key !== 'cost') ? requested as Tab : 'overview');
+  // Lot L0 : un onglet dont les besoins ne sont pas remplis (Menu Engineering sans caisse ni fiches
+  // techniques, Marges sans fiches techniques) retombe sur l'analyse des ventes.
+  const tabOk = (k: string) => needsMet(screenNeeds('reports', k), { moduleActive: m => moduleActive(m as never), hasFeature });
+  const activeTab: Tab = fixedTab ?? (tabs.some(t => t.key === requested && t.key !== 'cost') && tabOk(requested!) ? requested as Tab : 'overview');
   const [activePreset, setActivePreset] = useState<DatePreset>('30d');
   const [customStart, setCustomStart] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'));

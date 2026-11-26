@@ -120,8 +120,16 @@ function extraRuleFor(path: string): GuardRule | undefined {
   return best;
 }
 
-/** Règle d'activation d'un chemin : garde des droits d'abord, puis règles propres. */
+/**
+ * Lot L0 (audit des profils) : points d'API de la caisse rangés sous un préfixe plus large
+ * (/sales est ouvert par Ventes) ou ouverts par plusieurs modules dans la garde des droits. Ils
+ * n'ont de sens qu'avec le module Point de vente : ils passent avant les autres règles.
+ */
+export const POS_ONLY_PREFIXES: readonly string[] = ['/sales/checkout', '/sales/offline-abandoned', '/cash-register', '/returns'];
+
+/** Règle d'activation d'un chemin : caisse d'abord, puis garde des droits, puis règles propres. */
 export function activationRuleFor(path: string): GuardRule | undefined {
+  if (POS_ONLY_PREFIXES.some(p => path === p || path.startsWith(p + '/'))) return { prefix: path, modules: ['pos'] } as GuardRule;
   return ruleFor(path) ?? extraRuleFor(path);
 }
 

@@ -1,7 +1,7 @@
 import { Fragment, createContext, useCallback, useContext, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, type LucideIcon } from 'lucide-react';
-import { screenCapability } from '@ofauria/shared';
+import { screenCapability, screenNeeds, needsMet } from '@ofauria/shared';
 import { usePermissions } from '../../context/PermissionsContext';
 import './module-shell.css';
 import './apple-look.css';
@@ -65,10 +65,14 @@ export interface ModuleView<K extends string = string> {
  * avec la même déclaration.
  */
 export function useCapabilityScreens<V extends { key: string; hidden?: boolean }>(module: string, views: V[]): V[] {
-  const { hasFeature } = usePermissions();
+  const { hasFeature, moduleActive } = usePermissions();
+  // Lot L0 (audit des profils) : l'écran disparaît aussi quand un module ou une capacité dont il
+  // a besoin (registre SCREEN_NEEDS) est éteint pour la société.
+  const ctx = { moduleActive: (m: string) => moduleActive(m as never), hasFeature };
   return views.map(v => {
     const cap = screenCapability(module, v.key);
-    return cap && !hasFeature(cap) ? { ...v, hidden: true } : v;
+    if (cap && !hasFeature(cap)) return { ...v, hidden: true };
+    return needsMet(screenNeeds(module, v.key), ctx) ? v : { ...v, hidden: true };
   });
 }
 

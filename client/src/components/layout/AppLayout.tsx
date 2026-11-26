@@ -16,7 +16,7 @@ import { NAV_HOME, navLabel, navGroupTitle, isNavItemVisible, visibleNavGroups }
 import { useLocale } from '../../i18n';
 import type { NavItem } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
-import { routeCapability } from '@ofauria/shared';
+import { routeCapability, routeNeeds, needsMet } from '@ofauria/shared';
 
 function CapabilityOff() {
   const navigate = useNavigate();
@@ -133,7 +133,7 @@ export default function AppLayout() {
   // fonctions de lecture (isAccountType, libellés…) répondent juste dès le premier rendu.
   const { isLoading: typesLoading } = useCommercialTypes(!!user);
   const preferences=useInterfacePreferences(user?.id);
-  const { hasModule, hasFeature, isLoading: permsLoading } = usePermissions();
+  const { hasModule, hasFeature, moduleActive, isLoading: permsLoading } = usePermissions();
   const { locale, t } = useLocale();
   const isLoading = authLoading || permsLoading || (!!user && typesLoading);
   const [showApps, setShowApps] = useState(false);
@@ -232,7 +232,10 @@ export default function AppLayout() {
           // Écran d'une capacité éteinte (feuille de route, étape 1.4) : l'adresse directe ne
           // l'ouvre pas, comme son entrée de menu et son API.
           const cap = routeCapability(location.pathname);
-          return cap && !hasFeature(cap) ? <CapabilityOff /> : <Outlet />;
+          if (cap && !hasFeature(cap)) return <CapabilityOff />;
+          // Lot L0 : une adresse dont le module est éteint n'ouvre pas un écran aux API fermées.
+          const ok = needsMet(routeNeeds(location.pathname), { moduleActive: m => moduleActive(m as never), hasFeature });
+          return ok ? <Outlet /> : <CapabilityOff />;
         })()}
       </main>
 
