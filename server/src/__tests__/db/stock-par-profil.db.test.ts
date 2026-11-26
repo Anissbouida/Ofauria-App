@@ -198,4 +198,27 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     const r = await testPool().query(`SELECT off_features FROM sector_packs WHERE code = 'btp'`);
     expect(r.rows[0].off_features).toContain('abonnements');
   });
+
+  it('mig 727 : chaque métier hérite seulement du socle qui le concerne', async () => {
+    const { capabilityDefault } = await import('@ofauria/shared');
+    const catalog = (await testPool().query(`SELECT key, module_key, label, default_on FROM app_features`)).rows;
+    const packs = new Map((await testPool().query(`SELECT code, features, off_features FROM sector_packs`)).rows
+      .map(p => [p.code as string, { features: (p.features ?? []) as string[], off: (p.off_features ?? []) as string[] }]));
+    const proposed = (code: string) => {
+      const p = packs.get(code)!;
+      return new Set([...p.features, ...catalog.filter(f => capabilityDefault(f, p.features, f.key, p.off)).map(f => f.key as string)]);
+    };
+    const FOOD = ['lots', 'dlc_ddm', 'allergenes', 'etiquetage', 'quarantaine', 'tracabilite', 'rappel'];
+    // Bâtiment : ni lots, ni dates limites, ni exigences alimentaires ; ses capacités de chantier restent.
+    const btp = proposed('btp');
+    expect(FOOD.filter(k => btp.has(k))).toEqual([]);
+    expect(['devis', 'facturation_avancement', 'sous_traitance'].every(k => btp.has(k))).toBe(true);
+    // Transport : les lots restent pour le stock des déposants, pas les dates limites ni les allergènes.
+    const transport = proposed('transport');
+    expect([transport.has('lots'), transport.has('stock_deposant'), transport.has('dlc_ddm'), transport.has('allergenes')]).toEqual([true, true, false, false]);
+    // Métiers de bouche et santé : inchangés sur leurs exigences.
+    const boulangerie = proposed('boulangerie');
+    expect(FOOD.filter(k => !boulangerie.has(k))).toEqual([]);
+    expect(['lots', 'dlc_ddm', 'quarantaine', 'rappel'].every(k => proposed('sante').has(k))).toBe(true);
+  });
 });

@@ -273,7 +273,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         const subs = on ? (catalog?.capabilities ?? []).filter(c => c.module === m) : [];
         return <Row key={m} title={<>{MODULE_LABELS[m]} {tag}</>} help={<>{deps.length ? `A besoin de : ${deps.map(x => MODULE_LABELS[x]).join(', ')}.` : null}
           {subs.length > 0 && <span className="wz-subs">{subs.map(c => <label key={c.code} title={c.description ?? undefined}>
-            <Switch label={c.label} checked={caps.has(c.code)} disabled={disabled} onChange={v => switchCapability(c.code, v)} />{c.label}{c.kind === 'reglementaire' && <Lock size={11} aria-label="Réglementaire" style={{ color: 'var(--ds-warning)' }} />}</label>)}</span>}</>}>
+            <Switch label={c.label} checked={caps.has(c.code)} disabled={disabled} onChange={v => switchCapability(c.code, v)} />{c.label}{c.kind === 'reglementaire' && caps.has(c.code) && <Lock size={11} aria-label="Réglementaire" style={{ color: 'var(--ds-warning)' }} />}</label>)}</span>}</>}>
           <Switch label={MODULE_LABELS[m]} checked={on} disabled={disabled || core} onChange={v => switchModule(m, v)} /></Row>;
       })}</div>)}
     </>;

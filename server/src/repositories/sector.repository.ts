@@ -562,7 +562,36 @@ export const sectorRepository = {
   },
 
   /** Invariants communs à toutes les transitions, y compris restauration et réinitialisation. */
+  /**
+   * Changement de profil (mig 727) : une capacité réglementaire utilisée par des données, que
+   * le nouveau profil éteindrait par simple défaut, reste active — avec ce dont elle dépend —
+   * au lieu de bloquer tout le changement. Une extinction demandée explicitement (écart à
+   * false) n'est pas retenue ici : la validation la refuse comme avant.
+   */
+  async retainRegulatoryInUse(current: Activation, target: Target) {
+    for (let pass = 0; pass < 5; pass++) {
+      const after = stateOf(target, current.catalog);
+      const keep: string[] = [];
+      for (const def of current.catalog) {
+        if (def.kind !== 'reglementaire' || !current.features.has(def.key) || after.features.has(def.key)) continue;
+        if (target.features[def.key] === false) continue;
+        if (!after.modules.has(canonicalModule(def.module_key as AppModule))) continue;
+        if ((await capabilityUsage(def.key)).length) keep.push(def.key);
+      }
+      if (!keep.length) return;
+      const features: ModuleOverrides = { ...target.features };
+      const add = (k: string) => {
+        if (features[k] !== undefined) return;
+        features[k] = true;
+        for (const r of current.catalog.find(f => f.key === k)?.requires ?? []) add(r);
+      };
+      keep.forEach(add);
+      target.features = features;
+    }
+  },
+
   async validateTransition(current: Activation, target: Target) {
+    await this.retainRegulatoryInUse(current, target);
     const after = stateOf(target, current.catalog);
     const missing = missingDependencies(after.modules);
     if (missing.length) {
