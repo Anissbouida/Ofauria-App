@@ -47,3 +47,11 @@
 .kl-apple button.prj-kpi:disabled { cursor: default; }
 .kl-apple button.prj-kpi:disabled:hover { box-shadow: var(--kl-shadow); }
 .kl-apple .stk-kpis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
+/* Refonte Stock : fiche article en blocs (colonne principale + colonne latérale). */
+.kl-apple .stk-blocks { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.kl-apple .stk-blocks-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.kl-apple .stk-blocks-aside { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.kl-apple .stk-dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; padding: 10px 14px; font-size: 13px; }
+.kl-apple .stk-dl dt { color: var(--ds-muted); }
+.kl-apple .stk-dl dd { margin: 0; font-weight: 600; color: var(--ds-ink); text-align: right; font-variant-numeric: tabular-nums; }

@@ -1,5 +1,5 @@
 import { useReferentiel } from '../../hooks/useReferentiel';
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, ingredientsApi, ingredientLotsApi } from '../../api/inventory.api';
@@ -9,8 +9,10 @@ import IngredientFormModal from './IngredientFormModal';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionsContext';
+import api from '../../api/client';
 import {
-  ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
+  ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock, Scale, Lock,
   ChevronDown, ChevronRight, ChevronLeft, Factory, TrendingDown, Trash2, Edit3,
   Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
   Warehouse, PackageOpen, MapPin, Printer,
@@ -29,7 +31,6 @@ import { planStatusTag } from '../production/status';
 import { money, currencySymbol } from '../../utils/money';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModulePage } from '../../components/layout/ModuleShell';
-import { SubViews } from './StockUi';
 import { Alert, Breadcrumb, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, Modal } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import IngredientNutritionCard from './IngredientNutritionCard';
@@ -126,7 +127,10 @@ export default function IngredientDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { ingredient: ingTerm, ingredientLc } = useProdTerms();
-  const [activeTab, setActiveTab] = useState<'lots' | 'suppliers' | 'history' | 'nutrition'>('lots');
+  // Refonte Stock : la fiche est faite de blocs (plus d'onglets) ; les chiffres clés mènent aux lots.
+  const lotsRef = useRef<HTMLDivElement>(null);
+  const goLots = () => lotsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const { hasFeature } = usePermissions();
   const [expandedLot, setExpandedLot] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
@@ -411,35 +415,20 @@ export default function IngredientDetailPage() {
       <KpiGrid label="Chiffres clés">
         <KpiCard label={`Stock total (${unit})`} value={qty.toFixed(qty % 1 === 0 ? 0 : 1)}
           sub={isOut ? 'En rupture' : isLow ? 'Sous le seuil' : 'Réserve et poste de pesée'} tone={isOut ? 'red' : isLow ? 'orange' : undefined}
-          onClick={() => setActiveTab('lots')} />
-        <KpiCard label={`En réserve (${unit})`} value={fmtQty(scelleQty)} sub="Contenants intacts" onClick={() => setActiveTab('lots')} />
-        <KpiCard label={`Au pesage (${unit})`} value={fmtQty(entameQty)} sub="Contenants ouverts" onClick={() => setActiveTab('lots')} />
+          onClick={goLots} />
+        <KpiCard label={`En réserve (${unit})`} value={fmtQty(scelleQty)} sub="Contenants intacts" onClick={goLots} />
+        <KpiCard label={`Au pesage (${unit})`} value={fmtQty(entameQty)} sub="Contenants ouverts" onClick={goLots} />
         <KpiCard label={`Seuil minimum (${unit})`} value={threshold.toFixed(0)} onClick={canManage ? () => setShowEdit(true) : undefined} />
-        <KpiCard label="Lots actifs" value={String(lotsCount)} onClick={() => setActiveTab('lots')} />
+        <KpiCard label="Lots actifs" value={String(lotsCount)} onClick={goLots} />
         <KpiCard label={`Coût unitaire (${currencySymbol()} / ${unit})`} value={unitCost.toFixed(2)} />
       </KpiGrid>
 
-      {/* ══════ ONGLETS (contrôle segmenté) ══════ */}
-      <SubViews label="Contenu de la fiche" value={activeTab} onChange={setActiveTab} views={[
-        { key: 'lots', label: 'Lots et traçabilité', icon: ShieldCheck },
-        { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
-        { key: 'history', label: 'Historique', icon: Clock },
-        { key: 'nutrition', label: 'Valeurs nutritionnelles', icon: ShieldCheck },
-      ]} />
-
-      {/* ══════ VALEURS NUTRITIONNELLES (mig 634, étape 10c) ══════ */}
-      {activeTab === 'nutrition' && id && <IngredientNutritionCard ingredientId={id} />}
-
-      {/* ══════ FOURNISSEURS TAB (mig 404 — Achats lot prix P1) ══════ */}
-      {activeTab === 'suppliers' && id && (
-        <div className="odoo-section" style={{ padding: '0.75rem 1rem' }}>
-          <SupplierItemsSection kind="ingredient" purchasableId={id} unit={unit} />
-        </div>
-      )}
-
-      {/* ══════ LOTS TAB ══════ */}
-      {activeTab === 'lots' && (
-        <div className="stk-stack">
+      {/* ══════ BLOCS (refonte Stock) : colonne principale, puis colonne latérale ══════ */}
+      <div className="stk-blocks">
+      <div className="stk-blocks-main">
+      {/* ══════ BLOC LOTS ET TRAÇABILITÉ (capacité Lots) ══════ */}
+      {(
+        <div className="stk-stack" ref={lotsRef}>
           {activeLots.length > 0 && (
             <div className="odoo-section">
               <div className="odoo-section-header">
@@ -527,8 +516,8 @@ export default function IngredientDetailPage() {
         </div>
       )}
 
-      {/* ══════ HISTORY TAB ══════ */}
-      {activeTab === 'history' && (
+      {/* ══════ BLOC HISTORIQUE ══════ */}
+      {(
         <div className="odoo-section">
           <div className="odoo-section-header">
             <Clock size={12} /> Historique des mouvements
@@ -596,6 +585,45 @@ export default function IngredientDetailPage() {
         </div>
       )}
 
+      </div>
+      <aside className="stk-blocks-aside" aria-label="Autres informations de l'article">
+        {/* Bloc Réserve et pesage (capacité Pesage) */}
+        {hasFeature('pesage') && (
+          <div className="odoo-section">
+            <div className="odoo-section-header"><Scale size={12} /> Réserve et pesage</div>
+            <dl className="stk-dl">
+              <dt>Réserve (fermé)</dt><dd>{fmtQty(scelleQty)} {unit}</dd>
+              <dt>Poste de pesée (ouvert)</dt><dd>{fmtQty(entameQty)} {unit}</dd>
+            </dl>
+          </div>
+        )}
+        {/* Bloc Emplacements (refonte Stock) : la quantité de chaque lot actif, par lieu. */}
+        {activeLots.length > 0 && (
+          <div className="odoo-section">
+            <div className="odoo-section-header"><MapPin size={12} /> Emplacements</div>
+            <dl className="stk-dl">
+              {Object.entries(activeLots.reduce<Record<string, number>>((acc, l) => {
+                const open = parseFloat(l.pesage_quantity || '0');
+                const closed = l.economat_quantity !== undefined ? parseFloat(l.economat_quantity || '0') : parseFloat(l.quantity_remaining || '0') - open;
+                if (open > 0) acc['Poste de pesée'] = (acc['Poste de pesée'] ?? 0) + open;
+                if (closed > 0) { const k = l.location_name || 'Réserve'; acc[k] = (acc[k] ?? 0) + closed; }
+                return acc;
+              }, {})).map(([place, q]) => <Fragment key={place}><dt>{place}</dt><dd>{fmtQty(q)} {unit}</dd></Fragment>)}
+            </dl>
+          </div>
+        )}
+        {/* Bloc Réservé et disponible (capacité Réservation de matière) */}
+        {hasFeature('reservation_matiere') && id && <ReservedBlock ingredientId={id} stock={qty} unit={unit} />}
+        {/* Bloc Fournisseurs (module Achats) */}
+        {id && (
+          <div className="odoo-section" style={{ padding: '0.75rem 1rem' }}>
+            <SupplierItemsSection kind="ingredient" purchasableId={id} unit={unit} />
+          </div>
+        )}
+        {/* Bloc Valeurs nutritionnelles (capacité Allergènes) */}
+        {hasFeature('allergenes') && id && <IngredientNutritionCard ingredientId={id} />}
+      </aside>
+      </div>
       </ModulePage>
 
       {/* ══════ MODALS ══════ */}
@@ -1160,5 +1188,25 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
         </FormSection>
       </form>
     </Modal>
+  );
+}
+
+/** Bloc Réservé et disponible (refonte Stock) : réservations de l'article (mig 722). */
+function ReservedBlock({ ingredientId, stock, unit }: { ingredientId: string; stock: number; unit: string }) {
+  const { data = [] } = useQuery({
+    queryKey: ['inventory', 'reservations'],
+    queryFn: (): Promise<{ item_id: string; origin: string; reference: string | null; quantity: number }[]> => api.get('/inventory/reservations').then(r => r.data.data),
+  });
+  const mine = data.filter(r => r.item_id === ingredientId);
+  const reserved = mine.reduce((s, r) => s + Number(r.quantity), 0);
+  return (
+    <div className="odoo-section">
+      <div className="odoo-section-header"><Lock size={12} /> Réservé et disponible</div>
+      <dl className="stk-dl">
+        <dt>Réservé</dt><dd>{fmtQty(reserved)} {unit}</dd>
+        <dt>Disponible</dt><dd style={{ color: stock - reserved < 0 ? 'var(--ds-danger)' : undefined }}>{fmtQty(stock - reserved)} {unit}</dd>
+        {mine.map((r, i) => <Fragment key={i}><dt>{r.reference ?? 'Ordre'}</dt><dd>{fmtQty(Number(r.quantity))} {unit}</dd></Fragment>)}
+      </dl>
+    </div>
   );
 }

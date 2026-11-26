@@ -32,6 +32,8 @@ export type BehaviorField =
   | { key: string; label: string; help: string; kind: 'choice'; options: { value: string; label: string }[] };
 
 export const CUSTOMER_TYPES_TABLE = 'customer_types';
+/** Types de mouvement de stock (refonte Stock, mig 724). */
+export const STOCK_MOVEMENT_TYPES_TABLE = 'stock_movement_types';
 export const ORDER_TYPES_TABLE = 'order_types';
 
 /** Champs de comportement par table de référentiel (clé = ref_tables.id). */
@@ -53,6 +55,31 @@ export const REF_BEHAVIOR_FIELDS: Record<string, BehaviorField[]> = {
       options: [{ value: 'none', label: 'Aucune' }, { value: 'staff', label: 'Remise du personnel' }] },
     { key: 'direction_only', kind: 'boolean', label: 'Réservée à la direction', help: 'Seuls l\'administrateur et le gérant prennent ce type de commande.' },
   ],
+  // Refonte Stock (mig 724) : chaque type de mouvement dit ce que l'écran exige.
+  [STOCK_MOVEMENT_TYPES_TABLE]: [
+    { key: 'direction', kind: 'choice', label: 'Effet sur le stock', help: 'Sens affiché dans la liste des mouvements.',
+      options: [{ value: 'sort', label: 'Sort du stock' }, { value: 'entre', label: 'Entre en stock' }, { value: 'deplace', label: 'Change d\'emplacement' }, { value: 'corrige', label: 'Corrige le stock' }] },
+    { key: 'control', kind: 'boolean', label: 'Contrôle à réception', help: 'Pour une réception : chaque lot reçu reste en quarantaine jusqu\'à un contrôle conforme (sans effet sur les autres types).' },
+    { key: 'segregation', kind: 'boolean', label: 'Séparation des tâches', help: 'Pour un bon de sortie : la personne qui a préparé ou remis le bon ne peut pas en accepter la réception (sans effet sur les autres types).' },
+  ],
+};
+
+export interface StockMovementBehaviors { direction: 'sort' | 'entre' | 'deplace' | 'corrige'; control: boolean; segregation: boolean }
+export function stockMovementBehaviors(metadata: unknown): StockMovementBehaviors {
+  const m = isObj(metadata) ? metadata : {};
+  const direction = m.direction === 'entre' || m.direction === 'deplace' || m.direction === 'corrige' ? m.direction : 'sort';
+  return { direction, control: m.control === true, segregation: m.segregation === true };
+}
+
+/**
+ * Rattachement du journal technique des mouvements matière (inventory_transactions.type) aux
+ * types de mouvement du référentiel. Les lignes « production » appartiennent aux bons de
+ * sortie et « restock » / « purchase_order » aux réceptions : la liste les montre par pièce.
+ */
+export const MOVEMENT_JOURNAL_MAP: Readonly<Record<string, string>> = {
+  production: 'bon_sortie', restock: 'reception', purchase_order: 'reception', open_container: 'ouverture',
+  transfer: 'transfert', waste: 'perte', adjustment: 'ajustement', inventory: 'ajustement', correction: 'ajustement',
+  production_return: 'retour', recycle: 'retour', usage: 'consommation',
 };
 
 const DEFAULT_CUSTOMER: CustomerTypeBehaviors = { settlement: 'comptant', legal_entity: false, requires_tax_id: false, vat_exempt: false, personal_fields: true };

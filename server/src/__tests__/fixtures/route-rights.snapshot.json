@@ -1017,6 +1017,10 @@
   "admin",
   "manager"
  ],
+ "GET /inventory/movements": [
+  "admin",
+  "manager"
+ ],
  "GET /inventory/price-health": [
   "admin",
   "manager"

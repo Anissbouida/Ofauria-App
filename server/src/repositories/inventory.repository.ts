@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { MOVEMENT_JOURNAL_MAP } from '@ofauria/shared';
 import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import { recipeRepository } from './recipe.repository.js';
 import { capitalizeFirst } from '../utils/text.js';
@@ -299,6 +300,50 @@ export const inventoryRepository = {
       if (bi >= 0) { buckets[bi].lots += 1; buckets[bi].value = Math.round((buckets[bi].value + v) * 100) / 100; }
     }
     return { buckets, totalValue: Math.round(totalValue * 100) / 100, lots: r.rows };
+  },
+
+  /**
+   * Liste unique des mouvements (refonte Stock, mig 724). Une ligne par PIÈCE : bons de sortie
+   * (étape du processus), réceptions, puis les autres mouvements du journal (ouverture de
+   * contenant, perte, ajustement, retour, transfert, consommation directe) ligne par ligne.
+   * `type` = code du référentiel stock_movement_types.
+   */
+  async movements(p: { type?: string; storeId?: string; days?: number; limit?: number }) {
+    const days = Math.min(Math.max(p.days ?? 30, 1), 366);
+    const limit = Math.min(Math.max(p.limit ?? 200, 1), 1000);
+    const journalTypes = Object.entries(MOVEMENT_JOURNAL_MAP).filter(([, t]) => t !== 'bon_sortie' && t !== 'reception').map(([j]) => j);
+    const params: unknown[] = [days, journalTypes, p.storeId ?? null, p.type ?? null];
+    const r = await db.query(
+      `SELECT * FROM (
+         SELECT 'bon_sortie'::text AS type, b.id, b.numero AS reference, COALESCE(b.updated_at, b.created_at) AS moved_at,
+                COALESCE(p.of_number, 'Plan du ' || to_char(p.plan_date, 'DD/MM/YYYY')) AS subject,
+                b.status AS step, (SELECT COUNT(*)::int FROM production_bons_sortie_lignes l WHERE l.bon_id = b.id) AS lines,
+                NULL::numeric AS quantity, NULL::text AS unit,
+                (SELECT COUNT(*)::int FROM production_bons_sortie_lignes l WHERE l.bon_id = b.id AND l.ecart_reason IS NOT NULL) AS deviations,
+                NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), '') AS by_name, b.plan_id AS source_id
+           FROM production_bons_sortie b LEFT JOIN production_plans p ON p.id = b.plan_id
+           LEFT JOIN users u ON u.id = COALESCE(b.ready_by, b.preparation_by, b.generated_by)
+          WHERE b.status <> 'annule' AND b.created_at >= now() - ($1::int * interval '1 day')
+            AND ($3::uuid IS NULL OR b.store_id = $3::uuid)
+         UNION ALL
+         SELECT 'reception', rv.id, rv.voucher_number, rv.created_at, COALESCE(s.name, 'Réception'), rv.status,
+                (SELECT COUNT(*)::int FROM reception_voucher_items i WHERE i.reception_voucher_id = rv.id), NULL, NULL, 0,
+                NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), rv.purchase_order_id
+           FROM reception_vouchers rv LEFT JOIN purchase_orders po ON po.id = rv.purchase_order_id
+           LEFT JOIN suppliers s ON s.id = po.supplier_id LEFT JOIN users u ON u.id = rv.received_by
+          WHERE rv.created_at >= now() - ($1::int * interval '1 day') AND ($3::uuid IS NULL OR rv.store_id = $3::uuid)
+         UNION ALL
+         SELECT CASE it.type WHEN 'production' THEN 'bon_sortie' WHEN 'restock' THEN 'reception' WHEN 'purchase_order' THEN 'reception' WHEN 'open_container' THEN 'ouverture' WHEN 'transfer' THEN 'transfert' WHEN 'waste' THEN 'perte' WHEN 'adjustment' THEN 'ajustement' WHEN 'inventory' THEN 'ajustement' WHEN 'correction' THEN 'ajustement' WHEN 'production_return' THEN 'retour' WHEN 'recycle' THEN 'retour' WHEN 'usage' THEN 'consommation' END,
+                it.id, l.lot_number, it.created_at, ing.name, 'done', 1, it.quantity_change, ing.unit, 0,
+                NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), it.ingredient_id
+           FROM inventory_transactions it JOIN ingredients ing ON ing.id = it.ingredient_id
+           LEFT JOIN ingredient_lots l ON l.id = it.ingredient_lot_id LEFT JOIN users u ON u.id = it.performed_by
+          WHERE it.type = ANY($2::text[]) AND it.created_at >= now() - ($1::int * interval '1 day')
+            AND ($3::uuid IS NULL OR it.store_id = $3::uuid)
+       ) m
+       WHERE ($4::text IS NULL OR m.type = $4::text)
+       ORDER BY m.moved_at DESC LIMIT ${limit}`, params);
+    return r.rows.map(x => ({ ...x, quantity: x.quantity === null ? null : Number(x.quantity) }));
   },
 
   /** Réservations en cours, commandes et ordres de fabrication (mig 722), avec le disponible. */

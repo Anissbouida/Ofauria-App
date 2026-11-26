@@ -31,6 +31,14 @@ router.get('/consumption', authenticate, can('stock.inventory.view'), inventoryC
 router.get('/purchases', authenticate, can('stock.inventory.view'), inventoryController.purchases);
 // Age du stock matiere : lots actifs par anciennete (admin/gerant)
 router.get('/aging', authenticate, can('stock.inventory.view'), inventoryController.aging);
+// Refonte Stock (mig 724) : liste unique des mouvements, par pièce.
+router.get('/movements', authenticate, can('stock.inventory.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const q = req.query as Record<string, string | undefined>;
+  res.json({ success: true, data: await inventoryRepository.movements({
+    type: q.type && /^[a-z_]{2,40}$/.test(q.type) ? q.type : undefined, days: q.days ? Number(q.days) : undefined,
+    storeId: req.user!.role === 'admin' ? undefined : req.user!.storeId ?? undefined,
+  }) });
+}));
 // Mig 722 : vue unique des réservations (commandes et ordres de fabrication) avec le disponible.
 router.get('/reservations', authenticate, can('stock.inventory.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await inventoryRepository.reservations(req.user!.role === 'admin' ? undefined : req.user!.storeId ?? undefined) });

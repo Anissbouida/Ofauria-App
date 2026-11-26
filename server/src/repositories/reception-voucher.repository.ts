@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { stockMovementBehaviors } from '@ofauria/shared';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
@@ -11,9 +12,12 @@ import { recordSupplierPriceAtReception } from './supplier-item.repository.js';
 import { resolvePolicy } from '../services/policies.js';
 
 /** Politique purchasing.reception_quarantine (mig 712) : quarantaine de tout lot reçu. */
-async function receptionQuarantine(storeId?: string | null): Promise<boolean> {
+export async function receptionQuarantine(storeId?: string | null): Promise<boolean> {
   const p = await resolvePolicy<{ enabled?: boolean }>('purchasing.reception_quarantine', { storeId: storeId ?? null });
-  return p.value.enabled === true;
+  if (p.value.enabled === true) return true;
+  // Refonte Stock (mig 724) : comportement « contrôle à réception » du type de mouvement.
+  const t = (await db.query(`SELECT metadata FROM ref_entries WHERE table_id = 'stock_movement_types' AND code = 'reception' AND is_active`)).rows[0];
+  return stockMovementBehaviors(t?.metadata).control;
 }
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).

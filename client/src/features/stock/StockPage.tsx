@@ -13,6 +13,7 @@ import { WarehouseQueueList, WarehouseBonWorkspace, BonsPipeline, type ProcessSt
 import { PesageStockList } from './PesageStockList';
 import DepositStockTab from './DepositStockTab';
 import ReservationsTab from './ReservationsTab';
+import MovementsTab from './MovementsTab';
 import { HistoryList } from './HistoryList';
 import { LotMovementModal } from './LotMovementModal';
 import IngredientFormModal from './IngredientFormModal';
@@ -21,7 +22,7 @@ import {
   Clock, X, Boxes, CalendarClock,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, ClipboardCheck, Archive, Beaker, ListTree, Lock, ShieldAlert, MapPin, Snowflake, Gauge,
+  ClipboardList, ClipboardCheck, Archive, Beaker, ListTree, Lock, ShieldAlert, MapPin, Snowflake, Gauge, ArrowLeftRight, SlidersHorizontal
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
@@ -97,6 +98,7 @@ const PAGE_LEADS: Record<string, string> = {
   closing: 'Instantanés valorisés du stock à chaque fin de période.',
   emplacements: 'Chambres, zones et bacs de rangement, reliés à leur sonde de température.',
   points: 'Seuils de réapprovisionnement calculés à partir de la consommation et des délais.',
+  mouvements: 'Tous les mouvements du stock dans une seule liste : bons de sortie, réceptions, ouvertures de contenant, pertes, ajustements, retours.',
   reservations: 'Stock réservé par les commandes clients et les ordres de fabrication, et ce qui reste disponible.',
   deposants: 'Marchandise détenue pour le compte de clients : réceptions à quai, expéditions et stock par lot, hors stock de la société.',
 };
@@ -112,7 +114,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants' | 'reservations';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants' | 'reservations' | 'mouvements';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -136,7 +138,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants', 'reservations'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants', 'reservations', 'mouvements'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -373,11 +375,13 @@ export default function StockPage() {
   // Rubriques standard (ModuleShell). Les deux zones du stock (réserve scellée, poste
   // de pesée entamé) deviennent deux écrans de la barre latérale ; le registre et
   // l'analyse sont des rapports. Hors magasin (ni magasinier, ni gérant) : la réserve seule.
-  type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel' | 'price-health';
+  type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel' | 'price-health' | 'types-mouvement';
   const views: ModuleView<StockView>[] = useCapabilityScreens('stock', [
     { key: 'reserve', label: 'Réserve', icon: Package, section: 'operations' },
     { key: 'pesee', label: 'Poste de pesée', icon: Beaker, section: 'operations', hidden: !isWarehouseUser },
     { key: 'bons', label: 'Bons de sortie', icon: ClipboardList, section: 'operations', hidden: !isWarehouseUser, badge: bons.length },
+    // Refonte Stock (mig 724) : liste unique des mouvements, par pièce.
+    { key: 'mouvements', label: 'Mouvements', icon: ArrowLeftRight, section: 'operations', hidden: !isWarehouseUser },
     { key: 'commander', label: 'À commander', icon: ShoppingCart, section: 'operations', hidden: !isWarehouseUser, badge: toOrderCount },
     { key: 'consumables', label: 'Consommables', icon: Boxes, section: 'operations', hidden: !isWarehouseUser },
     // Mig 367 : inventaire physique (le magasin compte, la direction valide).
@@ -406,6 +410,8 @@ export default function StockPage() {
     { key: 'emplacements', label: 'Emplacements', icon: MapPin, section: 'setup', hidden: !canManageIngredients },
     { key: 'points', label: 'Points de commande', icon: Gauge, section: 'setup', hidden: !canManageIngredients },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
+    // Refonte Stock : types de mouvement (référentiel à comportements, mig 724).
+    { key: 'types-mouvement', label: 'Types de mouvement', icon: SlidersHorizontal, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel&table=stock_movement_types', external: true },
     { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
   ]);
   const currentKey: StockView = econoTab === 'stock' ? (zone === 'entame' ? 'pesee' : 'reserve') : econoTab;
@@ -415,7 +421,7 @@ export default function StockPage() {
       ['tab', 'view', 'bon', 'ingredient'].forEach(k => searchParams.delete(k));
       if (key === 'pesee') searchParams.set('zone', 'entame'); else searchParams.delete('zone');
       setSearchParams(searchParams);
-    } else if (key !== 'referentiel' && key !== 'price-health') {
+    } else if (key !== 'referentiel' && key !== 'price-health' && key !== 'types-mouvement') {
       changeEconoTab(key);
     }
   };
@@ -531,6 +537,8 @@ export default function StockPage() {
         <StockClosingTab />
       ) : econoTab === 'points' ? (
         <ReorderPointsTab />
+      ) : econoTab === 'mouvements' ? (
+        <MovementsTab />
       ) : econoTab === 'reservations' ? (
         <ReservationsTab />
       ) : econoTab === 'deposants' ? (

@@ -78,6 +78,31 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     await testPool().query(`DELETE FROM deposit_articles WHERE id = $1`, [art.id]);
   });
 
+  it('types de mouvement : la liste unique et les deux comportements actifs (mig 724)', async () => {
+    const p = testPool();
+    const types = (await p.query(`SELECT code FROM ref_entries WHERE table_id = 'stock_movement_types' AND is_active ORDER BY display_order`)).rows.map(r => r.code);
+    expect(types.slice(0, 3)).toEqual(['bon_sortie', 'reception', 'ouverture']);
+    const { inventoryRepository } = await import('../../repositories/inventory.repository.js');
+    const all = await inventoryRepository.movements({ days: 366 });
+    expect(Array.isArray(all)).toBe(true);
+    expect(all.every((m: { type: string }) => types.includes(m.type))).toBe(true);
+    const { invalidatePolicies } = await import('../../services/policies.js');
+    await p.query(`DELETE FROM policy_values WHERE key IN ('purchasing.reception_quarantine', 'production.segregation_of_duties')`);
+    invalidatePolicies();
+    const { receptionQuarantine } = await import('../../repositories/reception-voucher.repository.js');
+    const { assertSegregation } = await import('../../repositories/bon-sortie.repository.js');
+    const bon = { numero: 'BS-T', store_id: null, preparation_by: fx.userId, ready_by: null } as never;
+    expect(await receptionQuarantine(null)).toBe(false);
+    await expect(assertSegregation(bon, fx.userId, 'accepter')).resolves.toBeUndefined();
+    await p.query(`UPDATE ref_entries SET metadata = metadata || '{"control": true, "segregation": true}'::jsonb WHERE table_id = 'stock_movement_types' AND code IN ('reception', 'bon_sortie')`);
+    try {
+      expect(await receptionQuarantine(null)).toBe(true);
+      await expect(assertSegregation(bon, fx.userId, 'accepter')).rejects.toThrow(/Séparation des tâches/);
+    } finally {
+      await p.query(`UPDATE ref_entries SET metadata = metadata || '{"control": false, "segregation": false}'::jsonb WHERE table_id = 'stock_movement_types' AND code IN ('reception', 'bon_sortie')`);
+    }
+  });
+
   it('promotions éteintes : la caisse calcule sans promotion', async () => {
     const p = testPool();
     await p.query(`INSERT INTO company_feature_settings (feature_key, enabled) VALUES ('promotions_fidelite', false)

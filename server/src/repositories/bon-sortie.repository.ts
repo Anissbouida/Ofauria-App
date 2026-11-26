@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { stockMovementBehaviors } from '@ofauria/shared';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import type { PoolClient } from 'pg';
@@ -399,9 +400,11 @@ async function applyClose(client: PoolClient, bonId: string, userId: string): Pr
 
 /** Verrouille le bon et retourne sa ligne (null si introuvable). */
 /** Audit 2026-11 C-32 : politique « Séparation des tâches » de l'établissement du bon. */
-async function assertSegregation(bon: BonRow, userId: string, action: string) {
+export async function assertSegregation(bon: BonRow, userId: string, action: string) {
   const { value } = await resolvePolicy<{ enabled: boolean }>('production.segregation_of_duties', { storeId: bon.store_id ?? null });
-  if (!value.enabled) return;
+  // Refonte Stock (mig 724) : comportement « séparation des tâches » du type « bon de sortie ».
+  const t = value.enabled ? null : (await db.query(`SELECT metadata FROM ref_entries WHERE table_id = 'stock_movement_types' AND code = 'bon_sortie' AND is_active`)).rows[0];
+  if (!value.enabled && !stockMovementBehaviors(t?.metadata).segregation) return;
   if ([bon.preparation_by, bon.ready_by].includes(userId)) {
     throw Object.assign(new Error(`Séparation des tâches : vous avez préparé ou remis le bon ${bon.numero}, une autre personne doit ${action}.`), { statusCode: 403 });
   }
