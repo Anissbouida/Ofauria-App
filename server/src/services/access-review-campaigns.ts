@@ -12,6 +12,7 @@ import { userExceptionRepository } from '../repositories/user-exception.reposito
  * (avec ce qui a été changé) ou désactivé. Une seule campagne ouverte à la fois ; la clôture exige
  * que tous les comptes aient une décision. Signaux : conflit de séparation des tâches, compte
  * dormant (seuil de la politique de sécurité), délégation en cours, exceptions individuelles.
+ * Personne ne décide pour son propre compte, sauf le seul administrateur actif.
  */
 
 export class ReviewError extends Error {
@@ -100,7 +101,7 @@ export async function openCampaign(label: string, dueOn: string | null, actorId:
 }
 
 /** Campagne et comptes : photo à l'ouverture, situation actuelle et décision. */
-export async function campaignDetail(id: string) {
+export async function campaignDetail(id: string, actorId?: string) {
   const campaign = (await db.query(`${campaignSelect} WHERE c.id = $1`, [id])).rows[0];
   if (!campaign) return null;
   const items = (await db.query(
@@ -109,9 +110,12 @@ export async function campaignDetail(id: string) {
        FROM access_review_items i LEFT JOIN users d ON d.id = i.decided_by
       WHERE i.campaign_id = $1`, [id])).rows;
   const { facts, dormantThreshold } = await accountFacts(items.map(i => i.user_id as string));
+  // Son propre compte se fait confirmer par une autre personne, sauf seul administrateur actif.
+  const selfDecisionAllowed = actorId ? (await userRepository.countActiveAdmins(actorId)) === 0 : false;
   return {
     campaign,
     dormantThreshold,
+    selfDecisionAllowed,
     items: items.map(i => {
       const f = facts.get(i.user_id);
       const snap = i.snapshot as { roles?: unknown[]; stores?: string[]; signals?: AccountSignals; lastLoginAt?: string | null };
@@ -136,6 +140,9 @@ async function openCampaignOrThrow(id: string) {
 
 export async function decide(id: string, userId: string, decision: Decision, comment: string | null, actorId: string) {
   await openCampaignOrThrow(id);
+  if (userId === actorId && (await userRepository.countActiveAdmins(actorId)) > 0) {
+    throw new ReviewError('Votre propre compte est revu par un autre administrateur.', 403);
+  }
   if (decision === 'corrected' && !comment?.trim()) throw new ReviewError('Dites ce qui a été corrigé (rôle retiré, exception, établissement…).');
   if (decision === 'deactivated') {
     const u = (await db.query(`SELECT is_active FROM users WHERE id = $1`, [userId])).rows[0];
@@ -157,7 +164,9 @@ export async function resetDecision(id: string, userId: string) {
 /** Confirme d'un coup les comptes encore à examiner qui n'ont aucun signal. Rend le nombre confirmé. */
 export async function confirmClean(id: string, actorId: string): Promise<number> {
   await openCampaignOrThrow(id);
-  const pending = (await db.query(`SELECT user_id FROM access_review_items WHERE campaign_id = $1 AND decision IS NULL`, [id])).rows.map(r => r.user_id as string);
+  const selfAllowed = (await userRepository.countActiveAdmins(actorId)) === 0;
+  const pending = (await db.query(`SELECT user_id FROM access_review_items WHERE campaign_id = $1 AND decision IS NULL`, [id])).rows
+    .map(r => r.user_id as string).filter(u => selfAllowed || u !== actorId);
   if (!pending.length) return 0;
   const { facts } = await accountFacts(pending);
   const clean = pending.filter(u => { const f = facts.get(u); return f && f.isActive && !hasSignal(f.signals); });

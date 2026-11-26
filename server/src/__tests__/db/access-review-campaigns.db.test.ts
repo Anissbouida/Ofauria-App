@@ -69,15 +69,24 @@ describe.skipIf(!hasTestDb)('Revue des accès en campagnes (refonte Utilisateurs
     expect(row.decided_at).not.toBeNull();
   });
 
+  it('ne laisse pas décider pour son propre compte quand un autre administrateur existe', async () => {
+    const others = Number((await p().query(`SELECT count(*) FROM users WHERE role = 'admin' AND is_active AND NOT is_system AND id <> $1`, [actorId])).rows[0].count);
+    const res = await request(app).put(`/reviews/${campaignId}/items/${actorId}`).send({ decision: 'confirmed' });
+    expect(res.status).toBe(others > 0 ? 403 : 200);
+    if (others === 0) await request(app).delete(`/reviews/${campaignId}/items/${actorId}`);
+  });
+
   it('refuse la clôture tant qu\'un compte reste à examiner, puis clôture', async () => {
     const pending = Number((await p().query(`SELECT count(*) FROM access_review_items WHERE campaign_id = $1 AND decision IS NULL`, [campaignId])).rows[0].count);
     expect(pending).toBeGreaterThan(0);
     expect((await request(app).post(`/reviews/${campaignId}/close`)).status).toBe(409);
     await request(app).post(`/reviews/${campaignId}/confirm-clean`);
     // Comptes restants (avec signal) : confirmés un par un.
-    for (const r of (await p().query(`SELECT user_id FROM access_review_items WHERE campaign_id = $1 AND decision IS NULL`, [campaignId])).rows) {
+    for (const r of (await p().query(`SELECT user_id FROM access_review_items WHERE campaign_id = $1 AND decision IS NULL AND user_id <> $2`, [campaignId, actorId])).rows) {
       expect((await request(app).put(`/reviews/${campaignId}/items/${r.user_id}`).send({ decision: 'confirmed' })).status).toBe(200);
     }
+    // Son propre compte : décidé par un autre administrateur (simulé en base).
+    await p().query(`UPDATE access_review_items SET decision = 'confirmed', decided_at = now() WHERE campaign_id = $1 AND user_id = $2 AND decision IS NULL`, [campaignId, actorId]);
     expect((await request(app).post(`/reviews/${campaignId}/close`)).status).toBe(200);
     expect((await request(app).put(`/reviews/${campaignId}/items/${actorId}`).send({ decision: 'confirmed' })).status).toBe(409);
     const list = (await request(app).get('/reviews')).body.data;

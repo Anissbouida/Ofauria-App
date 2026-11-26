@@ -11,6 +11,7 @@ import { FilterChips } from '../sales/ListTemplate';
 import { useAccountActions, errorMessage, formatLastLogin, formatDateTime } from './AccountSecurity';
 import { fmtDate } from './UsersOverview';
 import { AccessReviewModal } from './AccessReviewPanel';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * Revue des accès en campagnes (refonte Utilisateurs, lot 9, mig 709) : chaque compte actif est
@@ -152,6 +153,7 @@ function OpenCampaign({ id }: { id: string }) {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { run } = useAccountActions();
+  const { user: me } = useAuth();
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-review', 'campaign', id], queryFn: () => reviewsApi.get(id) });
   const [tab, setTab] = useState<Tab>('todo');
   const [correcting, setCorrecting] = useState<ReviewItem | null>(null);
@@ -185,7 +187,9 @@ function OpenCampaign({ id }: { id: string }) {
   const confirmed = items.filter(i => i.decision === 'confirmed');
   const corrected = items.filter(i => i.decision === 'corrected' || i.decision === 'deactivated');
   const decided = items.length - todo.length;
-  const cleanCount = todo.filter(i => i.isActive && signalTags(i.signals).length === 0).length;
+  // Son propre compte est revu par un autre administrateur (sauf seul administrateur actif).
+  const locked = (i: ReviewItem) => i.userId === me?.id && !data.selfDecisionAllowed;
+  const cleanCount = todo.filter(i => i.isActive && signalTags(i.signals).length === 0 && !locked(i)).length;
   const overdue = !!c.due_on && c.due_on < new Date().toLocaleDateString('sv-SE');
 
   const deactivate = async (i: ReviewItem) => {
@@ -198,7 +202,7 @@ function OpenCampaign({ id }: { id: string }) {
 
   const who = (i: ReviewItem) => (
     <td>
-      <div className="ds-strong">{i.name}{!i.isActive && <span className="kl-tag x" style={{ marginLeft: 6 }}>Désactivé</span>}</div>
+      <div className="ds-strong">{i.name}{i.userId === me?.id && <span className="kl-tag b" style={{ marginLeft: 6 }}>Vous</span>}{!i.isActive && <span className="kl-tag x" style={{ marginLeft: 6 }}>Désactivé</span>}</div>
       <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{i.stores.length ? i.stores.join(', ') : 'Tous les établissements'}</div>
     </td>
   );
@@ -267,10 +271,12 @@ function OpenCampaign({ id }: { id: string }) {
                       <td>{i.lastLoginAt ? formatLastLogin(i.lastLoginAt) : 'Jamais'}</td>
                       <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                         <button type="button" className="ds-icon-btn" aria-label={`Analyser les droits de ${i.name}`} title="Analyser" onClick={() => setAnalyse(i)}><ScanSearch size={15} /></button>
+                        {locked(i) ? <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Revu par un autre administrateur</span> : <>
                         {i.signals.dormantDays !== null && i.isActive
                           ? <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => void deactivate(i)}>Désactiver</button>
                           : <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setCorrecting(i)}>Corriger</button>}
                         <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ userId: i.userId, decision: 'confirmed' })}>Confirmer</button>
+                        </>}
                       </td>
                     </tr>
                   );
@@ -295,7 +301,7 @@ function OpenCampaign({ id }: { id: string }) {
                     {tab === 'corrected' && <td>{i.comment ?? '—'}</td>}
                     <td>{i.decidedBy ?? '—'}</td>
                     <td>{fmtDate(i.decidedAt)}</td>
-                    <td className="ds-actions"><button type="button" className="ds-btn-ghost ds-btn-sm" disabled={reset.isPending} onClick={() => reset.mutate(i.userId)}>Annuler</button></td>
+                    <td className="ds-actions">{!locked(i) && <button type="button" className="ds-btn-ghost ds-btn-sm" disabled={reset.isPending} onClick={() => reset.mutate(i.userId)}>Annuler</button>}</td>
                   </tr>
                 ))}
               </tbody>

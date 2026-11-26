@@ -247,7 +247,7 @@ export interface ReviewItem {
 export const reviewsApi = {
   list: () => api.get('/users/access-reviews').then(r => r.data.data as ReviewCampaign[]),
   open: (label: string, dueOn: string | null) => api.post('/users/access-reviews', { label, dueOn }).then(r => r.data.data as { id: string }),
-  get: (id: string) => api.get(`/users/access-reviews/${id}`).then(r => r.data.data as { campaign: ReviewCampaign; dormantThreshold: number; items: ReviewItem[] }),
+  get: (id: string) => api.get(`/users/access-reviews/${id}`).then(r => r.data.data as { campaign: ReviewCampaign; dormantThreshold: number; selfDecisionAllowed: boolean; items: ReviewItem[] }),
   decide: (id: string, userId: string, decision: ReviewDecision, comment?: string | null) =>
     api.put(`/users/access-reviews/${id}/items/${userId}`, { decision, comment: comment ?? null }).then(r => r.data),
   reset: (id: string, userId: string) => api.delete(`/users/access-reviews/${id}/items/${userId}`).then(r => r.data),

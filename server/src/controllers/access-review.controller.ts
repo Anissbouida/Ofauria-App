@@ -35,7 +35,7 @@ export const accessReviewController = {
     await reviewCall(res, async () => ({ id: await openCampaign(String(req.body.label), req.body.dueOn ?? null, req.user!.userId) }));
   },
   async campaign(req: AuthRequest, res: Response) {
-    const data = await campaignDetail(req.params.id);
+    const data = await campaignDetail(req.params.id, req.user?.userId);
     if (!data) { res.status(404).json({ success: false, error: { message: 'Revue introuvable' } }); return; }
     res.json({ success: true, data });
   },
