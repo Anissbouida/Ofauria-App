@@ -97,6 +97,7 @@ import { posParkedRouter } from './pos-parked.routes.js';
 import filesRoutes from './files.routes.js';
 import progressBillingsRoutes from './progress-billings.routes.js';
 import freightRatesRoutes from './freight-rates.routes.js';
+import transportOrdersRoutes from './transport-orders.routes.js';
 import depositStockRoutes from './deposit-stock.routes.js';
 
 const router = Router();
@@ -226,6 +227,8 @@ router.use('/pos/parked', posParkedRouter);
 router.use('/progress-billings', progressBillingsRoutes);
 // Mig 714 : grilles tarifaires du transport.
 router.use('/freight-rates', freightRatesRoutes);
+// Mig 726 : ordres de transport (feuille de route, étape 6.2).
+router.use('/transport-orders', transportOrdersRoutes);
 // Mig 719 : stock détenu pour le compte de clients.
 router.use('/deposit-stock', depositStockRoutes);
 

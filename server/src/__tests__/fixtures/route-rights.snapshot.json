@@ -2813,6 +2813,16 @@
   "admin",
   "manager"
  ],
+ "GET /transport-orders": [
+  "admin",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /transport-orders/:id": [
+  "admin",
+  "manager",
+  "saleswoman"
+ ],
  "GET /unsold-decisions": null,
  "GET /unsold-decisions/expired": [
   "admin",
@@ -4987,6 +4997,10 @@
   "admin",
   "manager"
  ],
+ "POST /transport-orders": [
+  "admin",
+  "manager"
+ ],
  "POST /unsold-decisions": [
   "admin",
   "cashier",
@@ -5707,6 +5721,30 @@
   "manager"
  ],
  "PUT /traceability/recalls/:id/items/:itemId": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id/deliver": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id/invoice": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id/pickup": [
+  "admin",
+  "manager"
+ ],
+ "PUT /transport-orders/:id/plan": [
   "admin",
   "manager"
  ],

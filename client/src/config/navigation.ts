@@ -190,7 +190,7 @@ export function navLabel(item: NavItem, sectorLabel?: (key: string, fallback: st
 export const SALES_SHELL_PATHS = new Set([
   '/sales-dashboard', '/crm', '/promotions', '/quotes', '/dunning', '/orders', '/delivery-notes',
   '/sales-contracts', '/sales-targets', '/rebates', '/sales', '/customers', '/products',
-  '/sales-channels', '/price-lists', '/product-transfers', '/pro-returns', '/reports', '/progress-billings', '/freight-rates',
+  '/sales-channels', '/price-lists', '/product-transfers', '/pro-returns', '/reports', '/progress-billings', '/freight-rates', '/transport-orders',
 ]);
 
 /** Entrée de menu par premier segment d'URL (fil d'ariane adapté au secteur). */

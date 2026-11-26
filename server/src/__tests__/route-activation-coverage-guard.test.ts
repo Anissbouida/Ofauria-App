@@ -13,7 +13,7 @@ import { activationRuleFor, featureRuleFor, EXEMPT_PREFIXES } from '../middlewar
 const ROUTES = readFileSync(resolve(__dirname, '../routes/index.ts'), 'utf8');
 const MOUNTED = [...new Set([...ROUTES.matchAll(/router\.use\(\s*'(\/[^']+)'/g)].map(m => m[1]))];
 // Capacités inscrites par les migrations de la feuille de route (711 et suivantes).
-const MIGRATION = ['711_capacites_tous_modules.sql', '713_situations_travaux.sql', '714_grilles_tarifaires_transport.sql', '712_stock_par_profil.sql']
+const MIGRATION = ['711_capacites_tous_modules.sql', '713_situations_travaux.sql', '714_grilles_tarifaires_transport.sql', '712_stock_par_profil.sql', '726_ordres_transport.sql']
   .map(f => readFileSync(resolve(__dirname, '../../migrations', f), 'utf8')).join('\n');
 
 describe('Garde : toute route montée est couverte par l’activation', () => {

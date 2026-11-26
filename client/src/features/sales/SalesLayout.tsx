@@ -46,6 +46,8 @@ export default function SalesLayout() {
     // Écran autonome, séparé des commandes comme dans les ERP standards (Odoo, SAP).
     { key: 'orders:deliveries', label: 'Bons de livraison', icon: PackageCheck, section: 'operations', group: 'Livraison', href: '/delivery-notes', hidden: !hasModule('orders') || !isDirection },
     salesView('routes', Truck, 'Livraison'),
+    // Mig 726 : ordres de transport (capacité ordre_transport, profil transport).
+    { key: 'transport-orders', label: 'Ordres de transport', icon: Truck, section: 'operations', group: 'Livraison', href: '/transport-orders', hidden: !hasModule('sales') },
     { key: 'product-transfers', label: 'Transferts', icon: ArrowLeftRight, section: 'operations', group: 'Livraison', href: '/product-transfers', hidden: !hasModule('sales') || !isDirection },
     // Mig 713 : facturation à l'avancement (situations de travaux), capacité facturation_avancement.
     { key: 'progress-billings', label: 'Situations de travaux', icon: HardHat, section: 'operations', group: 'Facturation', href: '/progress-billings', hidden: !hasModule('sales') || !isDirection },

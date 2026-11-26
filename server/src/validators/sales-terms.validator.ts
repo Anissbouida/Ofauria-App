@@ -50,6 +50,16 @@ export const freightGridSchema = body({
 });
 export const freightPriceSchema = body({ ...freightBase, quantity: numish, date: txt(10) });
 
+/* Ordres de transport (mig 726) — transport-orders.routes. */
+export const transportOrderSchema = body({
+  customerId: z.string().uuid(), pickupAddress: z.string().trim().min(1).max(2000), deliveryAddress: z.string().trim().min(1).max(2000),
+  originZone: txt(80), destinationZone: txt(80), pickupDate: txt(10), deliveryDate: txt(10), goodsDescription: txt(2000),
+  weightKg: numish, pallets: numish, distanceKm: numish, pricingBasis: z.enum(['weight', 'pallet', 'distance']).nullish().or(z.literal('')),
+  amountHt: numish, tvaRate: numish, notes: txt(2000),
+});
+export const transportOrderPlanSchema = body({ routeId: z.string().uuid() });
+export const transportOrderDeliverSchema = body({ podName: z.string().trim().min(1).max(120), podNote: txt(2000) });
+
 /* Stock des déposants (mig 719) — deposit-stock.routes. */
 export const depositArticleSchema = body({ customerId: ref, code: txt(60), label: txt(200), unit: txt(20) });
 export const depositMoveSchema = body({
