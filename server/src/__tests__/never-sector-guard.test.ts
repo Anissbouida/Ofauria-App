@@ -14,7 +14,11 @@ const DIRS = ['server/src', 'client/src', 'shared/src'];
 /** Fichiers de configuration autorisés à nommer un secteur (données, pas décisions). */
 const ALLOWED: Record<string, string> = {};
 
-const CODES = 'boulangerie|generique|negoce|process|discret|atelier|agroalimentaire|agro_conditionne';
+// Les profils de l'assistant (13) et les profils hérités : feuille de route, étape 1.6.
+const CODES = [
+  'boulangerie', 'generique', 'negoce', 'process', 'discret', 'atelier', 'agroalimentaire', 'agro_conditionne',
+  'commerce_detail', 'restauration', 'btp', 'agriculture', 'textile', 'transport', 'services', 'sante', 'ecommerce',
+].join('|');
 const PATTERNS: RegExp[] = [
   new RegExp(`(===|!==|==|!=)\\s*['"\`](${CODES})['"\`]`),
   new RegExp(`['"\`](${CODES})['"\`]\\s*(===|!==|==|!=)`),

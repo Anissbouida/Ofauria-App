@@ -61,7 +61,7 @@ export default function ConfigurationWizard() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { canEdit, canView, getModuleConfig } = usePermissions();
+  const { canEdit, canView, getModuleConfig, reload: reloadConfig } = usePermissions();
   const scope = allowedSettingsSections(getModuleConfig('settings'));
   const allowed = canView('settings') && canEdit('settings') && hasWizardSettingsScope(scope);
   const { settings } = useSettings();
@@ -151,6 +151,7 @@ export default function ConfigurationWizard() {
       setPublished(String(result.published_version_id ?? ''));
       close();
       void qc.invalidateQueries(); // menus, modules et libellés dépendent de la configuration publiée
+      reloadConfig(); // capacités et vocabulaire relus une fois, sans recharger l'application (étape 1.5)
     });
   }
   async function rebase() {

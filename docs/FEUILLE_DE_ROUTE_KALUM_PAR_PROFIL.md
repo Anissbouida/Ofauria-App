@@ -305,3 +305,6 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 1.1 Inventaire | Fait | 49 familles hors garde : 15 du socle exemptées (justifiées dans `EXEMPT_PREFIXES`), 34 métier rattachées à leur module, liste des modules lecteurs comprise |
 | 1.2 Fermeture des API | Fait | Table unique dans `module-activation.middleware.ts` ; test `route-activation-coverage-guard` : toute route montée a une règle ou une exemption |
 | 1.3 Capacités tous modules | Fait | Mig 711 : 18 capacités (Ventes, Caisse, Achats, Comptabilité, Personnel), actives par défaut ; `sector_packs.off_features` pour les extinctions par profil |
+| 1.4 Registre d'écrans | Fait | Registre partagé (`capability-screens.ts`) lu par 7 modules ; adresse directe refusée (« Fonction désactivée ») ; lectures croisées conditionnées. Contrôlé à l'écran : devis et abonnements éteints → menu, adresse et API fermés, puis rallumés |
+| 1.5 Lecture unique | Fait | Serveur : seul `sector.repository` lit l'état d'activation (garde) ; écran : `PermissionsContext`, relu automatiquement après publication de l'assistant |
+| 1.6 Gardes | Fait | Garde anti-secteur étendue aux 17 codes de profils ; garde de couverture des routes ; garde de lecture unique |

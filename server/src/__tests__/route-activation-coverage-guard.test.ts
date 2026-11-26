@@ -51,3 +51,35 @@ describe('Registre des capacités hors Production', () => {
     expect(featureRuleFor('/promotions')?.feature).toBe('promotions_fidelite');
   });
 });
+
+/**
+ * Étape 1.5 — une seule lecture de l'activation : seul le dépôt des profils
+ * (sector.repository) lit les tables d'activation pour dire si un module ou une capacité
+ * est actif. Exceptions : lectures de MÉTADONNÉES (date d'activation), pas d'état.
+ */
+describe('Garde : lecture unique de l’activation', () => {
+  const ALLOWED: Record<string, string> = {
+    'repositories/sector.repository.ts': 'source unique',
+    'services/config-health.ts': 'date d’activation d’un module (santé de la configuration)',
+    'services/module-onboarding.ts': 'ordre des derniers modules activés (accueil)',
+  };
+  it('aucun autre fichier ne lit app_features ni les écarts d’activation', async () => {
+    const { readdirSync, statSync } = await import('fs');
+    const { join, relative } = await import('path');
+    const root = resolve(__dirname, '..');
+    const hits: string[] = [];
+    const walk = (d: string) => {
+      for (const n of readdirSync(d)) {
+        if (n === '__tests__' || n === 'node_modules') continue;
+        const p = join(d, n);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.ts$/.test(n) && /\b(app_features|company_feature_settings|company_module_settings)\b/.test(readFileSync(p, 'utf8'))) {
+          const rel = relative(root, p);
+          if (!ALLOWED[rel]) hits.push(rel);
+        }
+      }
+    };
+    walk(root);
+    expect(hits).toEqual([]);
+  });
+});
