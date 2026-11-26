@@ -6,7 +6,8 @@ export const ingredientLotController = {
   async list(req: AuthRequest, res: Response) {
     const { ingredientId, status, search, expiringWithinDays, page = '1', limit = '50' } = req.query as Record<string, string>;
     const p = parseInt(page);
-    const l = parseInt(limit);
+    // Plafond : la fiche article demande tous les lots de l'article (refonte Stock).
+    const l = Math.min(Math.max(parseInt(limit) || 50, 1), 1000);
     const result = await ingredientLotRepository.findAll({
       ingredientId, status, search,
       expiringWithinDays: expiringWithinDays ? parseInt(expiringWithinDays) : undefined,

@@ -163,7 +163,8 @@ export default function IngredientDetailPage() {
   // Fetch lots for this ingredient
   const { data: lotsData } = useQuery({
     queryKey: ['ingredient-lots', id],
-    queryFn: () => ingredientLotsApi.list({ ingredientId: id! }),
+    // Tous les lots de l'article : à 50 (défaut de l'API), des lots actifs disparaissaient de la fiche.
+    queryFn: () => ingredientLotsApi.list({ ingredientId: id!, limit: '500' }),
     enabled: !!id,
   });
   const lots = (lotsData?.data || []) as Lot[];
