@@ -1,3 +1,4 @@
+import { sectorRepository } from './sector.repository.js';
 import { db } from '../config/database.js';
 
 /**
@@ -15,7 +16,10 @@ export const costCenterRepository = {
       `SELECT c.*, x.code AS axis_code, x.name AS axis_name,
               (SELECT COUNT(*) FROM invoices i WHERE i.cost_center_id = c.id)::int AS invoices_count
          FROM cost_centers c JOIN analytic_axes x ON x.id = c.axis_id ${where} ORDER BY x.code, c.is_active DESC, c.code`, params);
-    return r.rows;
+    // Audit des profils (R2, mig 732) : un centre dont le module est éteint (Production, Maintenance,
+    // Qualité) n'est plus proposé, sauf s'il porte déjà des factures.
+    const ctx = await sectorRepository.needsContext();
+    return r.rows.filter(c => !c.module || ctx.moduleActive(c.module as string) || Number(c.invoices_count) > 0);
   },
 
   async create(input: { code: string; name: string; axisId?: string | null; storeId?: string | null; userId: string | null }) {
