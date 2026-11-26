@@ -1,6 +1,7 @@
 import { isAccountType, orderKindLabel } from '../../hooks/useCommercialTypes';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
@@ -97,6 +98,14 @@ export const NEXT_STEP: Record<string, { to: string; label: string; icon: Lucide
   confirmed: { to: 'in_production', label: 'Lancer', icon: Factory },
   in_production: { to: 'ready', label: 'Marquer prête', icon: PackageCheck },
 };
+/**
+ * Audit des profils (L4) : sans module Production, pas d'étape « en production » — une commande
+ * confirmée se prépare et passe directement à « prête ».
+ */
+export function orderNextStep(status: string, productionOn: boolean) {
+  if (!productionOn && status === 'confirmed') return { to: 'ready', label: 'Marquer prête', icon: PackageCheck };
+  return NEXT_STEP[status];
+}
 const BULK_STEPS = [
   { from: 'pending', to: 'confirmed', label: 'Confirmer' },
   { from: 'confirmed', to: 'in_production', label: 'Lancer en production' },
@@ -109,6 +118,7 @@ const LANE_TONE: Record<string, string> = { pending: 'grey', confirmed: 'blue', 
 /* ═══════════════════════ Page ═══════════════════════ */
 
 export default function OrdersPage() {
+  const productionOn = usePermissions().moduleActive('production');
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -252,7 +262,7 @@ export default function OrdersPage() {
   const busy = updateStatusMutation.isPending || deleteMutation.isPending || bulkMutation.isPending;
   const nextAction = (o: OrderRow): { label: string; icon: LucideIcon; run: () => void } | null => {
     const s = o.status as string;
-    const step = NEXT_STEP[s];
+    const step = orderNextStep(s, productionOn);
     if (step) return { label: step.label, icon: step.icon, run: () => updateStatusMutation.mutate({ id: o.id as string, status: step.to }) };
     if (s === 'ready') return { label: isPro(o) ? 'Livrer' : 'Remettre', icon: Truck, run: () => setDeliverOrder(o) };
     if (s === 'partially_delivered' && isPro(o)) return { label: 'Livrer le reliquat', icon: Truck, run: () => setDeliverOrder(o) };
@@ -274,7 +284,7 @@ export default function OrdersPage() {
     const o = orders.find(x => x.id === id);
     if (!o || o.status === stage) return;
     const from = o.status as string;
-    if (NEXT_STEP[from]?.to === stage) { updateStatusMutation.mutate({ id, status: stage }); return; }
+    if (orderNextStep(from, productionOn)?.to === stage) { updateStatusMutation.mutate({ id, status: stage }); return; }
     if (stage === 'partially_delivered' && (from === 'ready') && isPro(o)) { setDeliverOrder(o); return; }
     const label = (k: string) => STAGES.find(st => st.key === k)?.label ?? k;
     notify.warning(`« ${label(from)} » → « ${label(stage)} » : utilisez l'action de la commande (le passage se fait une étape à la fois).`);
@@ -296,7 +306,7 @@ export default function OrdersPage() {
   };
 
   const openTotal = orders.filter(o => OPEN_STATUSES.has(o.status as string)).reduce((s, o) => s + num(o.total), 0);
-  const kanbanStages = STAGES.filter(st => st.key !== 'completed');
+  const kanbanStages = STAGES.filter(st => st.key !== 'completed' && (productionOn || st.key !== 'in_production'));
   // Tuiles : chiffres que les pastilles ne donnent pas (retrait du jour, argent à encaisser, à facturer).
   const kpis = useMemo(() => {
     const k = { todayCount: 0, weekCount: 0, toCollect: 0, advances: 0, toInvoiceCount: 0, toInvoice: 0 };
@@ -325,7 +335,7 @@ export default function OrdersPage() {
         </section>}
 
         <div className="prj-chips" role="group" aria-label="Filtrer par étape">
-          {FILTER_CHIPS.flatMap((chip) => {
+          {FILTER_CHIPS.filter(c => productionOn || c.key !== 'in_production').flatMap((chip) => {
             const active = statusFilter === chip.key && !lateOnly;
             const count = counts[chip.key] || 0;
             const btn = (
@@ -414,7 +424,7 @@ export default function OrdersPage() {
           <DataPanel label="Commandes"
             bulk={(
               <BulkBar count={selectedOrders.length} noun="commande" detail={money(selectedOrders.reduce((sum, o) => sum + num(o.total), 0))} onClear={() => setSelected(new Set())}>
-                {BULK_STEPS.map(b => {
+                {BULK_STEPS.filter(b => productionOn || (b.to !== 'in_production' && b.from !== 'in_production')).map(b => {
                   const eligible = selectedOrders.filter(o => o.status === b.from).map(o => o.id as string);
                   if (!eligible.length) return null;
                   return (

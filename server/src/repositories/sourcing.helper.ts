@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { productionRepository } from './production.repository.js';
+import { sectorRepository } from './sector.repository.js';
 import { roundQty } from '../utils/quantity.js';
 import { formatYieldPerBatch } from '@ofauria/shared';
 
@@ -135,7 +136,13 @@ export async function computeSourcingAndCreatePlan(
     `SELECT id, item_kind FROM products WHERE id = ANY($1)`, [productIds]
   );
   const kindMap: Record<string, string> = {};
-  for (const row of kindResult.rows) kindMap[row.id] = (row.item_kind as string) || 'manufactured';
+  // Audit des profils (L4) : sans module Production, un article « fabriqué » ne crée aucun plan
+  // de production ni demande aux chefs d'atelier : son manque part à l'achat, comme la revente.
+  const productionOn = await sectorRepository.moduleOn('production');
+  for (const row of kindResult.rows) {
+    const kind = (row.item_kind as string) || 'manufactured';
+    kindMap[row.id] = kind === 'manufactured' && !productionOn ? 'resale' : kind;
+  }
 
   // 3 bis) Règle de lot du format (mig 662, audit 2026-11 C-04). Le profil ci-dessus lit
   //    recipes.contenant_id, que plus aucune fiche ne renseigne : l'arrondi au contenant ne

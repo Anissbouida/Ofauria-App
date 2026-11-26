@@ -34,6 +34,7 @@ import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { getParameter } from './module-parameters.service.js';
+import { resolvePolicy } from './policies.js';
 
 /* ═══ Types ═══ */
 export interface GeneratedLine {
@@ -408,7 +409,7 @@ export async function fromInvoice(
     // ou 7129 RRR accordés (prix, geste) et TVA collectée au débit, 3421 au crédit, lettré
     // avec la facture d'origine.
     if (!inv.customer_id) return null;
-    const revCode = inv.credit_reason === 'price' || inv.credit_reason === 'commercial' ? '7129' : '7111';
+    const revCode = inv.credit_reason === 'price' || inv.credit_reason === 'commercial' ? '7129' : await invoiceDefaultRevenueAccount(client);
     const lines: GeneratedLine[] = [
       { account_code: revCode, debit: round2(amount), credit: 0, label: `Avoir ${inv.invoice_number}` },
     ];
@@ -451,7 +452,8 @@ export async function fromInvoice(
       // CA (HT) ventilé par compte de produit selon la famille (mig 481). amount =
       // HT (invoice_items.subtotal) ; lignes B2B sans produit → compte par défaut
       // 7111. Sans mapping, une seule ligne 7111 au HT, comme avant.
-      ...revenueLinesFromGroups(await invoiceRevenueGroups(client, inv.id), round2(amount), `Vente ${inv.invoice_number}`),
+      ...await (async () => { const def = await invoiceDefaultRevenueAccount(client);
+        return revenueLinesFromGroups(await invoiceRevenueGroups(client, inv.id, def), round2(amount), `Vente ${inv.invoice_number}`, def); })(),
     ];
     // TVA collectee : une ligne par taux si detail par ligne, sinon ligne unique.
     const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'collected');
@@ -671,6 +673,18 @@ export async function fromSaleSettlement(client: PoolClient | typeof db, s: Sale
 const DEFAULT_REVENUE_ACCOUNT = '7111';
 
 /**
+ * Compte de produit par défaut des factures (audit des profils, L4) : politique
+ * accounting.default_revenue livrée par le profil (7124 prestations, 7121 biens produits),
+ * 7111 sinon ou si le compte n'existe pas dans le plan de la société.
+ */
+export async function invoiceDefaultRevenueAccount(client: PoolClient | typeof db): Promise<string> {
+  const v = String((await resolvePolicy<{ account?: string }>('accounting.default_revenue')).value?.account ?? DEFAULT_REVENUE_ACCOUNT);
+  if (v === DEFAULT_REVENUE_ACCOUNT) return v;
+  const ok = (await client.query(`SELECT 1 FROM accounts WHERE code = $1`, [v])).rowCount;
+  return ok ? v : DEFAULT_REVENUE_ACCOUNT;
+}
+
+/**
  * Transforme une ventilation {compte → HT} en lignes de crédit. Le résidu
  * (arrondis, avance reprise, lignes sans produit/famille) retombe sur le compte
  * par défaut pour que la somme crédite EXACTEMENT `totalHt` : l'écriture reste
@@ -680,8 +694,10 @@ const DEFAULT_REVENUE_ACCOUNT = '7111';
 function revenueLinesFromGroups(
   groups: { code: string; ht: number }[],
   totalHt: number,
-  label: string
+  label: string,
+  fallback: string = DEFAULT_REVENUE_ACCOUNT,
 ): GeneratedLine[] {
+  const DEFAULT = fallback;
   const byCode = new Map<string, number>();
   for (const g of groups) {
     const v = round2(g.ht);
@@ -691,11 +707,11 @@ function revenueLinesFromGroups(
   const sum = round2([...byCode.values()].reduce((acc, v) => acc + v, 0));
   const residual = round2(totalHt - sum);
   if (residual !== 0 || byCode.size === 0) {
-    byCode.set(DEFAULT_REVENUE_ACCOUNT, round2((byCode.get(DEFAULT_REVENUE_ACCOUNT) ?? 0) + residual));
+    byCode.set(DEFAULT, round2((byCode.get(DEFAULT) ?? 0) + residual));
   }
   // Compte par défaut d'abord, puis par code croissant : écriture stable et lisible.
   const codes = [...byCode.keys()].sort((a, b) =>
-    a === DEFAULT_REVENUE_ACCOUNT ? -1 : b === DEFAULT_REVENUE_ACCOUNT ? 1 : a.localeCompare(b));
+    a === DEFAULT ? -1 : b === DEFAULT ? 1 : a.localeCompare(b));
   return codes
     .filter((c) => round2(byCode.get(c)!) !== 0)
     .map((c) => ({ account_code: c, debit: 0, credit: round2(byCode.get(c)!), label }));
@@ -718,7 +734,7 @@ async function saleRevenueGroups(client: PoolClient | typeof db, saleId: string)
 }
 
 /** CA HT d'une facture client ventilé par famille (invoice_items.subtotal = HT). */
-async function invoiceRevenueGroups(client: PoolClient | typeof db, invoiceId: string): Promise<{ code: string; ht: number }[]> {
+async function invoiceRevenueGroups(client: PoolClient | typeof db, invoiceId: string, fallback: string = DEFAULT_REVENUE_ACCOUNT): Promise<{ code: string; ht: number }[]> {
   const r = await client.query(
     `SELECT COALESCE(fra.account_code, $2) AS code,
             ROUND(SUM(ii.subtotal)::numeric, 2) AS ht
@@ -728,7 +744,7 @@ async function invoiceRevenueGroups(client: PoolClient | typeof db, invoiceId: s
        LEFT JOIN family_revenue_accounts fra ON fra.family = c.family
       WHERE ii.invoice_id = $1
       GROUP BY COALESCE(fra.account_code, $2)`,
-    [invoiceId, DEFAULT_REVENUE_ACCOUNT]
+    [invoiceId, fallback]
   );
   return r.rows.map((x: { code: string; ht: string }) => ({ code: String(x.code), ht: parseFloat(x.ht) || 0 }));
 }

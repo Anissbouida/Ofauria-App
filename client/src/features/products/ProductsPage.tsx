@@ -702,6 +702,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const [showChannels, setShowChannels] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<ProfileFormData | null>(null);
   const cf = useCustomFieldsForm('product', product?.custom_fields);
+  // Audit des profils (L4) : sans module Production, un nouvel article est de revente par défaut.
+  const { moduleActive: moduleOn } = usePermissions();
   const [form, setForm] = useState({
     name: (product?.name as string) || '',
     categoryId: (product?.category_id as number) || categories[0]?.id || 1,
@@ -730,7 +732,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     saleUnit: (product?.sale_unit as string) || 'unit',
     pricePerPerson: product?.price_per_person != null ? String(parseFloat(String(product.price_per_person))) : '',
     // Nature de l'article (mig 469) : pilote la fiche (recette, stock, prix).
-    itemKind: (product?.item_kind as string) || 'manufactured',
+    itemKind: (product?.item_kind as string) || (moduleOn('production') ? 'manufactured' : 'resale'),
     barcode: (product?.barcode as string) || '',
     taxCode: (product?.tax_code as string) || '',
     // Base du prix catalogue (mig 479) : true = TTC (défaut), false = HT.

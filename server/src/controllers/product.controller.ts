@@ -1,4 +1,5 @@
 import { productLabelRepository } from '../repositories/product-label.repository.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -231,7 +232,7 @@ export const productController = {
           data.preparationTimeMin || null, data.responsibleUserId || null,
           data.saleUnit || 'unit', data.pricePerKg ?? null, data.pricePerPerson ?? null,
           saleType, shelfLifeDays, displayLifeHours,
-          isReexposable, isRecyclable, maxReexpositions, data.itemKind || 'manufactured',
+          isReexposable, isRecyclable, maxReexpositions, data.itemKind || ((await sectorRepository.moduleOn('production')) ? 'manufactured' : 'resale'),
           (data.barcode as string)?.trim() || null,
           (data.taxCode as string)?.trim() || null,
           data.priceIncludesTax ?? true,

@@ -2,6 +2,23 @@ import type { QueryResult } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { vatRegimeSetting } from '../services/module-parameters.service.js';
 import { tvaAccountForRate } from '../services/journal-generator.service.js';
+import { sectorRepository } from './sector.repository.js';
+
+/**
+ * Audit des profils (L4) : un contrôle de clôture ne vaut que si son module est actif. Sans caisse,
+ * « jours sans vente en caisse » comptait chaque jour de la période ; sans stock de produits,
+ * « stock de produits finis non valorisé » restait à 1.
+ */
+async function applicableChecks<T extends { key?: string; code?: string }>(rows: T[]): Promise<T[]> {
+  const pos = await sectorRepository.moduleOn('pos');
+  const fg = (await sectorRepository.moduleOn('stock')) && (await sectorRepository.moduleOn('products'));
+  return rows.filter(r => {
+    const k = String(r.key ?? r.code ?? '');
+    if (k.startsWith('pos_')) return pos;
+    if (k === 'fg_stock_not_valued') return fg;
+    return true;
+  });
+}
 
 /* ═══ Plan comptable CGNC ═══ */
 export const accountRepository = {
@@ -159,7 +176,7 @@ export const fiscalPeriodRepository = {
       if (status === 'open' && (!note || note.trim().length < 3)) throw fail(400, 'Motif de réouverture obligatoire');
       let checklist: unknown[] | null = null;
       if (status === 'closed') {
-        const ck = await client.query(`SELECT * FROM fn_close_checklist($1)`, [id]);
+        const ck = { rows: await applicableChecks((await client.query(`SELECT * FROM fn_close_checklist($1)`, [id])).rows) };
         checklist = ck.rows;
         const blocking = ck.rows.filter((r: { blocking: boolean; item_count: string }) => r.blocking && parseInt(r.item_count, 10) > 0);
         if (blocking.length) {
@@ -185,7 +202,7 @@ export const fiscalPeriodRepository = {
 
   /** Checklist de clôture d'une période (contrôles bloquants / avertissements). */
   async checklist(id: string) {
-    const r = await db.query(`SELECT * FROM fn_close_checklist($1)`, [id]);
+    const r = { rows: await applicableChecks((await db.query(`SELECT * FROM fn_close_checklist($1)`, [id])).rows) };
     return r.rows.map((x: Record<string, unknown>) => ({ ...x, item_count: parseInt(String(x.item_count), 10) }));
   },
 

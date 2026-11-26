@@ -826,7 +826,13 @@ export const invoiceRepository = {
       }
       // O2C L4 (G-IV-01) : une facture client de marchandises se fait depuis le BL (quantités
       // livrées) ; seules les prestations (lignes sans produit) se facturent directement.
-      if (invoiceType === 'emitted' && !isCreditNote && data.items?.some(i => i.productId && !i.deliveryNoteItemId)) {
+      // Audit des profils (L4) : un article de nature « service » ou « abonnement » est une prestation.
+      const directProductIds = invoiceType === 'emitted' && !isCreditNote
+        ? (data.items ?? []).filter(i => i.productId && !i.deliveryNoteItemId).map(i => i.productId as string) : [];
+      const directGoods = directProductIds.length
+        ? (await client.query(`SELECT 1 FROM products WHERE id = ANY($1::uuid[]) AND COALESCE(item_kind, 'manufactured') NOT IN ('service', 'subscription') LIMIT 1`, [directProductIds])).rowCount
+        : 0;
+      if (directGoods) {
         throw Object.assign(new Error('Facture de marchandises : elle se fait depuis le bon de livraison (Ventes pro › À facturer). Une facture directe ne porte que des prestations.'), { statusCode: 400 });
       }
       // Phase 5.6 : mentions légales (ICE pro) + continuité chronologique avant d'allouer

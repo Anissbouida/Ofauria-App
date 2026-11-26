@@ -272,6 +272,20 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
   },
   {
+    // Audit des profils (L4) : compte de produit des lignes de facture sans famille comptable
+    // (prestations, lignes libres). Livré par le profil : prestations de services (BTP, services,
+    // transport), biens produits (industrie) ; marchandises par défaut (comportement historique).
+    key: 'accounting.default_revenue', domain: 'accounting', section: 'business',
+    label: 'Compte de ventes par défaut',
+    help: 'Compte crédité pour une ligne de facture client dont l\'article n\'a pas de compte de famille (prestation, ligne libre, situation de travaux, ordre de transport), pour les factures à établir et les avoirs d\'annulation. Les tickets de caisse restent en ventes de marchandises.',
+    fields: [{ name: 'account', label: 'Compte', type: 'enum', options: [
+      { value: '7111', label: '7111 — Ventes de marchandises' },
+      { value: '7121', label: '7121 — Ventes de biens produits' },
+      { value: '7124', label: '7124 — Ventes de services produits' }] }],
+    defaults: { account: '7111' },
+    storage: { kind: 'policy' }, scopes: ['company'],
+  },
+  {
     key: 'production.enforce_declared_steps', domain: 'production', section: 'production',
     label: 'Étapes obligatoires des types d\'ordre',
     help: 'Rend effectifs les drapeaux « pesée obligatoire » et « contrôle qualité obligatoire » d\'un type d\'ordre : le démarrage attend que toutes les lignes du bon de sortie soient pesées, le transfert attend un contrôle conforme sans contrôle en attente. Désactivé : ces drapeaux restent indicatifs (comportement historique).',

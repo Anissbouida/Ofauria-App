@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
+import { sectorRepository } from './sector.repository.js';
 import { db } from '../config/database.js';
-import { persistEntry, postingAccount, reverseEntriesForSource, type GeneratedEntry } from '../services/journal-generator.service.js';
+import { persistEntry, postingAccount, reverseEntriesForSource, invoiceDefaultRevenueAccount, type GeneratedEntry } from '../services/journal-generator.service.js';
 import { withActor } from '../services/document-actions.service.js';
 
 /**
@@ -88,7 +89,7 @@ export const periodEndRepository = {
           source_kind: 'period_accrual', source_id: op.id, store_id: null,
           lines: [
             { account_code: fae, debit: amount, credit: 0, label: 'BL livrés non facturés' },
-            { account_code: '7111', debit: 0, credit: amount, label: 'Ventes livrées à facturer' },
+            { account_code: await invoiceDefaultRevenueAccount(c), debit: 0, credit: amount, label: 'Ventes livrées à facturer' },
           ],
         } as unknown as GeneratedEntry;
         await persistEntry(c, entry, { userId });
@@ -130,8 +131,12 @@ export const periodEndRepository = {
         `INSERT INTO period_end_operations (period_id, kind, amount, detail, created_by) VALUES ($1, 'fg_stock', $2, $3, $4) RETURNING *`,
         [periodId, value, JSON.stringify({ previous, delta, products_without_cost: v.without_cost }), userId])).rows[0];
       if (delta !== 0) {
-        const stock = await postingAccount(c, 'fg_stock');
-        const variation = await postingAccount(c, 'fg_stock_variation');
+        // Audit des profils (L4) : sans module Production, le stock de produits est de la
+        // marchandise revendue (3111 / 6114), pas des produits finis (3151 / 7132).
+        const goods = !(await sectorRepository.moduleOn('production'))
+          && (await c.query(`SELECT count(*)::int AS n FROM accounts WHERE code IN ('3111', '6114')`)).rows[0].n === 2;
+        const stock = goods ? '3111' : await postingAccount(c, 'fg_stock');
+        const variation = goods ? '6114' : await postingAccount(c, 'fg_stock_variation');
         await persistEntry(c, {
           journal_code: 'OD', entry_date: p.end_date, description: `Variation du stock de produits finis au ${p.end_date}`,
           source_kind: 'period_accrual', source_id: op.id, store_id: null,

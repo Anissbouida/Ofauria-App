@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { sectorRepository } from './sector.repository.js';
 import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
 import { invalidatePermissionCaches, replaceRolePermissionsFrom } from '../services/permissions.js';
 
@@ -52,7 +53,19 @@ export const roleRepository = {
          FROM roles r
         ORDER BY r.is_system DESC, r.label`,
     );
-    return r.rows;
+    // Audit des profils (L4) : un rôle système métier n'est proposé que si son module est actif
+    // (caissier et vendeur → caisse, boulanger et pâtissier → production, magasinier → stock),
+    // sauf s'il a déjà des titulaires.
+    const ROLE_MODULE: Record<string, string> = {
+      cashier: 'pos', saleswoman: 'pos', baker: 'production', pastry_chef: 'production',
+      viennoiserie: 'production', beldi_sale: 'production', magasinier: 'stock',
+    };
+    const on = new Map<string, boolean>();
+    for (const m of new Set(Object.values(ROLE_MODULE))) on.set(m, await sectorRepository.moduleOn(m));
+    return r.rows.map(row => {
+      const m = ROLE_MODULE[row.code as string];
+      return m && !on.get(m) && !(Number(row.user_count) > 0) ? { ...row, available: false } : row;
+    });
   },
 
   async find(code: string) {

@@ -1,4 +1,5 @@
 import { isAccountType, customerTypeLabel } from '../../hooks/useCommercialTypes';
+import { usePermissions } from '../../context/PermissionsContext';
 import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -56,6 +57,8 @@ async function openPdf(id: string, kind: 'quote' | 'proforma') {
 
 export default function QuotesPage() {
   const qc = useQueryClient();
+  // Audit des profils (L4) : sans module Commandes, un devis accepté se facture directement.
+  const ordersOn = usePermissions().moduleActive('orders');
   // ?status=follow|open : liens du tableau de bord Ventes.
   const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get('status') ?? '');
   const [searchInput, setSearchInput] = useState('');
@@ -100,7 +103,7 @@ export default function QuotesPage() {
   const nextStep = (q: Quote) => {
     if (q.status === 'draft') return <NextStep icon={Send} label="Marquer envoyé" disabled={quickAct.isPending} onClick={() => quickAct.mutate({ id: q.id, action: 'send' })} />;
     if (q.status === 'sent') return <NextStep icon={CheckCircle2} label="Accepté" disabled={quickAct.isPending} onClick={() => quickAct.mutate({ id: q.id, action: 'accept' })} />;
-    if (q.status === 'accepted') return <NextStep icon={ShoppingCart} label="Créer la commande" onClick={() => setOpenId(q.id)} />;
+    if (q.status === 'accepted' && ordersOn) return <NextStep icon={ShoppingCart} label="Créer la commande" onClick={() => setOpenId(q.id)} />;
     return null;
   };
   const menuItems = (q: Quote): RowMenuItem[] => {
@@ -436,6 +439,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
   const qc = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const ordersOn = usePermissions().moduleActive('orders');
   const { data: q, isLoading, isError, error, refetch } = useQuery({ queryKey: ['quote', id], queryFn: () => quotesApi.get(id) });
   const { entries: reasons } = useReferentiel('quote_lost_reasons');
   const [losing, setLosing] = useState<{ reasonCode: string; note: string } | null>(null);
@@ -520,7 +524,10 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 <button className="odoo-btn-secondary" onClick={() => setLosing({ reasonCode: '', note: '' })}><XCircle size={13} /> Perdu</button>
                 <button className="odoo-btn-primary" disabled={act.isPending} onClick={() => act.mutate({ action: 'accept' })}><CheckCircle2 size={13} /> Accepté</button>
               </>}>Une fois le bon pour accord reçu, marquez le devis accepté puis transformez-le en commande.</StatusBanner>}
-            {(q.status === 'accepted') && <StatusBanner tone="success" icon={ShoppingCart} title="Accepté : transformer en commande"
+            {(q.status === 'accepted') && !ordersOn && <StatusBanner tone="success" icon={CheckCircle2} title="Accepté : facturer la prestation"
+              actions={<button className="odoo-btn-primary" onClick={() => navigate('/sales?tab=invoices')}>Aller aux factures</button>}>
+              Sans gestion des commandes, la prestation se facture directement depuis Ventes › Factures (ou par situations de travaux).</StatusBanner>}
+            {(q.status === 'accepted') && ordersOn && <StatusBanner tone="success" icon={ShoppingCart} title="Accepté : transformer en commande"
               actions={<button className="odoo-btn-primary" onClick={() => setConverting({ pickupDate: '', customerId: '' })}><ShoppingCart size={13} /> Créer la commande</button>}>
               La commande reprend les prix, la remise et les lignes du devis ; elle suit ensuite son cycle habituel (production, livraison, facture).</StatusBanner>}
             {q.status === 'converted' && <StatusBanner tone="success" icon={ShoppingCart} title={`Commande ${q.order_number} créée`}

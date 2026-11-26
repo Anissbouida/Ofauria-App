@@ -1,4 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,7 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import { NextStep } from '../sales/ListTemplate';
 import {
-  TYPE_LABELS, NEXT_STEP, CAN_CANCEL, CAN_RESCHEDULE, isPro, customerName, num, n, fmtDate, isLate, daysLate,
+  TYPE_LABELS, orderNextStep, CAN_CANCEL, CAN_RESCHEDULE, isPro, customerName, num, n, fmtDate, isLate, daysLate,
   DeliverModal, ProDeliverModal, RescheduleModal, PrepaymentModal,
 } from './OrdersPage';
 import { OrderStatusTag } from './OrderSplit';
@@ -88,6 +89,7 @@ const PLAN_ITEM_STATUS: Record<string, string> = {
 };
 
 export default function OrderRecordPage() {
+  const productionOn = usePermissions().moduleActive('production');
   const { id = '' } = useParams();
   const navigate = useNavigate();
   // Écran d'origine (ex. bon de livraison) : le lien retour y ramène, sinon la liste des commandes.
@@ -150,7 +152,7 @@ export default function OrderRecordPage() {
   const steps = orderSteps(o);
 
   /* ── Actions ── */
-  const step = NEXT_STEP[st];
+  const step = orderNextStep(st, productionOn);
   const next = step
     ? { label: step.label, icon: step.icon, run: () => status.mutate(step.to) }
     : st === 'ready' ? { label: pro ? 'Livrer' : 'Remettre au client', icon: Check, run: () => setModal('deliver') }
