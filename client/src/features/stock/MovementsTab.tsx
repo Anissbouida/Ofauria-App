@@ -42,7 +42,9 @@ export default function MovementsTab() {
   });
   const { data: types = [] } = useQuery({
     queryKey: ['params', 'stock_movement_types'],
-    queryFn: (): Promise<MovementType[]> => referentielApi.entries('stock_movement_types'),
+    // L'API du référentiel répond { table, entries }.
+    queryFn: (): Promise<MovementType[]> => referentielApi.entries('stock_movement_types')
+      .then((d: { entries?: MovementType[] } | MovementType[]) => (Array.isArray(d) ? d : d?.entries ?? [])),
     staleTime: 300_000,
   });
   const labelOf = useMemo(() => new Map(types.map(t => [t.code, t.label])), [types]);
