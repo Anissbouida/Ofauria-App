@@ -27,6 +27,10 @@ describe.skipIf(!hasTestDb)('Comptes de produits par famille — repo et ventila
   let prodPat: string;   // famille Pâtisserie → mappée 7112
 
   beforeAll(async () => {
+    // Compte de ventes par défaut (audit des profils, L4) : 7111 ici, quel que soit le profil
+    // appliqué par un test précédent.
+    await p().query(`DELETE FROM policy_values WHERE key = 'accounting.default_revenue'`);
+    (await import('../../services/policies.js')).invalidatePolicies();
     storeId = (await p().query(`INSERT INTO stores (name, city) VALUES ($1, 'Test') RETURNING id`, [`Mag Fam ${RUN}`])).rows[0].id;
     userId = (await p().query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, store_id)
