@@ -7,7 +7,7 @@ import { fr } from 'date-fns/locale';
 import { controleApi, type ControlIndicator, type LossFamily } from '../../api/controle.api';
 import { serverUrl } from '../../api/client';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useApprovalsCount } from '../../api/approvals.api';
@@ -66,24 +66,24 @@ function Dot({ color }: { color: string }) {
 }
 
 export default function ControlePage() {
-  const { hasModule, hasFeature } = usePermissions();
+  const { hasModule } = usePermissions();
   const approvalsCount = useApprovalsCount();
   // Rubriques standard (ModuleShell) : chaque domaine contrôlé est un écran de travail ;
   // la boîte d'approbation et ses circuits vivent ailleurs (renvois).
-  const views: ModuleView<Tab | 'approvals' | 'approval_rules'>[] = [
+  const views: ModuleView<Tab | 'approvals' | 'approval_rules'>[] = useCapabilityScreens('controle', [
     { key: 'overview', label: 'Vue d\'ensemble', icon: LayoutDashboard, section: 'dashboard' },
     { key: 'achats', label: 'Achats & réception', icon: Truck, section: 'operations' },
     { key: 'production', label: 'Production', icon: Factory, section: 'operations' },
     { key: 'pertes', label: 'Pertes', icon: Trash2, section: 'operations' },
     // HACCP : registres d'hygiène alimentaire, seulement avec la capacité (secteurs alimentaires).
-    { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations', hidden: !hasFeature('haccp') },
+    { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations' },
     { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren, section: 'operations' },
     // SAV (mig 357) : réclamations clients, saisies ici ou depuis la caisse.
     { key: 'sav', label: 'Réclamations clients', icon: MessageSquareWarning, section: 'operations' },
     { key: 'qualite', label: 'Qualité', icon: ListChecks, section: 'operations' },
     { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount, hidden: !hasModule('purchasing') },
     { key: 'approval_rules', label: 'Circuits d\'approbation', icon: Settings, section: 'setup', href: '/settings?page=approvals', external: true, hidden: !hasModule('settings') },
-  ];
+  ]);
   const { current, select } = useModuleView(views);
   const tab = current?.key as Tab;
   // Période commune à la vue d'ensemble et aux pertes.

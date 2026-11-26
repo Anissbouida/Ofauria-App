@@ -1,4 +1,5 @@
 import { isAccountType, customerBehaviors } from '../../hooks/useCommercialTypes';
+import { usePermissions } from '../../context/PermissionsContext';
 import { money as moneyFmt, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -81,6 +82,7 @@ function Rings({ rings }: { rings: Array<{ pct: number | null; color: string }> 
 const pct1 = (v: number) => `${v.toFixed(1).replace('.', ',')} %`;
 
 export default function SalesDashboard() {
+  const { hasFeature } = usePermissions();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('30d');
   const r = rangeOf(period);
@@ -91,7 +93,7 @@ export default function SalesDashboard() {
   const { data: products = [] } = useQuery({ queryKey: ['reports-products', r.from, r.to], queryFn: () => reportsApi.products(r.from, r.to) });
   const { data: cost } = useQuery({ queryKey: ['reports-cost-summary', r.from, r.to], queryFn: () => reportsApi.costSummary(r.from, r.to), retry: false });
   const { data: ordersResp } = useQuery({ queryKey: ['orders', { all: true }], queryFn: () => ordersApi.list({ limit: '500' }) });
-  const { data: qov } = useQuery({ queryKey: ['quotes', 'overview'], queryFn: quotesApi.overview, retry: false });
+  const { data: qov } = useQuery({ queryKey: ['quotes', 'overview'], queryFn: quotesApi.overview, enabled: hasFeature('devis'), retry: false });
   const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), retry: false });
   const { data: rec } = useQuery({ queryKey: ['receivables'], queryFn: salesApi.receivables, retry: false });
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'dashboard'], queryFn: () => customersApi.list({ limit: '1000' }) });

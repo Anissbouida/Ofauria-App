@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, Fragment, type CSSProperties } from 'react';
+import { usePermissions } from '../../context/PermissionsContext';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1821,7 +1822,8 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   });
   const [downloading, setDownloading] = useState(false);
   // Note fournisseur (mig 362) pour la carte fournisseur ; absente = pas encore évalué.
-  const { data: standings = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest, retry: false, staleTime: 300_000 });
+  const { hasFeature } = usePermissions();
+  const { data: standings = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest, enabled: hasFeature('evaluation_fournisseurs'), retry: false, staleTime: 300_000 });
 
   if (isLoading || !po) {
     return (

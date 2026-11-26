@@ -1,4 +1,6 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePermissions } from '../../context/PermissionsContext';
+import { screenCapability } from '@ofauria/shared';
 import { useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -150,8 +152,12 @@ export default function SalesPage() {
   const queryClient = useQueryClient();
   // Écran porté par l'URL (?tab=) et choisi dans la barre latérale du module Ventes (SalesLayout).
   const [params] = useSearchParams();
-  const mainTab = (MAIN_TAB_KEYS as readonly string[]).includes(params.get('tab') ?? '')
-    ? params.get('tab') as typeof MAIN_TAB_KEYS[number] : 'sales';
+  const { hasFeature } = usePermissions();
+  // Onglet d'une capacité éteinte (abonnements, tournées) : retour aux tickets (feuille de route, étape 1.4).
+  const requestedTab = params.get('tab') ?? '';
+  const tabCap = requestedTab ? screenCapability('sales', `sales:${requestedTab}`) : undefined;
+  const mainTab = (MAIN_TAB_KEYS as readonly string[]).includes(requestedTab) && (!tabCap || hasFeature(tabCap))
+    ? requestedTab as typeof MAIN_TAB_KEYS[number] : 'sales';
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));

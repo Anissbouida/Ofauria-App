@@ -1,4 +1,5 @@
 import PersonalDataExportButton from '../../components/PersonalDataExportButton';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -182,7 +183,8 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
   });
   const { data: summary } = useQuery({ queryKey: ['suppliers', 'board-summary'], queryFn: suppliersApi.boardSummary });
   // Dernière note figée (mig 362) : badge A/B/C/D, détail dans Achats › Évaluation des fournisseurs.
-  const { data: latestScores = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest });
+  const { hasFeature } = usePermissions();
+  const { data: latestScores = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest, enabled: hasFeature('evaluation_fournisseurs') });
   const scoreOf = (id: string) => latestScores.find(x => x.supplier_id === id);
   // Référentiel complet : seulement pour la fiche (choix de l'entité parente).
   const { data: allSuppliers = [] } = useQuery<Supplier[]>({ queryKey: ['suppliers'], queryFn: suppliersApi.list, enabled: showForm });

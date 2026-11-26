@@ -16,6 +16,21 @@ import { NAV_HOME, navLabel, navGroupTitle, isNavItemVisible, visibleNavGroups }
 import { useLocale } from '../../i18n';
 import type { NavItem } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
+import { routeCapability } from '@ofauria/shared';
+
+function CapabilityOff() {
+  const navigate = useNavigate();
+  return (
+    <div className="ds-empty" role="status" style={{ maxWidth: 520, margin: '64px auto', textAlign: 'center' }}>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 8px' }}>Fonction désactivée</h2>
+      <p style={{ color: '#475569', margin: '0 0 16px' }}>
+        Cette fonction n'est pas activée pour la société. Un administrateur peut l'activer dans
+        Paramètres › Secteur et modules ; les données déjà saisies sont conservées.
+      </p>
+      <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/')}>Retour à l'accueil</button>
+    </div>
+  );
+}
 
 const CASHIER_ROLES = ['cashier', 'saleswoman'];
 
@@ -118,7 +133,7 @@ export default function AppLayout() {
   // fonctions de lecture (isAccountType, libellés…) répondent juste dès le premier rendu.
   const { isLoading: typesLoading } = useCommercialTypes(!!user);
   const preferences=useInterfacePreferences(user?.id);
-  const { hasModule, isLoading: permsLoading } = usePermissions();
+  const { hasModule, hasFeature, isLoading: permsLoading } = usePermissions();
   const { locale, t } = useLocale();
   const isLoading = authLoading || permsLoading || (!!user && typesLoading);
   const [showApps, setShowApps] = useState(false);
@@ -213,7 +228,12 @@ export default function AppLayout() {
       {/* Design Ventes partout (2026-11-18) : chaque page pose sa barre et ses marges (zone .kl-apple) ;
           seule la Caisse garde la marge historique. Remplace l'ancienne liste blanche de routes pleine largeur. */}
       <main className={`flex-1 overflow-auto ${location.pathname === '/pos' ? 'p-6' : 'kl-apple kl-ds'} ${preferences.data?.values.density==='compact'?'kl-density-compact':''}`}>
-        <Outlet />
+        {(() => {
+          // Écran d'une capacité éteinte (feuille de route, étape 1.4) : l'adresse directe ne
+          // l'ouvre pas, comme son entrée de menu et son API.
+          const cap = routeCapability(location.pathname);
+          return cap && !hasFeature(cap) ? <CapabilityOff /> : <Outlet />;
+        })()}
       </main>
 
       <TimeoutWarningModal />

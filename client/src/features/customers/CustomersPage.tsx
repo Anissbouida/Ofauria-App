@@ -1,4 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
@@ -53,7 +54,8 @@ function tierOptions(tiers: LoyaltyTier[]) {
   ];
 }
 function useLoyaltyTiers() {
-  return useQuery({ queryKey: ['loyalty-tiers'], queryFn: loyaltyApi.tiers, staleTime: 300_000 }).data ?? [];
+  const { hasFeature } = usePermissions();
+  return useQuery({ queryKey: ['loyalty-tiers'], queryFn: loyaltyApi.tiers, enabled: hasFeature('promotions_fidelite'), staleTime: 300_000 }).data ?? [];
 }
 
 /** Personne morale : comportement du type de client, plus un code écrit ici. */

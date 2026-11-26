@@ -37,7 +37,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useProdTerms } from '../../hooks/useProdTerms';
-import { ModuleShell, ModulePage, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, ModulePage, type ModuleView } from '../../components/layout/ModuleShell';
 import { ListToolbar, FilterChips } from '../sales/ListTemplate';
 import { SortSelect, SubViews, PagerFoot, SectionTitle, StockHeaderSlot } from './StockUi';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -121,7 +121,7 @@ export default function StockPage() {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const { user } = useAuth();
-  const { hasModule, hasFeature } = usePermissions();
+  const { hasModule } = usePermissions();
   const { ingredient, ingredients, ingredientLc, ingredientsLc } = useProdTerms();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
   // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
@@ -370,7 +370,7 @@ export default function StockPage() {
   // de pesée entamé) deviennent deux écrans de la barre latérale ; le registre et
   // l'analyse sont des rapports. Hors magasin (ni magasinier, ni gérant) : la réserve seule.
   type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel' | 'price-health';
-  const views: ModuleView<StockView>[] = [
+  const views: ModuleView<StockView>[] = useCapabilityScreens('stock', [
     { key: 'reserve', label: 'Réserve', icon: Package, section: 'operations' },
     { key: 'pesee', label: 'Poste de pesée', icon: Beaker, section: 'operations', hidden: !isWarehouseUser },
     { key: 'bons', label: 'Bons de sortie', icon: ClipboardList, section: 'operations', hidden: !isWarehouseUser, badge: bons.length },
@@ -380,7 +380,7 @@ export default function StockPage() {
     { key: 'inventaires', label: 'Inventaires', icon: ClipboardCheck, section: 'operations', hidden: !isWarehouseUser },
     // État thermique des lots (épic labo L4, mig 426) : surgélation / décongélation.
     // Option « Congélation / décongélation » (mig 507).
-    { key: 'surgeles', label: 'Lots surgelables', icon: Snowflake, section: 'operations', hidden: !isWarehouseUser || !hasFeature('lot_thermal') },
+    { key: 'surgeles', label: 'Lots surgelables', icon: Snowflake, section: 'operations', hidden: !isWarehouseUser },
     // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
     { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
@@ -399,7 +399,7 @@ export default function StockPage() {
     { key: 'points', label: 'Points de commande', icon: Gauge, section: 'setup', hidden: !canManageIngredients },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
     { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
-  ];
+  ]);
   const currentKey: StockView = econoTab === 'stock' ? (zone === 'entame' ? 'pesee' : 'reserve') : econoTab;
   const selectView = (key: StockView) => {
     if (key === 'reserve' || key === 'pesee') {

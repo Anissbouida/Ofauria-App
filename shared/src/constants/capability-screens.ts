@@ -21,6 +21,8 @@ export interface CapabilityScreenDef {
   screens: string[];
   /** Préfixes d'API, relatifs à /api/v1. */
   api: string[];
+  /** Adresses d'écran propres à la capacité : refusées quand elle est éteinte. */
+  routes?: string[];
   requires?: string[];
 }
 
@@ -28,31 +30,31 @@ export const CAPABILITY_SCREENS: CapabilityScreenDef[] = [
   // ── Ventes ──
   { key: 'devis', module: 'sales', label: 'Devis et proformas',
     description: 'Devis clients, proformas et conversion en commande.',
-    screens: ['sales:quotes'], api: ['/quotes'] },
+    screens: ['sales:quotes'], api: ['/quotes'], routes: ['/quotes'] },
   { key: 'contrats_cadres', module: 'sales', label: 'Contrats-cadres',
     description: 'Accords de prix et de volumes sur une période, appelés par les commandes.',
-    screens: ['sales:sales-contracts'], api: ['/sales-contracts'] },
+    screens: ['sales:sales-contracts'], api: ['/sales-contracts'], routes: ['/sales-contracts'] },
   { key: 'ristournes', module: 'sales', label: 'Ristournes',
     description: 'Remises de fin de période calculées sur le chiffre d\'affaires d\'un client.',
-    screens: ['sales:rebates'], api: ['/rebates'] },
+    screens: ['sales:rebates'], api: ['/rebates'], routes: ['/rebates'] },
   { key: 'abonnements', module: 'sales', label: 'Abonnements',
     description: 'Facturation récurrente d\'un client à échéances fixes.',
     screens: ['sales:sales:subscriptions'], api: ['/subscriptions'] },
   { key: 'relances', module: 'sales', label: 'Relances clients',
     description: 'Niveaux de relance des impayés, lettres et blocage du crédit.',
-    screens: ['sales:dunning'], api: ['/dunning'] },
+    screens: ['sales:dunning'], api: ['/dunning'], routes: ['/dunning'] },
   { key: 'objectifs_vente', module: 'sales', label: 'Objectifs de vente',
     description: 'Objectifs par vendeur, par période, comparés au réalisé.',
-    screens: ['sales:sales-targets'], api: ['/sales-targets'] },
+    screens: ['sales:sales-targets'], api: ['/sales-targets'], routes: ['/sales-targets'] },
   { key: 'retours_transferts', module: 'sales', label: 'Retours et transferts',
     description: 'Retours des clients professionnels et transferts de produits entre points de vente.',
-    screens: ['sales:pro-returns', 'sales:product-transfers'], api: ['/pro-returns', '/product-transfers'] },
+    screens: ['sales:pro-returns', 'sales:product-transfers'], api: ['/pro-returns', '/product-transfers'], routes: ['/pro-returns', '/product-transfers'] },
   { key: 'tournees_livraison', module: 'sales', label: 'Tournées de livraison',
     description: 'Tournées, arrêts et ordre de passage des livraisons aux clients.',
     screens: ['sales:sales:routes'], api: ['/delivery-routes'] },
   { key: 'promotions_fidelite', module: 'pos', label: 'Promotions et fidélité',
     description: 'Promotions, codes de réduction et points de fidélité à la caisse.',
-    screens: ['sales:promotions'], api: ['/promotions', '/loyalty'] },
+    screens: ['sales:promotions'], api: ['/promotions', '/loyalty'], routes: ['/promotions'] },
   // ── Achats ──
   { key: 'appels_offres', module: 'purchasing', label: 'Demandes de prix',
     description: 'Consultation de plusieurs fournisseurs et comparaison des offres.',
@@ -85,13 +87,34 @@ export const CAPABILITY_SCREENS: CapabilityScreenDef[] = [
     screens: ['employees:commissions'], api: ['/commissions'] },
 ];
 
-const BY_SCREEN = new Map<string, string>(
-  CAPABILITY_SCREENS.flatMap(c => c.screens.map(s => [s, c.key] as [string, string])),
-);
+/**
+ * Écrans des capacités déjà inscrites avant le registre (mig 507, 632) : même règle, l'écran
+ * disparaît quand la capacité est éteinte (et la garde serveur ferme déjà leur API).
+ */
+export const CORE_SCREEN_CAPABILITIES: Readonly<Record<string, string>> = {
+  'controle:haccp': 'haccp',
+  'production:haccp': 'haccp',
+  'controle:tracabilite': 'tracabilite',
+  'controle:qualite': 'controle_qualite',
+  'stock:surgeles': 'lot_thermal',
+};
+
+const BY_SCREEN = new Map<string, string>([
+  ...CAPABILITY_SCREENS.flatMap(c => c.screens.map(s => [s, c.key] as [string, string])),
+  ...Object.entries(CORE_SCREEN_CAPABILITIES),
+]);
 
 /** Capacité dont dépend l'écran `view` du module `module` (aucune : undefined). */
 export function screenCapability(module: string, view: string): string | undefined {
   return BY_SCREEN.get(`${module}:${view}`);
+}
+
+/** Capacité dont dépend une adresse d'écran (préfixe le plus long), ou undefined. */
+export function routeCapability(pathname: string): string | undefined {
+  for (const c of CAPABILITY_SCREENS) {
+    if ((c.routes ?? []).some(r => pathname === r || pathname.startsWith(r + '/'))) return c.key;
+  }
+  return undefined;
 }
 
 /** Règles d'API des capacités : préfixe → capacité. */

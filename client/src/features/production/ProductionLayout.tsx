@@ -4,7 +4,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { usePermissions } from '../../context/PermissionsContext';
-import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, type ModuleView } from '../../components/layout/ModuleShell';
 
 type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'standard-costs' | 'analytic' | 'recipes' | 'cost-settings' | 'workcenters' | 'settings' | 'disassembly';
 
@@ -17,7 +17,7 @@ type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | '
  */
 export default function ProductionLayout() {
   const { user } = useAuth();
-  const { hasModule, hasFeature, sectorLabel, canEdit } = usePermissions();
+  const { hasModule, sectorLabel, canEdit } = usePermissions();
   const { pathname } = useLocation();
   const { can } = useActionPermissions();
   // Prévisions et HACCP : droit Production ET rôle chef/gérant/admin, même règle que le
@@ -25,14 +25,14 @@ export default function ProductionLayout() {
   // Étape 3 multi-industries : le droit de modifier la production, plus la liste des rôles boulangers.
   const isProductionRole = hasModule('production') && !!user && canEdit('production');
 
-  const views: ModuleView<ProductionView>[] = [
+  const views: ModuleView<ProductionView>[] = useCapabilityScreens('production', [
     { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard', hidden: !hasModule('production') },
     { key: 'plans', label: sectorLabel('production_plans', 'Plans de production'), icon: Factory, section: 'operations', href: '/production', hidden: !hasModule('production') },
     { key: 'atelier', label: 'Atelier', icon: Hammer, section: 'operations', href: '/production/atelier', hidden: !isProductionRole },
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'mrp', label: 'Plan directeur', icon: ClipboardList, section: 'operations', href: '/production/mrp', hidden: !isProductionRole },
     // Option « HACCP » du module (Paramètres › Secteur et modules, mig 507).
-    { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole || !hasFeature('haccp') },
+    { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
     // M9 : désassemblage — défaire des produits finis, matières remises en stock.
     { key: 'disassembly', label: 'Désassemblage', icon: Recycle, section: 'operations', href: '/production/disassembly', hidden: !isProductionRole },
     // Demandes de réassort boutique -> labo (ex-tuile « Besoins » du menu principal).
@@ -47,7 +47,7 @@ export default function ProductionLayout() {
     { key: 'cost-settings', label: 'Coût de revient', icon: Calculator, section: 'setup', href: '/production/cout-de-revient', hidden: !hasModule('production') || !canEdit('production') },
     { key: 'workcenters', label: 'Postes & gammes', icon: Cog, section: 'setup', href: '/production/work-centers', hidden: !hasModule('production') },
     { key: 'settings', label: 'Paramétrage', icon: SlidersHorizontal, section: 'setup', href: '/production/settings', hidden: !isProductionRole },
-  ];
+  ]);
   const current = views.find(v => !v.external && v.href === pathname);
 
   return (

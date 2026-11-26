@@ -1,4 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -59,6 +60,7 @@ type Tab = 'docs' | 'receivables' | 'addresses' | 'loyalty' | 'portal' | 'data';
 type Doc = { kind: DocKind; key: string; number: string; date: string; status: string; tone: StatusTone; icon?: LucideIcon; sub?: string; amount: number; owed: number | null; href?: string };
 
 export default function CustomerRecordPage() {
+  const { hasFeature } = usePermissions();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -70,8 +72,8 @@ export default function CustomerRecordPage() {
   useCommercialTypes(); // libellés et comportements des types de client (référentiel du secteur)
   const { data: stats, isLoading, error } = useQuery({ queryKey: ['customer-stats', id], queryFn: () => customersApi.stats(id), enabled: !!id });
   const { data: situation } = useQuery({ queryKey: ['customer-situation', id], queryFn: () => customersApi.situation(id), enabled: !!id, retry: false });
-  const { data: loyalty } = useQuery({ queryKey: ['loyalty', 'customer', id], queryFn: () => loyaltyApi.customer(id), enabled: !!id, retry: false });
-  const { data: quotes } = useQuery({ queryKey: ['quotes', { customerId: id }], queryFn: () => quotesApi.list({ customerId: id, limit: '100' }), enabled: !!id && isDirection, retry: false });
+  const { data: loyalty } = useQuery({ queryKey: ['loyalty', 'customer', id], queryFn: () => loyaltyApi.customer(id), enabled: !!id && hasFeature('promotions_fidelite'), retry: false });
+  const { data: quotes } = useQuery({ queryKey: ['quotes', { customerId: id }], queryFn: () => quotesApi.list({ customerId: id, limit: '100' }), enabled: !!id && isDirection && hasFeature('devis'), retry: false });
   const { data: notes = [] } = useQuery({ queryKey: ['delivery-notes', 'list', { customerId: id }], queryFn: () => deliveryNotesApi.list({ customerId: id }), enabled: !!id && isDirection, retry: false });
   const { data: statement } = useQuery({ queryKey: ['customer-statement', id, 'all'], queryFn: () => customersApi.statement(id, '2000-01-01', format(new Date(), 'yyyy-MM-dd')), enabled: !!id && isDirection, retry: false });
   const { data: rec } = useQuery({ queryKey: ['receivables'], queryFn: salesApi.receivables, enabled: isDirection, retry: false });
@@ -135,12 +137,12 @@ export default function CustomerRecordPage() {
   const initials = primary.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
   const more: RowMenuItem[] = [];
   if (isDirection) more.push({ label: 'Voir dans les créances', icon: Wallet, onSelect: () => navigate('/sales?tab=unpaid') });
-  if (isDirection && situation && situation.overdue > 0) more.push({ label: 'Relances', icon: BellRing, onSelect: () => navigate('/dunning') });
+  if (isDirection && hasFeature('relances') && situation && situation.overdue > 0) more.push({ label: 'Relances', icon: BellRing, onSelect: () => navigate('/dunning') });
 
   const tabs: Array<[Tab, string, number | null]> = [
     ['docs', 'Pièces', docs.length], ['receivables', 'Créances', recCustomer?.docs.length ?? 0], ['addresses', 'Adresses et TVA', null],
     ['loyalty', 'Fidélité', null], ['portal', 'Portail', null], ['data', 'Données et journal', null],
-  ];
+  ].filter(([k]) => k !== 'loyalty' || hasFeature('promotions_fidelite')) as Array<[Tab, string, number | null]>;
   const chips: Array<[DocKind | '', string, number]> = [['', 'Tout', docs.length], ...(Object.keys(KIND_LABEL) as DocKind[]).filter(k => counts[k]).map(k => [k, KIND_PLURAL[k], counts[k]] as [DocKind, string, number])];
 
   return (
