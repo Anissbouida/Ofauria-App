@@ -211,10 +211,15 @@ export async function loadSectorStarter(sectorCode: string, userId?: string, opt
       if (r.rows[0]) result.categories++;
     }
     result.units = await insertRefs(client, 'units', pack.units, sectorCode);
-    result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes, sectorCode);
-    result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes, sectorCode);
-    if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
-    if (pack.demo && opts.demo !== false) result.demo = await loadDemo(client, pack.demo);
+    // Audit des profils (R4) : types d'étape et d'équipement, atelier et nomenclature de démonstration
+    // seulement si la production est retenue (l'assistant a pu la décocher).
+    const prodOn = await (await import('../repositories/sector.repository.js')).sectorRepository.moduleOn('production');
+    if (prodOn) {
+      result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes, sectorCode);
+      result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes, sectorCode);
+      if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
+      if (pack.demo && opts.demo !== false) result.demo = await loadDemo(client, pack.demo);
+    }
     if (pack.layers) {
       const l = await applyLayers(client, pack.layers, userId);
       result.orderTypes = l.orderTypes; result.policies = l.policies; result.printTemplates = l.printTemplates;

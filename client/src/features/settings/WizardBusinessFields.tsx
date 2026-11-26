@@ -308,7 +308,7 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
             { name: 'material_issue_required', label: text(voc.doc_bon_sortie) || 'Bon de sortie des matières', hint: 'avant de démarrer' },
             { name: null, label: text(voc.production_plan) || 'Ordre de fabrication', hint: 'toujours présent' },
             { name: 'quality_before_transfer', label: 'Contrôle qualité', hint: 'avant transfert' },
-            { name: 'transfer_reception', label: 'Validation du transfert', hint: 'réception par la boutique' },
+            { name: 'transfer_reception', label: 'Validation du transfert', hint: 'réception par l’établissement destinataire' },
           ];
           return <div key={p.key} style={{ display: 'grid', gap: 8, padding: '8px 0 4px' }}><b style={{ color: 'var(--ds-ink)' }}>Parcours d’une production {Object.keys(data).some(k => k.startsWith(`${p.key}:`)) && <Tag tone="o">Modifié</Tag>}</b>
             <p className="mq-sub" style={{ margin: 0 }}>Cliquez une étape pour la rendre obligatoire ou facultative.</p>
@@ -354,9 +354,13 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
 
   if (step === 'vocabulary') {
     const proposed = (key: string, fallback: string) => main?.labels?.[key] ?? fallback;
+    // Audit des profils (R4) : un terme n'est proposé que si son module est retenu dans le brouillon.
+    const vocabMods = new Set(list(draftData('modules', answers, catalog, company).selected));
+    const VOCAB_MODULE: Record<string, string> = { reserve_zone: 'stock', ingredient: 'stock', recipe: 'recipes', production_plan: 'production', production_plans: 'production', doc_bon_sortie: 'production' };
+    const vocabModuleOn = (key: string) => !VOCAB_MODULE[key] || vocabMods.has(VOCAB_MODULE[key]);
     return <>
       <div className="ds-scroll"><table className="odoo-table" style={{ width: '100%' }}><thead><tr><th>Terme générique</th><th>Proposé par le profil</th><th style={{ width: '38%' }}>Votre terme</th><th style={{ width: 90 }}></th></tr></thead><tbody>
-        {(showAllTerms ? VOCABULARY_KEYS : VOCAB).map(v => { const val = v.key in data ? text(data[v.key]) : proposed(v.key, v.fallback), changed = val !== proposed(v.key, v.fallback);
+        {(showAllTerms ? VOCABULARY_KEYS : VOCAB.filter(v => vocabModuleOn(v.key))).map(v => { const val = v.key in data ? text(data[v.key]) : proposed(v.key, v.fallback), changed = val !== proposed(v.key, v.fallback);
           return <tr key={v.key}><td className="ds-strong">{v.designates}</td><td>{proposed(v.key, v.fallback)}</td>
             <td><input className="ds-input sm" style={{ width: '100%' }} aria-label={`Terme pour ${v.designates}`} value={val} disabled={disabled} onChange={e => set(v.key, e.target.value)} /></td>
             <td>{changed && <Tag tone="o">Modifié</Tag>}</td></tr>; })}
@@ -473,8 +477,8 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => void download(key)}><Download size={13} aria-hidden="true" /> Modèle de fichier</button> <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=data')}><Upload size={13} aria-hidden="true" /> Importer</button></td></tr>)}
     </tbody></table></div>
     <div>
-      <Row title="Référentiels du profil" help={<>Créés à l’activation, seulement s’ils manquent ; rien d’existant n’est modifié.{(starter.data?.preview.items ?? []).filter(i => !i.startsWith('Nomenclature de démonstration')).map(i => <span key={i} style={{ display: 'block', marginTop: 2 }}>· {i}</span>)}</>}>
-        <Switch label="Référentiels du profil" checked={data.referentials === true} disabled={disabled} onChange={v => set('referentials', v)} /></Row>
+      {(starter.data?.preview.items ?? []).length > 0 && <Row title="Référentiels du profil" help={<>Créés à l’activation, seulement s’ils manquent ; rien d’existant n’est modifié.{(starter.data?.preview.items ?? []).filter(i => !i.startsWith('Nomenclature de démonstration')).map(i => <span key={i} style={{ display: 'block', marginTop: 2 }}>· {i}</span>)}</>}>
+        <Switch label="Référentiels du profil" checked={data.referentials === true} disabled={disabled} onChange={v => set('referentials', v)} /></Row>}
       {(() => { const demo = (starter.data?.preview.items ?? []).find(i => i.startsWith('Nomenclature de démonstration'));
         return <Row title="Nomenclature de démonstration" help={demo ? `${demo.replace('Nomenclature de démonstration : ', '')} : un produit, ses matières et sa fiche, pour essayer la production. Ce sont de vraies fiches, à supprimer à la main si vous n’en voulez plus.` : 'Ce profil ne propose pas de nomenclature de démonstration.'} off={!demo}>
           <Switch label="Nomenclature de démonstration" checked={!!demo && data.demo === true && data.referentials === true} disabled={disabled || !demo || data.referentials !== true} onChange={v => set('demo', v)} /></Row>; })()}
