@@ -501,7 +501,7 @@ function SessionsPanel({ u, selfId }: { u: UserRow; selfId?: string }) {
                   <tr key={s.jti}>
                     <td><span className="ds-strong">{deviceLabel(s.userAgent)}</span>{s.current && <span className="kl-tag b" style={{ marginLeft: 6 }}>Cette session</span>}{s.storeName && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{s.storeName}</div>}</td>
                     <td>{METHOD_LABELS[s.method ?? ''] ?? '—'}</td>
-                    <td>{s.ip ?? '—'}</td>
+                    <td>{s.ip === '::1' || s.ip === '127.0.0.1' || s.ip === '::ffff:127.0.0.1' ? 'Ce poste (local)' : s.ip ?? '—'}</td>
                     <td>{formatDateTime(s.createdAt)}</td>
                     <td>{formatLastLogin(s.lastSeenAt)}</td>
                     <td className="ds-actions">

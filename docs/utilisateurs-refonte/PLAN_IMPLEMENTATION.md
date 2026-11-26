@@ -65,6 +65,6 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 5 — Contrôles internes à quatre onglets, un vocabulaire de mode partout ; séparation des tâches sur les pièces réglée ici (mode Désactivé, mig 704) ; plafonds reliés aux circuits (seul le bon de commande applique un plafond : les autres types sont signalés « sans effet » et refusés à la création) ; délégations réunies (rôle complet / approbations, début futur, prolongation, historique, motif) ; cumul interdit refusé en mode Bloquer à la délégation. Contrôlé à l'écran le 2026-11-25 (page blanche du contrôle des droits sur les refus d'action métier corrigée)
 - [x] Lot 6 — exceptions individuelles (mig 706), contrôlé à l'écran
 - [x] Lot 7 — établissements par compte, établissement actif (mig 707), contrôlé à l'écran
-- [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708)
+- [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708), contrôlé à l'écran
 - [ ] Lot 9
 - [ ] Lot 10
