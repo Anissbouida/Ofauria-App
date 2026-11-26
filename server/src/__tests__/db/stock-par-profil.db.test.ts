@@ -88,6 +88,19 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     }
   });
 
+  it('un profil enregistré depuis la configuration garde les capacités éteintes (off_features)', async () => {
+    const { exportCurrentConfig, saveModelAsSector, deleteCustomSector } = await import('../../services/config-templates.js');
+    const model = await exportCurrentConfig(`Profil test ${RUN}`) as { features: string[]; modules: string[] };
+    expect(model.modules).toContain('sales');
+    model.features = model.features.filter(k => k !== 'abonnements');
+    const r = await saveModelAsSector(model, fx.userId);
+    if ('error' in r) throw new Error(r.error);
+    const off = (await testPool().query(`SELECT off_features FROM sector_packs WHERE code = $1`, [r.code])).rows[0].off_features as string[];
+    expect(off).toContain('abonnements');
+    expect(off).not.toContain('devis');
+    await deleteCustomSector(r.code);
+  });
+
   it('un profil éteint une capacité du socle, la société peut la rallumer', async () => {
     const { capabilityDefault } = await import('@ofauria/shared');
     const def = { key: 'abonnements', module_key: 'sales', label: 'Abonnements', default_on: true };

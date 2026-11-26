@@ -2,6 +2,7 @@ import {
   ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, canonicalModule, missingDependencies, requiredModules, withRequirements, type AppModule,
 } from '@ofauria/shared';
 import { db } from '../config/database.js';
+import { resolveModuleKeys } from '@ofauria/shared';
 import { setAuditUser } from '../utils/audit-context.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { exportLayers, cleanLayers, type ProfileLayers } from './industry-profile.js';
@@ -238,13 +239,20 @@ export async function saveModelAsSector(raw: unknown, userId?: string | null): P
       add_features: minus(model.features, base.features ?? []), remove_features: minus(base.features ?? [], model.features),
     } : { add_modules: [], remove_modules: [], add_features: [], remove_features: [] };
     const starter = { ...model.starter, specializations: model.specializations ?? [] };
+    // Mig 711 : une capacité du socle (active par défaut) absente du modèle a été éteinte par
+    // la société ; le profil enregistré la garde éteinte par défaut (off_features).
+    // Seules comptent les capacités d'un module retenu : celles d'un module absent sont éteintes
+    // par construction et doivent revenir actives si le module est ajouté plus tard.
+    const socle = (await client.query(`SELECT key, module_key FROM app_features WHERE default_on`)).rows as { key: string; module_key: string }[];
+    const kept = new Set(model.modules.flatMap(m => resolveModuleKeys(m)));
+    const offFeatures = socle.filter(f => kept.has(f.module_key) && !model.features.includes(f.key)).map(f => f.key).sort();
     await client.query(
       `INSERT INTO sector_packs (code, label, enabled_modules, features, home_route, report_keys, is_default, is_custom, base_sector, starter, created_by, profile,
-                                 inherits, add_modules, remove_modules, add_features, remove_features, family, status)
+                                 inherits, add_modules, remove_modules, add_features, remove_features, family, status, off_features)
        VALUES ($1, $2, $3, $4, $5, $6, false, true, $7::text, $8, $9, $10::jsonb, $11, $12, $13, $14, $15,
-               COALESCE((SELECT family FROM sector_packs WHERE code = $7::text), 'personnalise'), 'disponible')`,
+               COALESCE((SELECT family FROM sector_packs WHERE code = $7::text), 'personnalise'), 'disponible', $16)`,
       [code, model.name, model.modules, model.features, model.home_route, model.report_keys, model.base_sector, JSON.stringify(starter), userId ?? null, JSON.stringify(model.layers),
-        !!base, inh.add_modules, inh.remove_modules, inh.add_features, inh.remove_features]);
+        !!base, inh.add_modules, inh.remove_modules, inh.add_features, inh.remove_features, offFeatures]);
     for (const [k, v] of Object.entries(model.labels)) {
       await client.query(`INSERT INTO sector_labels (sector_pack, label_key, label_value) VALUES ($1, $2, $3)`, [code, k, v]);
     }
