@@ -301,6 +301,18 @@ export const inventoryRepository = {
     return { buckets, totalValue: Math.round(totalValue * 100) / 100, lots: r.rows };
   },
 
+  /** Réservations en cours, commandes et ordres de fabrication (mig 722), avec le disponible. */
+  async reservations(storeId?: string) {
+    const params: unknown[] = [];
+    const where = storeId ? (params.push(storeId), 'WHERE store_id = $1') : '';
+    const r = await db.query(
+      `SELECT origin, id, store_id, item_kind, item_id, item_name, unit, quantity::float8 AS quantity, reference, source_id, created_at,
+              stock_quantity::float8 AS stock_quantity, reserved_total::float8 AS reserved_total,
+              (stock_quantity - reserved_total)::float8 AS available
+         FROM v_stock_reservations ${where} ORDER BY item_name, created_at`, params);
+    return r.rows;
+  },
+
   /**
    * Valorisation courante du stock matière, agrégée par article : quantité
    * restante (somme des lots actifs), coût unitaire moyen pondéré, valeur.

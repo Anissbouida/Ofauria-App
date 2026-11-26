@@ -1029,6 +1029,10 @@
   "admin",
   "manager"
  ],
+ "GET /inventory/reservations": [
+  "admin",
+  "manager"
+ ],
  "GET /inventory/stock-anomalies": [
   "admin",
   "manager"

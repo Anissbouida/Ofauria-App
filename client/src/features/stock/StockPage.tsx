@@ -12,6 +12,7 @@ import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { WarehouseQueueList, WarehouseBonWorkspace, BonsPipeline, type ProcessStep } from './WarehouseProcessQueue';
 import { PesageStockList } from './PesageStockList';
 import DepositStockTab from './DepositStockTab';
+import ReservationsTab from './ReservationsTab';
 import { HistoryList } from './HistoryList';
 import { LotMovementModal } from './LotMovementModal';
 import IngredientFormModal from './IngredientFormModal';
@@ -96,6 +97,7 @@ const PAGE_LEADS: Record<string, string> = {
   closing: 'Instantanés valorisés du stock à chaque fin de période.',
   emplacements: 'Chambres, zones et bacs de rangement, reliés à leur sonde de température.',
   points: 'Seuils de réapprovisionnement calculés à partir de la consommation et des délais.',
+  reservations: 'Stock réservé par les commandes clients et les ordres de fabrication, et ce qui reste disponible.',
   deposants: 'Marchandise détenue pour le compte de clients : réceptions à quai, expéditions et stock par lot, hors stock de la société.',
 };
 function situationOf(i: InventoryItem): Situation {
@@ -110,7 +112,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants' | 'reservations';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -134,7 +136,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants', 'reservations'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -386,6 +388,8 @@ export default function StockPage() {
     // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
     { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
+    // Mig 722 : vue unique des réservations (commandes et ordres de fabrication).
+    { key: 'reservations', label: 'Réservations', icon: Lock, section: 'reports', hidden: !canManageIngredients },
     { key: 'analyse', label: 'Analyse', icon: BarChart3, section: 'reports', hidden: !canManageIngredients },
     // Age du stock : lots matiere actifs par anciennete (admin/gerant).
     { key: 'aging', label: 'Âge du stock', icon: Clock, section: 'reports', hidden: !canManageIngredients },
@@ -527,6 +531,8 @@ export default function StockPage() {
         <StockClosingTab />
       ) : econoTab === 'points' ? (
         <ReorderPointsTab />
+      ) : econoTab === 'reservations' ? (
+        <ReservationsTab />
       ) : econoTab === 'deposants' ? (
         <DepositStockTab />
       ) : econoTab === 'emplacements' ? (

@@ -1,9 +1,10 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { inventoryController, ingredientController } from '../controllers/inventory.controller.js';
 import { ingredientImportController } from '../controllers/ingredient-import.controller.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
+import { inventoryRepository } from '../repositories/inventory.repository.js';
 import { can } from '../middleware/permission.middleware.js';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
@@ -30,6 +31,10 @@ router.get('/consumption', authenticate, can('stock.inventory.view'), inventoryC
 router.get('/purchases', authenticate, can('stock.inventory.view'), inventoryController.purchases);
 // Age du stock matiere : lots actifs par anciennete (admin/gerant)
 router.get('/aging', authenticate, can('stock.inventory.view'), inventoryController.aging);
+// Mig 722 : vue unique des réservations (commandes et ordres de fabrication) avec le disponible.
+router.get('/reservations', authenticate, can('stock.inventory.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await inventoryRepository.reservations(req.user!.role === 'admin' ? undefined : req.user!.storeId ?? undefined) });
+}));
 // G0-18 : sorties supérieures au stock, tracées puis régularisées (admin/gérant).
 router.get('/stock-anomalies', authenticate, can('stock.inventory.view'), inventoryController.anomalies);
 router.post('/stock-anomalies/:id/resolve', authenticate, can('stock.inventory.resolve'), validate(resolveStockAnomalySchema), inventoryController.resolveAnomaly);
