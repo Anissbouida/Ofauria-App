@@ -11,9 +11,12 @@ import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { recordSupplierPriceAtReception } from './supplier-item.repository.js';
 import { resolvePolicy } from '../services/policies.js';
+import { sectorRepository } from './sector.repository.js';
 
 /** Politique purchasing.reception_quarantine (mig 712) : quarantaine de tout lot reçu. */
 export async function receptionQuarantine(storeId?: string | null): Promise<boolean> {
+  // Audit des profils (L3) : sans la capacité Quarantaine, aucun lot n'est retenu à la réception.
+  if (!(await sectorRepository.featureOn('quarantaine'))) return false;
   const p = await resolvePolicy<{ enabled?: boolean }>('purchasing.reception_quarantine', { storeId: storeId ?? null });
   if (p.value.enabled === true) return true;
   // Refonte Stock (mig 724) : comportement « contrôle à réception » du type de mouvement.
@@ -631,11 +634,15 @@ export const receptionVoucherRepository = {
         // et n'est libéré qu'après un contrôle réception conforme. Exclu de l'inventaire
         // disponible et de la FEFO tant qu'il n'est pas 'active' (le CMUP n'est pas touché).
         // Mig 712 : le profil (ou la société) peut imposer la quarantaine à toute réception.
-        const quarantined = !!reqs?.requires_qc || await receptionQuarantine(data.storeId);
+        // Audit des profils (L3) : exigences de la catégorie appliquées seulement avec leurs capacités
+        // (contrôle qualité, dates limites, lots) — une entreprise de BTP n'a ni lot ni DLC.
+        const [qcOn, dlcOn, lotsOn] = await Promise.all([
+          sectorRepository.featureOn('controle_qualite'), sectorRepository.featureOn('dlc_ddm'), sectorRepository.featureOn('lots')]);
+        const quarantined = (!!reqs?.requires_qc && qcOn) || await receptionQuarantine(data.storeId);
         if (reqs) {
           const missing: string[] = [];
-          if (reqs.requires_dlc && !item.expirationDate) missing.push('DLC');
-          if (reqs.requires_lot && !item.supplierLotNumber?.trim()) missing.push('lot fournisseur');
+          if (dlcOn && reqs.requires_dlc && !item.expirationDate) missing.push('DLC');
+          if (lotsOn && reqs.requires_lot && !item.supplierLotNumber?.trim()) missing.push('lot fournisseur');
           if (missing.length) {
             const nm = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [item.ingredientId])).rows[0]?.name;
             warnings.push(`${nm} : ${missing.join(' et ')} manquant(s)`);

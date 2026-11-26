@@ -104,14 +104,14 @@ const PAGE_LEADS: Record<string, string> = {
   reservations: 'Stock réservé par les commandes clients et les ordres de fabrication, et ce qui reste disponible.',
   deposants: 'Marchandise détenue pour le compte de clients : réceptions à quai, expéditions et stock par lot, hors stock de la société.',
 };
-function situationOf(i: InventoryItem): Situation {
+function situationOf(i: InventoryItem, dlcOn = true): Situation {
   const qty = parseFloat(i.current_quantity) || 0;
   const threshold = parseFloat(i.minimum_threshold) || 0;
   const used = parseFloat(i.avg_daily_consumption || '0') > 0;
-  if ((parseInt(i.expired_lots_count) || 0) > 0) return 'expired';
+  if (dlcOn && (parseInt(i.expired_lots_count) || 0) > 0) return 'expired';
   if (qty <= 0) return used || threshold > 0 ? 'rupture' : 'unused';
   if (threshold > 0 && qty <= threshold) return 'low';
-  if ((parseInt(i.expiring_soon_count) || 0) > 0) return 'expiring';
+  if (dlcOn && (parseInt(i.expiring_soon_count) || 0) > 0) return 'expiring';
   return 'ok';
 }
 
@@ -129,7 +129,9 @@ export default function StockPage() {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const { user } = useAuth();
-  const { hasModule } = usePermissions();
+  const { hasModule, hasFeature } = usePermissions();
+  // Audit des profils (L3) : lots, dates limites et pesée n'apparaissent qu'avec leur capacité.
+  const lotsOn = hasFeature('lots'), dlcOn = hasFeature('dlc_ddm'), pesageOn = hasFeature('pesage');
   const { data: movementRules } = useQuery({ queryKey: ['movement-rules'], queryFn: inventoryApi.movementRules, staleTime: 300_000 });
   const { ingredient, ingredients, ingredientLc, ingredientsLc } = useProdTerms();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
@@ -296,7 +298,7 @@ export default function StockPage() {
     else if (viewFilter === 'rupture') items = items.filter(i => parseFloat(i.current_quantity) <= 0);
     else if (viewFilter === 'expired') items = items.filter(i => (parseInt(i.expired_lots_count) || 0) > 0);
     else if (viewFilter === 'stale') items = items.filter(i => parseFloat(i.avg_daily_consumption || '0') <= 0);
-    if (situation) items = items.filter(i => situationOf(i) === situation);
+    if (situation) items = items.filter(i => situationOf(i, dlcOn) === situation);
 
     items = [...items].sort((a, b) => {
       let cmp = 0;
@@ -332,18 +334,18 @@ export default function StockPage() {
   const pagedInventory = filteredInventory.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const situationCounts = useMemo(() => {
     const c: Record<Situation, number> = { expired: 0, rupture: 0, low: 0, expiring: 0, ok: 0, unused: 0 };
-    for (const i of inventory as InventoryItem[]) c[situationOf(i)]++;
+    for (const i of inventory as InventoryItem[]) c[situationOf(i, dlcOn)]++;
     return c;
   }, [inventory]);
 
   /** Prochaine action selon la situation de l'ingrédient. */
   const nextAction = (item: InventoryItem): { label: string; run: () => void; cls: string; title?: string } | null => {
-    const sit = situationOf(item);
+    const sit = situationOf(item, dlcOn);
     const sealed = parseFloat(item.economat_quantity || '0') > 0;
     if (sit === 'expired') return { label: 'Retirer le lot', run: () => navigate(`/stock/${item.ingredient_id}`), cls: 'ds-btn-danger', title: 'Ouvrir la fiche pour envoyer le lot périmé aux pertes' };
     if (sit === 'rupture' || sit === 'low') return { label: 'Commander', run: () => orderIngredient(item.ingredient_id), cls: 'odoo-btn-primary', title: 'Ajouter à « À commander »' };
-    if (sit === 'expiring' && isWarehouseUser && sealed) return { label: 'Ouvrir en priorité', run: () => openTransferFor(item.ingredient_id), cls: 'odoo-btn-secondary', title: 'Passer ce lot au poste de pesée pour le consommer avant sa DLC' };
-    if (isWarehouseUser && sealed && sit !== 'unused') return { label: 'Ouvrir', run: () => openTransferFor(item.ingredient_id), cls: 'odoo-btn-secondary', title: 'Ouvrir un contenant : passer une partie de la réserve au poste de pesée' };
+    if (pesageOn && sit === 'expiring' && isWarehouseUser && sealed) return { label: 'Ouvrir en priorité', run: () => openTransferFor(item.ingredient_id), cls: 'odoo-btn-secondary', title: 'Passer ce lot au poste de pesée pour le consommer avant sa DLC' };
+    if (pesageOn && isWarehouseUser && sealed && sit !== 'unused') return { label: 'Ouvrir', run: () => openTransferFor(item.ingredient_id), cls: 'odoo-btn-secondary', title: 'Ouvrir un contenant : passer une partie de la réserve au poste de pesée' };
     return null;
   };
 
@@ -560,7 +562,7 @@ export default function StockPage() {
       ) : (
       <>
       {/* ══════ LOTS EXPIRES A TRAITER (DLC depassee) ══════ */}
-      {(expiredActiveLots as Record<string, any>[]).length > 0 && (() => {
+      {dlcOn && (expiredActiveLots as Record<string, any>[]).length > 0 && (() => {
         const lots = expiredActiveLots as Record<string, any>[];
         return (
           <StatusBanner tone="danger" icon={AlertTriangle}
@@ -631,7 +633,7 @@ export default function StockPage() {
       {/* ══════ SITUATION : une pastille par situation, clic = filtre ══════ */}
       <FilterChips label="Où en est mon stock" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
           { key: '', label: 'Tous', count: totalItems },
-          ...SITUATIONS.map(x => ({
+          ...SITUATIONS.filter(x => dlcOn || (x.key !== 'expired' && x.key !== 'expiring')).map(x => ({
             key: x.key, label: x.label, count: situationCounts[x.key], icon: x.icon,
             tone: (x.key === 'expired' || x.key === 'rupture') && situationCounts[x.key] > 0 ? 'late' as const : undefined,
           })),
@@ -663,7 +665,7 @@ export default function StockPage() {
         />
         {/* État de stock */}
         <SearchSelect
-          options={(Object.keys(STATE_LABELS) as ViewFilter[]).filter(k => k !== 'all').map(k => ({ id: k, label: STATE_LABELS[k] }))}
+          options={(Object.keys(STATE_LABELS) as ViewFilter[]).filter(k => k !== 'all' && (dlcOn || (k !== 'expiring' && k !== 'expired'))).map(k => ({ id: k, label: STATE_LABELS[k] }))}
           value={viewFilter === 'all' ? '' : viewFilter}
           onChange={id => setViewFilter((id || 'all') as ViewFilter)}
           placeholder="État"
@@ -709,12 +711,12 @@ export default function StockPage() {
               <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
               <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
               <SortHeader col="price" className="hidden md:table-cell" align="right">Dernier prix</SortHeader>
-              <SortHeader col="scelle" className="hidden sm:table-cell" align="right">En réserve</SortHeader>
-              <SortHeader col="entame" className="hidden sm:table-cell" align="right">Au pesage</SortHeader>
+              {pesageOn && <SortHeader col="scelle" className="hidden sm:table-cell" align="right">En réserve</SortHeader>}
+              {pesageOn && <SortHeader col="entame" className="hidden sm:table-cell" align="right">Au pesage</SortHeader>}
               <SortHeader col="quantity" align="right">Total</SortHeader>
-              <SortHeader col="lots" className="hidden lg:table-cell" align="right">Lots</SortHeader>
+              {lotsOn && <SortHeader col="lots" className="hidden lg:table-cell" align="right">Lots</SortHeader>}
               <SortHeader col="days_stock" className="hidden lg:table-cell" align="right">Jours stock</SortHeader>
-              <SortHeader col="dlc" className="hidden lg:table-cell">DLC</SortHeader>
+              {dlcOn && <SortHeader col="dlc" className="hidden lg:table-cell">DLC</SortHeader>}
               <th className="ds-actions">Prochaine action</th>
             </tr>
           </thead>
@@ -742,7 +744,7 @@ export default function StockPage() {
                   <td>
                     <span className="ds-strong">{item.ingredient_name}</span>
                     {(() => {
-                      const sit = situationOf(item);
+                      const sit = situationOf(item, dlcOn);
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>
                           <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: SITUATION_DOT[sit] }} />
@@ -771,16 +773,16 @@ export default function StockPage() {
                     const muted = { color: 'var(--ds-muted)' };
                     return (
                       <>
-                        <td className="hidden sm:table-cell ds-num">
+                        {pesageOn && <td className="hidden sm:table-cell ds-num">
                           {economatQty > 0 ? <span style={{ fontWeight: 500 }}>{fmtQty(economatQty)}</span> : <span style={muted}>—</span>}
-                        </td>
-                        <td className="hidden sm:table-cell ds-num">
+                        </td>}
+                        {pesageOn && <td className="hidden sm:table-cell ds-num">
                           {pesageQty > 0 ? (
                             <span style={{ fontWeight: 500 }} title={item.pesage_lots_count ? `${item.pesage_lots_count} contenant(s) ouvert(s)` : undefined}>
                               {fmtQty(pesageQty)}
                             </span>
                           ) : <span style={muted}>—</span>}
-                        </td>
+                        </td>}
                         <td className="ds-num">
                           <span style={{ fontWeight: 600, color: isOut ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
                             {fmtQty(qty)} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '12px' }}>{item.unit}</span>
@@ -789,13 +791,13 @@ export default function StockPage() {
                       </>
                     );
                   })()}
-                  <td className="hidden lg:table-cell ds-num">
+                  {lotsOn && <td className="hidden lg:table-cell ds-num">
                     {lotsCount > 0 ? (
                       <span className="odoo-tag odoo-tag-blue">
                         <Boxes size={9} /> {lotsCount}
                       </span>
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
+                  </td>}
                   <td className="hidden lg:table-cell ds-num">
                     {(() => {
                       const avgConso = parseFloat(item.avg_daily_consumption || '0');
@@ -812,7 +814,7 @@ export default function StockPage() {
                       );
                     })()}
                   </td>
-                  <td className="hidden lg:table-cell">
+                  {dlcOn && <td className="hidden lg:table-cell">
                     {nearestDlc ? (
                       <span style={{
                         fontWeight: 500,
@@ -827,7 +829,7 @@ export default function StockPage() {
                         )}
                       </span>
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
+                  </td>}
                   <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
                     {(() => {
                       const a = nextAction(item);

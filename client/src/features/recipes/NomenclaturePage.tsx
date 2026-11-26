@@ -34,7 +34,7 @@ export default function NomenclaturePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { sectorLabel } = usePermissions();
+  const { sectorLabel, hasFeature } = usePermissions();
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
   // Le coût n'est plus sur la fiche (2026-11-24) : un lien vers le coût standard de l'article,
   // montré seulement au gérant (comptabilité analytique) : le labo ne voit ni coût ni marge.
@@ -252,7 +252,8 @@ export default function NomenclaturePage() {
 
             {/* Allergènes — agrégés sur toute la nomenclature (v_recipe_allergens, mig 343).
                 Mention réglementaire (UE 1169/2011) affichée même vide. */}
-            <section className="ds-panel" style={{ padding: '16px 20px', display: 'grid', gap: 10 }}>
+            {/* Audit des profils (L3) : seulement avec la capacité Allergènes (textile, industrie : non). */}
+            {hasFeature('allergenes') && <section className="ds-panel" style={{ padding: '16px 20px', display: 'grid', gap: 10 }}>
               <SectionHeader title="Allergènes" note={allergensList.length > 0 ? `${allergensList.length} déclaré(s)` : undefined} />
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 {allergensList.length > 0
@@ -260,7 +261,7 @@ export default function NomenclaturePage() {
                   : <span style={{ fontSize: 14, color: 'var(--ds-muted)' }}>Aucun allergène déclaré sur les {T.ingredientsLc} de cette nomenclature.</span>}
               </div>
               <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Calculés sur tous les {T.ingredientsLc} de la nomenclature (règlement UE 1169/2011).</span>
-            </section>
+            </section>}
 
             {/* Le coût de l'article n'est pas sur la fiche : lien vers son coût standard (gérant). */}
             {canSeeCost && !isBase && (

@@ -131,6 +131,8 @@ export default function IngredientDetailPage() {
   const lotsRef = useRef<HTMLDivElement>(null);
   const goLots = () => lotsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const { hasFeature } = usePermissions();
+  // Audit des profils (L3) : lots, dates limites, pesée, quarantaine, étiquettes selon les capacités.
+  const lotsOn = hasFeature('lots'), dlcOn = hasFeature('dlc_ddm'), pesageOn = hasFeature('pesage');
   const [expandedLot, setExpandedLot] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
@@ -406,7 +408,7 @@ export default function IngredientDetailPage() {
           {qty.toFixed(1)} {unit} restant(s), seuil minimum {threshold.toFixed(0)} {unit}
         </StatusBanner>
       )}
-      {expiredCount > 0 && (
+      {dlcOn && expiredCount > 0 && (
         <StatusBanner tone="danger" icon={CalendarClock} title={`${expiredCount} lot(s) expiré(s)`}>
           Des lots actifs ont dépassé leur date limite de consommation.
         </StatusBanner>
@@ -415,12 +417,12 @@ export default function IngredientDetailPage() {
       {/* ══════ CHIFFRES CLÉS (clic = onglet Lots ou modification) ══════ */}
       <KpiGrid label="Chiffres clés">
         <KpiCard label={`Stock total (${unit})`} value={qty.toFixed(qty % 1 === 0 ? 0 : 1)}
-          sub={isOut ? 'En rupture' : isLow ? 'Sous le seuil' : 'Réserve et poste de pesée'} tone={isOut ? 'red' : isLow ? 'orange' : undefined}
+          sub={isOut ? 'En rupture' : isLow ? 'Sous le seuil' : pesageOn ? 'Réserve et poste de pesée' : 'En stock'} tone={isOut ? 'red' : isLow ? 'orange' : undefined}
           onClick={goLots} />
-        <KpiCard label={`En réserve (${unit})`} value={fmtQty(scelleQty)} sub="Contenants intacts" onClick={goLots} />
-        <KpiCard label={`Au pesage (${unit})`} value={fmtQty(entameQty)} sub="Contenants ouverts" onClick={goLots} />
+        {pesageOn && <KpiCard label={`En réserve (${unit})`} value={fmtQty(scelleQty)} sub="Contenants intacts" onClick={goLots} />}
+        {pesageOn && <KpiCard label={`Au pesage (${unit})`} value={fmtQty(entameQty)} sub="Contenants ouverts" onClick={goLots} />}
         <KpiCard label={`Seuil minimum (${unit})`} value={threshold.toFixed(0)} onClick={canManage ? () => setShowEdit(true) : undefined} />
-        <KpiCard label="Lots actifs" value={String(lotsCount)} onClick={goLots} />
+        {lotsOn && <KpiCard label="Lots actifs" value={String(lotsCount)} onClick={goLots} />}
         <KpiCard label={`Coût unitaire (${currencySymbol()} / ${unit})`} value={unitCost.toFixed(2)} />
       </KpiGrid>
 
@@ -428,7 +430,7 @@ export default function IngredientDetailPage() {
       <div className="stk-blocks">
       <div className="stk-blocks-main">
       {/* ══════ BLOC LOTS ET TRAÇABILITÉ (capacité Lots) ══════ */}
-      {(
+      {lotsOn && (
         <div className="stk-stack" ref={lotsRef}>
           {activeLots.length > 0 && (
             <div className="odoo-section">
@@ -441,12 +443,12 @@ export default function IngredientDetailPage() {
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
-                    onQuarantine={canManage ? () => quarantineMutation.mutate(lot.id) : undefined}
+                    onQuarantine={canManage && hasFeature('quarantaine') ? () => quarantineMutation.mutate(lot.id) : undefined}
                     onWaste={canManage ? () => setMovement({ lot, type: 'losses' }) : undefined}
-                    onOpenContainer={isMagasinier ? () => setMovement({ lot, type: 'open' }) : undefined}
+                    onOpenContainer={isMagasinier && pesageOn ? () => setMovement({ lot, type: 'open' }) : undefined}
                     locations={locations}
                     onMove={onMoveLot}
-                    onLabel={() => setLabelLot(lot)}
+                    onLabel={hasFeature('etiquetage') || dlcOn ? () => setLabelLot(lot) : undefined}
                   />
                 </div>
               ))}
@@ -464,7 +466,7 @@ export default function IngredientDetailPage() {
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
-                    onLabel={() => setLabelLot(lot)}
+                    onLabel={hasFeature('etiquetage') || dlcOn ? () => setLabelLot(lot) : undefined}
                   />
                 </div>
               ))}
@@ -909,6 +911,8 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
   const economat = parseFloat(lot.economat_quantity || '0');
   const pesage = parseFloat(lot.pesage_quantity || '0');
   const pct = received > 0 ? Math.round((remaining / received) * 100) : 0;
+  // Audit des profils (L3) : « aucune production liée » n'a de sens qu'avec le module Production.
+  const productionOn = usePermissions().moduleActive('production');
   const isExpired = lot.expiration_date ? new Date(lot.expiration_date) < new Date() : false;
   const daysUntil = lot.expiration_date
     ? Math.ceil((new Date(lot.expiration_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -942,9 +946,9 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             </span>
             {lot.status === 'quarantine' && <StatusTag tone="blocked" label="QUARANTAINE" />}
             {lot.status === 'blocked' && <StatusTag tone="blocked" label="BLOQUÉ" />}
-            <span className="odoo-tag" title={lot.date_kind === 'dluo' ? 'Date de durabilité minimale (sec)' : 'Date limite de consommation (périssable)'}>
+            {lot.expiration_date && <span className="odoo-tag" title={lot.date_kind === 'dluo' ? 'Date de durabilité minimale (sec)' : 'Date limite de consommation (périssable)'}>
               {lot.date_kind === 'dluo' ? 'DLUO' : 'DLC'}
-            </span>
+            </span>}
             {isExpired && lot.status === 'active' && <StatusTag tone="late" label="EXPIRÉ" />}
             {!isExpired && daysUntil !== null && daysUntil <= 7 && lot.status === 'active' && (
               <StatusTag tone="todo" label={`${daysUntil}j`} title={`DLC dans ${daysUntil} jour(s)`} />
@@ -1059,7 +1063,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               </div>
             )}
 
-            {traceability.length === 0 && (
+            {traceability.length === 0 && productionOn && (
               <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '12px', color: 'var(--ds-muted)', backgroundColor: 'var(--ds-card)', border: '1px solid var(--ds-sep)', borderRadius: 3 }}>
                 Aucune production liée à ce lot
               </div>

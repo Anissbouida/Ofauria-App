@@ -2177,6 +2177,9 @@ export function ReceptionForm({ poId, onDone, onCancel }: {
   /** Annuler : retour à la page précédente. */
   onCancel: () => void;
 }) {
+  // Audit des profils (L3) : lot fournisseur et date de production avec la capacité Lots, DLC avec Dates limites.
+  const { hasFeature: capOn } = usePermissions();
+  const lotsOn = capOn('lots'), dlcOn = capOn('dlc_ddm');
   // Une clé par réception ouverte : une validation rejouée ne réceptionne pas deux fois (mig 307).
   const [deliveryIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
@@ -2447,9 +2450,9 @@ export function ReceptionForm({ poId, onDone, onCancel }: {
               <th className="ds-num" style={{ width: 130 }}>Quantité reçue</th>
               <th className="ds-num" style={{ width: 120 }}>Prix unitaire ({currencySymbol()})</th>
               <th className="ds-num" style={{ width: 110 }}>Total HT ({currencySymbol()})</th>
-              <th style={{ width: 110 }}>Réf. lot</th>
-              <th style={{ width: 140 }}>DLC</th>
-              <th style={{ width: 140 }}>Date de production</th>
+              {lotsOn && <th style={{ width: 110 }}>Réf. lot</th>}
+              {dlcOn && <th style={{ width: 140 }}>DLC</th>}
+              {lotsOn && <th style={{ width: 140 }}>Date de production</th>}
             </tr>
           </thead>
           <tbody>
@@ -2567,7 +2570,7 @@ export function ReceptionForm({ poId, onDone, onCancel }: {
                         : <span style={{ color: 'var(--ds-muted)' }}>—</span>;
                     })()}
                   </td>
-                  <td>
+                  {lotsOn && <td>
                     {!isComplete && !isFreeLine(item.kind) ? (
                       <input type="text" className="ds-input sm"
                         aria-label={`Référence du lot fournisseur — ${item.ingredient_name}`}
@@ -2576,8 +2579,8 @@ export function ReceptionForm({ poId, onDone, onCancel }: {
                         style={(item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: 'var(--ds-warning)' } : undefined}
                         placeholder={(item.requires_lot || item.requires_qc) ? 'Lot *' : 'Lot'} title={item.requires_qc ? 'Lot fournisseur OBLIGATOIRE (article sous contrôle qualité)' : item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
-                  <td>
+                  </td>}
+                  {dlcOn && <td>
                     {!isComplete && !isFreeLine(item.kind) ? (
                       <input type="date" className="ds-input sm"
                         aria-label={`DLC — ${item.ingredient_name}`}
@@ -2587,15 +2590,15 @@ export function ReceptionForm({ poId, onDone, onCancel }: {
                         title={item.requires_dlc ? 'DLC exigée pour cet article' : undefined}
                         style={item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: 'var(--ds-warning)' } : undefined} />
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
-                  <td>
+                  </td>}
+                  {lotsOn && <td>
                     {!isComplete && !isFreeLine(item.kind) ? (
                       <input type="date" className="ds-input sm"
                         aria-label={`Date de production — ${item.ingredient_name}`}
                         value={lotInfo[item.id]?.manufacturedDate ?? ''}
                         onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })} />
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
+                  </td>}
                 </tr>
               );
             })}

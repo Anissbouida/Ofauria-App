@@ -155,13 +155,49 @@ const DOMAINS: Array<StageDef & { key: ControlIndicator['domain'] }> = [
   { key: 'haccp', label: 'HACCP', hint: 'températures, nettoyage, actions', icon: Thermometer },
 ];
 
+/**
+ * Audit des profils (L3) : un domaine de contrôle n'existe que si ses données existent — ventes
+ * (caisse ou journée boutique), achats, réclamations (clients), production, HACCP (capacité).
+ */
+function useDomainOn() {
+  const { moduleActive, hasFeature } = usePermissions();
+  return (d: string): boolean => {
+    switch (d) {
+      case 'ventes': return moduleActive('pos') || moduleActive('unsold');
+      case 'achats': return moduleActive('purchasing');
+      case 'sav': return moduleActive('customers');
+      case 'production': return moduleActive('production');
+      case 'haccp': return hasFeature('haccp');
+      default: return true;
+    }
+  };
+}
+
+/** Familles de pertes selon les modules et capacités (production, journée boutique, vitrine, dates limites). */
+function useFamilyOn() {
+  const { moduleActive, hasFeature } = usePermissions();
+  return (k: string): boolean => {
+    switch (k) {
+      case 'production': return moduleActive('production');
+      case 'invendu': return moduleActive('unsold');
+      case 'vitrine': return hasFeature('vitrine');
+      case 'perime': return hasFeature('dlc_ddm');
+      case 'recyclage': return moduleActive('production');
+      default: return true;
+    }
+  };
+}
+
 function useIndicators(range: Record<string, string>) {
   return useQuery({ queryKey: ['controle-overview', range], queryFn: () => controleApi.overview(range) });
 }
 
 function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: Tab) => void }) {
   const navigate = useNavigate();
-  const { data = [], isLoading } = useIndicators(range);
+  const domainOn = useDomainOn();
+  const { data: raw = [], isLoading } = useIndicators(range);
+  const data = raw.filter(i => domainOn(i.domain));
+  const domains = DOMAINS.filter(d => domainOn(d.key));
   const alerts = data.filter(i => i.severity === 'danger' || i.severity === 'warning');
   const byDomain = (d: string) => data.filter(i => i.domain === d && (i.severity === 'danger' || i.severity === 'warning'));
   const go = (i: ControlIndicator) => {
@@ -184,7 +220,7 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
       <SectionHeader title="Où en sont mes contrôles"
         note={alerts.length ? `${alerts.length} contrôle${alerts.length > 1 ? 's' : ''} demande${alerts.length > 1 ? 'nt' : ''} une action` : 'Aucune anomalie sur la période'} />
       <KpiGrid label="Où en sont mes contrôles">
-        {DOMAINS.map(d => {
+        {domains.map(d => {
           const items = byDomain(d.key);
           const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
           const danger = items.filter(i => i.severity === 'danger').length;
@@ -197,7 +233,7 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
         })}
       </KpiGrid>
 
-      {alerts.length > 0 && DOMAINS.map(d => {
+      {alerts.length > 0 && domains.map(d => {
         const items = data.filter(i => i.domain === d.key);
         if (items.length === 0) return null;
         return (
@@ -323,6 +359,8 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
   const { REASON_LABELS } = useLossReferentials();
   const { getLabel: matiereReason } = useReferentiel('material_loss_reasons');
   const [family, setFamily] = useState<'all' | LossFamily>('all');
+  const familyOn = useFamilyOn();
+  const families = FAMILIES.filter(f => familyOn(f.key));
   const [source, setSource] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -367,8 +405,8 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       <StageChips
         title="Registre des pertes"
         summary={`${money(total)} au coût de revient${delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta} % vs période précédente` : ''}`}
-        stages={FAMILIES}
-        stats={Object.fromEntries(FAMILIES.map(f => {
+        stages={families}
+        stats={Object.fromEntries(families.map(f => {
           const x = (fam as Record<string, { count: number; value: number; missing: number } | undefined>)[f.key];
           return [f.key, x ? { count: x.count, sub: `${money(x.value)}`, late: x.missing, alertLabel: 'sans coût' } : { count: 0, sub: '' }];
         }))}
