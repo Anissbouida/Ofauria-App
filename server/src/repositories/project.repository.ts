@@ -153,6 +153,54 @@ export const projectRepository = {
     return r.rows[0] ?? null;
   },
 
+  /**
+   * Déboursé (mig 723) : budget par nature, comparé au réalisé. Main-d'œuvre = coût des temps
+   * saisis ; achats (matériaux, engins, sous-traitance, autres) = factures reçues rattachées,
+   * et à défaut commandes engagées (on retient le plus élevé des deux pour ne rien oublier).
+   */
+  async budget(id: string) {
+    const p = await this.findById(id);
+    if (!p) return null;
+    const lines = (await db.query(
+      `SELECT id, nature, label, amount::float8 AS amount FROM project_budget_lines WHERE project_id = $1 ORDER BY line_order, created_at`, [id])).rows;
+    const byNature = (n: string) => lines.filter(l => l.nature === n).reduce((s, l) => s + Number(l.amount), 0);
+    const labour = Number(p.cost_spent || 0);
+    const purchases = Math.max(Number(p.external_cost || 0), Number(p.committed_purchases || 0));
+    const budgetLabour = byNature('main_oeuvre');
+    const budgetPurchases = lines.filter(l => l.nature !== 'main_oeuvre').reduce((s, l) => s + Number(l.amount), 0);
+    return {
+      lines,
+      totals: {
+        budget: Math.round((budgetLabour + budgetPurchases) * 100) / 100,
+        labour: { budget: budgetLabour, actual: Math.round(labour * 100) / 100 },
+        purchases: { budget: budgetPurchases, actual: Math.round(purchases * 100) / 100, invoiced: Number(p.external_cost || 0), committed: Number(p.committed_purchases || 0) },
+      },
+    };
+  },
+
+  /** Remplace le déboursé ; son total devient le budget du projet. */
+  async setBudget(id: string, lines: { nature: string; label?: string | null; amount: number }[]) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM project_budget_lines WHERE project_id = $1`, [id]);
+      for (const [i, l] of lines.entries()) {
+        await client.query(`INSERT INTO project_budget_lines (project_id, nature, label, amount, line_order) VALUES ($1, $2, $3, $4, $5)`,
+          [id, l.nature, l.label?.trim() || null, l.amount, i]);
+      }
+      if (lines.length) {
+        await client.query(`UPDATE projects SET budget_amount = $2, updated_at = now() WHERE id = $1`, [id, lines.reduce((s, l) => s + l.amount, 0)]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    return this.budget(id);
+  },
+
   async list(p: { status?: ProjectStatus; customerId?: string; managerId?: string; search?: string; storeId?: string; limit: number; offset: number }) {
     const values: unknown[] = [];
     const add = (v: unknown) => { values.push(v); return `$${values.length}`; };

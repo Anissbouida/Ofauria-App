@@ -6,7 +6,7 @@ import { FolderKanban, ArrowLeft, Pencil, PlayCircle, PauseCircle, CheckCircle2,
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  projectsApi, TASK_STATUS_LABELS, BILLING_LABELS, PROJECT_STATUS_LABELS, PRIORITY_LABELS, type ProjectStatus, type Task, type TaskStatus, type ProjectInvoice,
+  projectsApi, TASK_STATUS_LABELS, BILLING_LABELS, PROJECT_STATUS_LABELS, PRIORITY_LABELS, BUDGET_NATURE_LABELS, type BudgetNature, type ProjectStatus, type Task, type TaskStatus, type ProjectInvoice,
 } from '../../api/projects.api';
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -34,7 +34,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { canEdit, canDelete } = usePermissions();
+  const { canEdit, canDelete, sectorLabel } = usePermissions();
   const editable = canEdit('projects');
   const { data: p, isLoading } = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id), enabled: !!id });
   const { data: time } = useQuery({ queryKey: ['project-time', { projectId: id }], queryFn: () => projectsApi.listTime({ projectId: id, pageSize: '200' }), enabled: !!id });
@@ -307,6 +307,8 @@ export default function ProjectDetailPage() {
               </div>
             </section>
 
+            <BudgetPanel projectId={p.id} editable={editable} title={sectorLabel('project', 'Projet') === 'Chantier' ? 'Déboursé du chantier' : 'Déboursé'} />
+
             <section className="prj-panel">
               <h2>Informations</h2>
               <dl className="prj-dl">
@@ -381,5 +383,71 @@ function LinkInvoiceModal({ projectId, onClose, onLinked }: { projectId: string;
           </div>
         </div>
     </Modal>
+  );
+}
+
+/**
+ * Déboursé (feuille de route 6.1, mig 723) : budget par nature, comparé au réalisé
+ * (main-d'œuvre = temps saisis ; achats = factures rattachées ou commandes engagées).
+ */
+function BudgetPanel({ projectId, editable, title }: { projectId: string; editable: boolean; title: string }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['projects', projectId, 'budget'], queryFn: () => projectsApi.budget(projectId) });
+  const [draft, setDraft] = useState<{ nature: BudgetNature; label: string; amount: string }[] | null>(null);
+  const save = useMutation({
+    mutationFn: () => projectsApi.setBudget(projectId, (draft ?? []).filter(l => Number(l.amount) > 0).map(l => ({ nature: l.nature, label: l.label.trim() || null, amount: Number(l.amount) }))),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['projects'] }); notify.success('Déboursé enregistré'); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  if (!data) return null;
+  const t = data.totals;
+  const gauge = (label: string, budget: number, actual: number) => {
+    const pct = budget > 0 ? Math.round(actual / budget * 100) : null;
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{label}</span><span>{money(actual, { decimals: 0 })} / {money(budget, { decimals: 0 })}</span></div>
+        <span className={`prj-bar ${pct !== null && pct > 100 ? 'red' : ''}`} title={pct !== null ? `${pct} % du budget` : 'pas de budget'}><span style={{ width: `${Math.min(100, pct ?? 0)}%`, background: pct !== null && pct > 100 ? 'var(--ds-danger)' : undefined }} /></span>
+      </div>
+    );
+  };
+  return (
+    <section className="prj-panel">
+      <h2>{title}</h2>
+      {draft ? (
+        <>
+          {draft.map((l, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px 28px', gap: 6, marginBottom: 6 }}>
+              <select className="ds-input sm" aria-label={`Nature, ligne ${i + 1}`} value={l.nature} onChange={e => setDraft(draft.map((x, j) => j === i ? { ...x, nature: e.target.value as BudgetNature } : x))}>
+                {(Object.keys(BUDGET_NATURE_LABELS) as BudgetNature[]).map(k => <option key={k} value={k}>{BUDGET_NATURE_LABELS[k]}</option>)}
+              </select>
+              <input className="ds-input sm" aria-label={`Ouvrage ou lot, ligne ${i + 1}`} placeholder="Ouvrage, lot…" value={l.label} onChange={e => setDraft(draft.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+              <input className="ds-input sm" type="number" min={0} aria-label={`Montant, ligne ${i + 1}`} value={l.amount} onChange={e => setDraft(draft.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+              <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Retirer la ligne ${i + 1}`} onClick={() => setDraft(draft.filter((_, j) => j !== i))}><Trash2 size={12} /></button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft([...draft, { nature: 'materiaux', label: '', amount: '' }])}><Plus size={12} /> Ligne</button>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={save.isPending} onClick={() => save.mutate()}><Check size={12} /> Enregistrer</button>
+          </div>
+        </>
+      ) : (
+        <>
+          {data.lines.length === 0
+            ? <p style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucun déboursé : détaillez le budget par nature pour suivre l'écart avec le réalisé.</p>
+            : <>
+                <dl className="prj-legend">
+                  {data.lines.map(l => <Fragment key={l.id}><dt>{BUDGET_NATURE_LABELS[l.nature]}{l.label ? ` — ${l.label}` : ''}</dt><dd>{money(l.amount, { decimals: 0 })}</dd></Fragment>)}
+                </dl>
+                {gauge('Main-d’œuvre', t.labour.budget, t.labour.actual)}
+                {gauge('Achats', t.purchases.budget, t.purchases.actual)}
+              </>}
+          {editable && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft(data.lines.length ? data.lines.map(l => ({ nature: l.nature, label: l.label ?? '', amount: String(l.amount) })) : [{ nature: 'materiaux', label: '', amount: '' }])}>
+            <Pencil size={12} /> {data.lines.length ? 'Modifier' : 'Saisir le déboursé'}
+          </button>}
+        </>
+      )}
+    </section>
   );
 }

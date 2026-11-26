@@ -333,3 +333,18 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 7.2 Contenu comptable | Existant (moteur) | Modèles d'écritures (`journal_entry_templates`) et centres de coût ; non encore livrés par profil |
 | 7.3 Indicateurs | Reporté | Rattacher chaque indicateur de tableau de bord à une capacité : à faire écran par écran |
 | 7.4 Éditeur de profils | Fait (existant corrigé) | « Enregistrer la configuration comme profil » + versions et comparaison (mig 697) existaient ; correctif : les capacités éteintes par la société sont conservées dans le profil (`off_features`) au lieu de redevenir actives |
+
+### Restes traités (26 novembre 2026)
+
+| Reste | État | Détail |
+|---|---|---|
+| 6.2 Véhicule des tournées | Fait | Mig 718 : véhicule et kilométrage de la tournée ; à la clôture, le retour devient un relevé des plans d'entretien au kilomètre du véhicule |
+| 2.5 Réception pour compte de client | Fait | Mig 719 : registre séparé (un lot matière alimenterait l'inventaire, le coût et la FEFO de la production) ; écran Stock › Déposants (articles, réception à quai, expédition par lot bornée au stock) |
+| 4.2 Dossier de lot imprimable | Fait | `GET /production/:id/batch-record` et bouton « Dossier de lot » : matières par lot, pesées (qui a pesé, qui a réceptionné), étapes et relevés, contrôles, libération ; écarts signalés en tête ; visas de revue |
+| 7.2 Modèles comptables par profil | Fait | Mig 720 : couche `entry_templates` (comptes par code, créés si le plan de la société les contient) ; transport, BTP, services. À valider par l'expert-comptable |
+| 7.3 Indicateurs | Fait (partiel) | Tableau de bord Ventes (devis) et poste de travail Achats (demandes de prix) masqués quand la capacité est éteinte. Les autres tableaux de bord ne lisent pas de capacité |
+| 3.6 Documents par profil | Fait | Mig 721 : couche `document_mentions` (pied des devis, factures, bons de commande), jamais écrasée |
+| 2.6 Réservations | Fait | Mig 722 : vue unique (commandes et ordres de fabrication) avec le disponible ; écran Stock › Rapports › Réservations |
+| 6.1 Déboursé | Fait | Mig 723 : budget par nature (matériaux, main-d'œuvre, engins, sous-traitance) comparé au réalisé, sur la fiche projet ; son total devient le budget du projet |
+| 2.2 / 2.7 Fiche article par blocs, écran de mouvement unique | Non fait (choix) | Refonte des écrans Stock existants (réserve, bons de sortie, pesée) utilisés chaque jour par Ofauria : à mener sur maquette validée, pas en aveugle |
+| 6.2 Ordre de transport distinct | Non fait (choix) | La demande de transport reste une commande avec une prestation tarifée par la grille ; un objet séparé n'apporte rien tant qu'aucun transporteur réel ne l'a demandé |

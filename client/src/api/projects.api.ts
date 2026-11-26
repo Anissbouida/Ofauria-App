@@ -60,7 +60,18 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = { todo: 'À faire'
 export const PRIORITY_LABELS: Record<Priority, string> = { critical: 'Critique', high: 'Haute', normal: 'Normale', low: 'Basse' };
 export const BILLING_LABELS: Record<BillingType, string> = { none: 'Non facturé / inclus', fixed: 'Forfait', time: 'Au temps passé' };
 
+/** Déboursé par nature (mig 723). */
+export type BudgetNature = 'materiaux' | 'main_oeuvre' | 'engins' | 'sous_traitance' | 'autres';
+export const BUDGET_NATURE_LABELS: Record<BudgetNature, string> = { materiaux: 'Matériaux', main_oeuvre: 'Main-d’œuvre', engins: 'Engins et matériel', sous_traitance: 'Sous-traitance', autres: 'Autres' };
+export type ProjectBudget = {
+  lines: { id: string; nature: BudgetNature; label: string | null; amount: number }[];
+  totals: { budget: number; labour: { budget: number; actual: number }; purchases: { budget: number; actual: number; invoiced: number; committed: number } };
+};
+
 export const projectsApi = {
+  budget: (id: string): Promise<ProjectBudget> => api.get(`/projects/${id}/budget`).then(r => r.data.data),
+  setBudget: (id: string, lines: { nature: BudgetNature; label: string | null; amount: number }[]): Promise<ProjectBudget> =>
+    api.put(`/projects/${id}/budget`, { lines }).then(r => r.data.data),
   list: (params: Record<string, string>): Promise<{ rows: Project[]; total: number; byStatus: Record<string, { count: number; overdue: number }> }> =>
     api.get('/projects', { params }).then(r => r.data.data),
   overview: (params: Record<string, string>): Promise<{

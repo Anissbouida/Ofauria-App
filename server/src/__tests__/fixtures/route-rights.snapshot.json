@@ -1939,6 +1939,7 @@
  ],
  "GET /projects": null,
  "GET /projects/:id": null,
+ "GET /projects/:id/budget": null,
  "GET /projects/:id/invoices": null,
  "GET /projects/:id/invoices/linkable": null,
  "GET /projects/overview": null,
@@ -5485,6 +5486,7 @@
   "admin",
   "manager"
  ],
+ "PUT /projects/:id/budget": null,
  "PUT /promotions/:id": [
   "admin",
   "manager"

@@ -112,6 +112,25 @@ projectsRouter.get('/:id', ...VIEW, asyncHandler(async (req: AuthRequest, res: R
   ok(res, { ...data, tasks: await repo.listTasks(req.params.id) });
 }));
 
+// Mig 723 : déboursé par nature, comparé au réalisé.
+const budgetBody = z.object({ lines: z.array(z.object({
+  nature: z.enum(['materiaux', 'main_oeuvre', 'engins', 'sous_traitance', 'autres']),
+  label: z.string().max(200).nullish(), amount: z.coerce.number().min(0).max(1_000_000_000),
+})).max(200) });
+projectsRouter.get('/:id/budget', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  const data = await repo.budget(req.params.id);
+  if (!data) { notFound(res, 'Projet introuvable'); return; }
+  ok(res, data);
+}));
+projectsRouter.put('/:id/budget', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  const r = budgetBody.safeParse(req.body);
+  if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
+  if (!(await repo.findById(req.params.id))) { notFound(res, 'Projet introuvable'); return; }
+  ok(res, await repo.setBudget(req.params.id, r.data.lines));
+}));
+
 projectsRouter.patch('/:id', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = projectBody.partial().safeParse(req.body);

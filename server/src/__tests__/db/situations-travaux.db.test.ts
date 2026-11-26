@@ -101,6 +101,25 @@ describe.skipIf(!hasTestDb)('Situations de travaux', () => {
     await p.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
   });
 
+  it('déboursé par nature : budget du projet, comparé au réalisé (mig 723)', async () => {
+    const p = testPool();
+    const projectId = (await p.query(`INSERT INTO projects (number, name, store_id, created_by) VALUES ($1, 'Chantier déboursé', $2, $3) RETURNING id`,
+      [`PRJ-D-${RUN}`, fx.storeId, fx.userId])).rows[0].id;
+    const { projectRepository } = await import('../../repositories/project.repository.js');
+    const b = await projectRepository.setBudget(projectId, [
+      { nature: 'materiaux', label: 'Gros œuvre', amount: 300000 },
+      { nature: 'main_oeuvre', label: null, amount: 120000 },
+      { nature: 'engins', label: 'Grue', amount: 50000 },
+    ]);
+    expect(b!.totals.budget).toBe(470000);
+    expect(b!.totals.labour.budget).toBe(120000);
+    expect(b!.totals.purchases.budget).toBe(350000);
+    expect(Number((await projectRepository.findById(projectId)).budget_amount)).toBe(470000);
+    const again = await projectRepository.setBudget(projectId, [{ nature: 'autres', amount: 1000 }]);
+    expect(again!.lines.length).toBe(1);
+    await p.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  });
+
   it('un devis non accepté ne se facture pas à l’avancement', async () => {
     await testPool().query(`UPDATE quotes SET status = 'sent' WHERE id = $1`, [quoteId]);
     await expect(repo.prepare(quoteId)).rejects.toThrow(/accepté/);
