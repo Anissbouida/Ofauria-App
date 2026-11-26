@@ -148,6 +148,6 @@ Kalum est un ERP multisectoriel : Ofauria a été le point de départ, la boulan
 
 **Restent (à décider ou mineurs)**
 
-- Données d'Ofauria semées par d'anciennes migrations figées (catalogue 128, salariés 070, fond de caisse 214, recettes 115-303) : retirées par `client-install.sh` (chemin officiel d'installation). Une purge automatique par migration supprimerait des données visibles sur une base sans ventes ni factures (dont une base d'essai) : à décider.
+- Données d'Ofauria semées par d'anciennes migrations figées (catalogue 128, salariés 070, fond de caisse 214, recettes 115-303) : retirées par `client-install.sh` (chemin officiel d'installation). Décision du 2026-11-26 : pas de purge automatique par migration (elle supprimerait des données saisies sur une base d'essai) ; `client-install.sh` reste le seul chemin d'installation.
 - Référentiels sans secteur (types de vente « Du jour », types de perte, catégories de dépenses « Matériel POS ») : lus comme valeurs par défaut par le code, à traiter avec la fiche produit.
 - Canaux de vente par défaut (« Boutique ») ; fuseau `Africa/Casablanca` écrit en dur (la société a un fuseau) ; quelques textes P2 (« Client comptoir », libellés de paie « sortie de caisse », aperçus de modèles de documents).
