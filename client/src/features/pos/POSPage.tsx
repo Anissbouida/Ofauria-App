@@ -127,7 +127,11 @@ export default function POSPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { hasModule, moduleActive } = usePermissions();
+  const { hasModule, moduleActive, hasFeature } = usePermissions();
+  // Audit des profils : comptage des sachets (suggestion par produit de comptoir) avec la capacité Vitrine.
+  const sachetsOn = hasFeature('vitrine');
+  // Badges et blocage des produits expirés seulement avec la capacité Dates limites.
+  const dlcOn = hasFeature('dlc_ddm');
   const ws = useWorkshops(); // libellés des ateliers (mig 511)
   // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
   const [offlinePending, setOfflinePending] = useState(() => pendingCount());
@@ -938,7 +942,7 @@ export default function POSPage() {
   const sachetSuggestQuery = useQuery({
     queryKey: ['sachet-suggest', sachetSuggestKey],
     queryFn: () => sachetConfigApi.suggest(cart.map(i => ({ productId: i.productId, quantity: i.quantity }))),
-    enabled: cart.length > 0,
+    enabled: sachetsOn && cart.length > 0,
     staleTime: 5 * 60 * 1000,
   });
   const suggestedSachets = sachetSuggestQuery.data?.suggested ?? 0;
@@ -1573,7 +1577,7 @@ export default function POSPage() {
     const threshold = parseFloat(p.stock_min_threshold as string) || 0;
     const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
     // Phase A — DLV/DDE expiree : produit non vendable, on grise + bloque l'add to cart
-    const isExpired = p.is_expired === true;
+    const isExpired = dlcOn && p.is_expired === true;
     // Phase C — DLV/DDE proche (< 24h) : badge orange warning
     const nowMs = Date.now();
     const dlvMs = p.nearest_dlv ? new Date(p.nearest_dlv as string).getTime() : null;
@@ -1581,7 +1585,7 @@ export default function POSPage() {
     const dlvCriticalH = dlvMs ? (dlvMs - nowMs) / 3600000 : Infinity;
     const ddeCriticalH = ddeMs ? (ddeMs - nowMs) / 3600000 : Infinity;
     const minH = Math.min(dlvCriticalH, ddeCriticalH);
-    const isDeadlineSoon = !isExpired && minH < 24 && minH > 0;
+    const isDeadlineSoon = dlcOn && !isExpired && minH < 24 && minH > 0;
     return (
       <button key={p.id as string} onClick={() => (!outOfStock || ALLOW_NEGATIVE_STOCK) && !isExpired && addToCart(p)}
         disabled={(outOfStock && !ALLOW_NEGATIVE_STOCK) || isExpired}
@@ -1614,7 +1618,7 @@ export default function POSPage() {
         )}
         {/* Stock vitrine visible en un coup d'oeil (produits vendables sans alerte) */}
         {!outOfStock && !isLowStock && !isExpired && (
-          <span className="absolute top-1 right-1 text-[9px] font-bold text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-full z-10" title="Stock vitrine">
+          <span className="absolute top-1 right-1 text-[9px] font-bold text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-full z-10" title={sachetsOn ? 'Stock vitrine' : 'Stock'}>
             {p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(1).replace(/\.0$/, '')} kg` : `×${Math.floor(stock)}`}
           </span>
         )}
@@ -2098,8 +2102,8 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Sachets — visible dès qu'il y a au moins 1 article */}
-              {cart.length > 0 && (
+              {/* Sachets — visible dès qu'il y a au moins 1 article (capacité Vitrine) */}
+              {sachetsOn && cart.length > 0 && (
                 <div className="px-3 py-1.5 border-b border-gray-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
