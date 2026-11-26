@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db } from '../config/database.js';
 
 /**
@@ -81,8 +82,8 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
   const r = await db.query(
     `WITH docs AS (
        SELECT 'ticket'::text AS kind, s.id, s.sale_number AS number, s.customer_id, s.unpaid_customer_name AS legacy_name,
-              (s.created_at AT TIME ZONE 'Africa/Casablanca')::date AS doc_date,
-              COALESCE(s.due_date, (s.created_at AT TIME ZONE 'Africa/Casablanca')::date) AS due_date,
+              (s.created_at AT TIME ZONE '${businessTz()}')::date AS doc_date,
+              COALESCE(s.due_date, (s.created_at AT TIME ZONE '${businessTz()}')::date) AS due_date,
               s.total::numeric AS amount, 0::numeric AS paid, 0::numeric AS disputed, 0::numeric AS written_off,
               -- ticket comptabilisé à la vente (lot L5) : au compte clients 3421 ; sinon à l'encaissement.
               COALESCE(s.sold_on_credit, false) AS ledger_posted
@@ -103,7 +104,7 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
         WHERE i.invoice_type = 'emitted' AND i.kind <> 'credit_note' AND i.status NOT IN ('paid', 'cancelled')
           AND i.total_amount - COALESCE(i.paid_amount, 0) > 0.005${invStore}${invCust}
      )
-     SELECT *, ((now() AT TIME ZONE 'Africa/Casablanca')::date - due_date) AS days_late,
+     SELECT *, ((now() AT TIME ZONE '${businessTz()}')::date - due_date) AS days_late,
             amount - paid - disputed - written_off AS remaining
        FROM docs
       WHERE amount - paid - disputed - written_off > 0.005
@@ -143,8 +144,8 @@ async function customerLedgerBalances(): Promise<{ total: number; byCustomer: Ma
        JOIN accounts a ON a.id = jel.account_id AND a.is_collective AND a.auxiliary_kind = 'customer'
        JOIN account_auxiliaries ax ON ax.id = jel.auxiliary_id
        JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.status IN ('posted', 'reversed')
-      WHERE je.entry_date >= fn_ledger_window_start((now() AT TIME ZONE 'Africa/Casablanca')::date, 4)
-        AND je.entry_date <= (now() AT TIME ZONE 'Africa/Casablanca')::date
+      WHERE je.entry_date >= fn_ledger_window_start((now() AT TIME ZONE '${businessTz()}')::date, 4)
+        AND je.entry_date <= (now() AT TIME ZONE '${businessTz()}')::date
       GROUP BY ax.customer_id`);
   const byCustomer = new Map<string, number>();
   let total = 0;

@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db } from '../config/database.js';
 
 /**
@@ -10,11 +11,10 @@ import { db } from '../config/database.js';
  * déroger (`allowOpenPeriod`) : les bulletins sont alors marqués provisoires et
  * ne peuvent pas être payés.
  */
-const PAYROLL_TZ = 'Africa/Casablanca';
 
 /** Date du jour au Maroc, AAAA-MM-JJ. */
 export function payrollToday(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: PAYROLL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: businessTz(), year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
 export const frDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;

@@ -12,6 +12,7 @@
  *   - Excel (exceljs) : mêmes lignes, montants numériques au format comptable,
  *     en-tête figé, sous-totaux en gras.
  */
+import { businessTz } from '../utils/timezone.js';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import { db } from '../config/database.js';
@@ -555,7 +556,7 @@ export async function renderPdf(e: Edition, ctx: EditionContext): Promise<Buffer
 
   // Pied de page : édition, auteur, chaîne d'inaltérabilité, pagination.
   const range = doc.bufferedPageRange();
-  const stamp = ctx.generatedAt.toLocaleString('fr-FR', { timeZone: 'Africa/Casablanca', dateStyle: 'short', timeStyle: 'short' });
+  const stamp = ctx.generatedAt.toLocaleString('fr-FR', { timeZone: businessTz(), dateStyle: 'short', timeStyle: 'short' });
   const chain = ctx.chain ? `Chaîne d'inaltérabilité : écriture n° ${ctx.chain.seq}, empreinte ${ctx.chain.hash.slice(0, 16)}…` : '';
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(range.start + i);
@@ -580,7 +581,7 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   const ids = [ctx.legal.if && `IF ${ctx.legal.if}`, ctx.legal.ice && `ICE ${ctx.legal.ice}`, ctx.legal.rc && `RC ${ctx.legal.rc}`].filter(Boolean).join(' · ');
   ws.addRow([ctx.legal.name || '']).font = { bold: true, size: 12 };
   ws.addRow([`${e.title} — ${e.period}`]).font = { bold: true, size: 11 };
-  ws.addRow([[ids, `Édité le ${ctx.generatedAt.toLocaleString('fr-FR', { timeZone: 'Africa/Casablanca' })} par ${ctx.author}`].filter(Boolean).join(' — ')]).font = { italic: true, size: 9, color: { argb: 'FF6B6B6B' } };
+  ws.addRow([[ids, `Édité le ${ctx.generatedAt.toLocaleString('fr-FR', { timeZone: businessTz() })} par ${ctx.author}`].filter(Boolean).join(' — ')]).font = { italic: true, size: 9, color: { argb: 'FF6B6B6B' } };
   ws.addRow([]);
   const head = ws.addRow(e.columns.map(c => c.label));
   head.font = { bold: true, color: { argb: 'FFFFFFFF' } };

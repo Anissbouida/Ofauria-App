@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import * as XLSX from '../utils/sheets.js';
 import { db } from '../config/database.js';
 import { listDefs, type CfEntity } from './custom-fields.js';
@@ -106,7 +107,7 @@ export async function exportBaseData(): Promise<{ buffer: Buffer; counts: Record
   }
   const info = XLSX.utils.aoa_to_sheet([
     ['Export des données de base — Kalum'],
-    ['Date', new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Casablanca' })],
+    ['Date', new Date().toLocaleString('fr-FR', { timeZone: businessTz() })],
     [],
     ...Object.entries(counts).map(([k, v]) => [k, v]),
   ]);

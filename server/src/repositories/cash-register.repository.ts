@@ -1,6 +1,6 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
-import { getUserTimezone } from '../utils/timezone.js';
+import { businessTz, getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromClosureDiff, persistEntry } from '../services/journal-generator.service.js';
 import { postOrQueue } from '../services/ledger-posting.service.js';
@@ -34,7 +34,7 @@ const CLOSURE_GAP_CANDIDATES = `
          EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = cs.id AND je.source_kind = 'closure_diff'
                   AND je.source_detail = 'card' AND je.status <> 'draft') AS card_posted,
          EXISTS (SELECT 1 FROM manual_shift_entries m WHERE m.store_id = cs.store_id
-                  AND m.entry_date = (cs.closed_at AT TIME ZONE 'Africa/Casablanca')::date) AS manual_day
+                  AND m.entry_date = (cs.closed_at AT TIME ZONE '${businessTz()}')::date) AS manual_day
     FROM cash_register_sessions cs
     JOIN users u ON u.id = cs.user_id
    WHERE cs.status = 'closed' AND cs.closed_at IS NOT NULL
@@ -175,7 +175,7 @@ export const cashRegisterRepository = {
              AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = s.id AND je.status <> 'draft')
              AND NOT EXISTS (SELECT 1 FROM manual_shift_entries m
                               WHERE m.store_id = s.store_id
-                                AND m.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE 'Africa/Casablanca'))) as tickets_unposted,
+                                AND m.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${businessTz()}'))) as tickets_unposted,
          (SELECT je.entry_number FROM journal_entries je
            WHERE je.source_id = cs.id AND je.source_kind = 'closure_diff' AND je.status = 'posted'
            ORDER BY je.created_at DESC LIMIT 1) as closure_entry_number

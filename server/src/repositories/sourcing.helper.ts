@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import { productionRepository } from './production.repository.js';
 import { sectorRepository } from './sector.repository.js';
@@ -277,7 +278,7 @@ export async function computeSourcingAndCreatePlan(
     // Le nom de colonne est valide par le typage TS sur linkColumn — donc safe a inliner.
     const planResult = await client.query(
       `INSERT INTO production_plans (plan_date, type, notes, created_by, target_role, store_id, ${linkColumn})
-       VALUES (GREATEST(CURRENT_DATE, COALESCE(($6::timestamptz AT TIME ZONE 'Africa/Casablanca')::date, CURRENT_DATE)),
+       VALUES (GREATEST(CURRENT_DATE, COALESCE(($6::timestamptz AT TIME ZONE '${businessTz()}')::date, CURRENT_DATE)),
                'daily', $1, $2, $3, $4, $5) RETURNING id`,
       [planLabel, createdBy, targetRole ?? null, storeId, linkId, needDate ?? null]
     );

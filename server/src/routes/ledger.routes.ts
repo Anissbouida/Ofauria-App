@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { cashForecast, cashForecastLines } from '../services/cash-forecast.js';
 import { Router, type Response } from 'express';
@@ -159,7 +160,7 @@ ledgerRouter.get('/editions/:kind', authenticate, can('accounting.view'), editio
   const r = editionQuery.safeParse(req.query);
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   const q = r.data;
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: businessTz() });
   const end = q.endDate ?? today;
   const start = q.startDate ?? `${end.slice(0, 4)}-01-01`;
   if (start > end) { tplBad(res, 'Période invalide'); return; }
@@ -356,7 +357,7 @@ ledgerRouter.get('/aged-balance', authenticate, can('accounting.view'), asyncHan
     asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }).safeParse(req.query);
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
-  const asOf = r.data.asOf ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+  const asOf = r.data.asOf ?? new Date().toLocaleDateString('sv-SE', { timeZone: businessTz() });
   res.json({ success: true, data: await agedBalanceRepository.compute({ side: r.data.side, asOf }) });
 }));
 ledgerRouter.get('/outbox',authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.outbox));

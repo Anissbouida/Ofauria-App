@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { needsMet, resolveModuleKeys, type ScreenNeeds } from '@ofauria/shared';
@@ -180,7 +181,7 @@ export async function monthlyInvoicing(opts: { customerId?: string } = {}): Prom
   const actor = (await db.query(`SELECT id FROM users WHERE role = 'admin' AND is_active ORDER BY created_at LIMIT 1`)).rows[0]?.id as string | undefined;
   if (!actor) return { items: 0, message: 'Aucun administrateur actif pour émettre les factures' };
   const groups = (await db.query(
-    `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d)
+    `WITH today AS (SELECT (now() AT TIME ZONE '${businessTz()}')::date AS d)
      SELECT dn.customer_id, COALESCE(c.billing_frequency, 'monthly') AS freq,
             array_agg(dn.id ORDER BY dn.delivery_date, dn.number) AS ids,
             max(dn.delivery_date)::text AS last_day,
@@ -196,7 +197,7 @@ export async function monthlyInvoicing(opts: { customerId?: string } = {}): Prom
     let date = g.freq === 'per_delivery' ? g.last_day : g.month_end;
     const locked = (await db.query(
       `SELECT 1 FROM fiscal_periods WHERE $1::date BETWEEN start_date AND end_date AND status <> 'open'`, [date])).rows[0];
-    if (locked) date = (await db.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+    if (locked) date = (await db.query(`SELECT (now() AT TIME ZONE '${businessTz()}')::date::text AS d`)).rows[0].d;
     try {
       await deliveryNoteRepository.invoice({ deliveryNoteIds: g.ids, invoiceDate: date, createdBy: actor });
       done++;
@@ -246,7 +247,7 @@ async function ledgerOutboxReplay(): Promise<JobResult> {
 
 /** Partitions d'exercice du journal d'audit comptable (mig 436) : exercice courant et suivant. */
 async function ledgerPartitions(): Promise<JobResult> {
-  const y = Number((await db.query(`SELECT EXTRACT(YEAR FROM now() AT TIME ZONE 'Africa/Casablanca')::int AS y`)).rows[0].y);
+  const y = Number((await db.query(`SELECT EXTRACT(YEAR FROM now() AT TIME ZONE '${businessTz()}')::int AS y`)).rows[0].y);
   const before = Number((await db.query(`SELECT count(*)::int AS n FROM pg_inherits WHERE inhparent = 'ledger_audit_log'::regclass`)).rows[0].n);
   for (const year of [y, y + 1]) await db.query(`SELECT fn_ensure_audit_partition($1)`, [year]);
   const after = Number((await db.query(`SELECT count(*)::int AS n FROM pg_inherits WHERE inhparent = 'ledger_audit_log'::regclass`)).rows[0].n);
@@ -286,7 +287,7 @@ async function purchaseSuggestions(): Promise<JobResult> {
 async function previousMonth(): Promise<{ year: number; month: number; lastDay: string }> {
   const r = (await db.query(
     `SELECT EXTRACT(YEAR FROM d)::int AS year, EXTRACT(MONTH FROM d)::int AS month, to_char(d, 'YYYY-MM-DD') AS last_day
-       FROM (SELECT (date_trunc('month', now() AT TIME ZONE 'Africa/Casablanca') - interval '1 day')::date AS d) x`)).rows[0];
+       FROM (SELECT (date_trunc('month', now() AT TIME ZONE '${businessTz()}') - interval '1 day')::date AS d) x`)).rows[0];
   return { year: r.year, month: r.month, lastDay: r.last_day };
 }
 
@@ -369,7 +370,7 @@ async function dlcAlerts(): Promise<JobResult> {
   const fresh = new Map<string, Row>();
   for (const t of days) {
     const r = await db.query(
-      `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d),
+      `WITH today AS (SELECT (now() AT TIME ZONE '${businessTz()}')::date AS d),
             due AS (
               SELECT 'ingredient'::text AS lot_kind, il.id AS lot_id, il.store_id, i.name,
                      COALESCE(il.supplier_lot_number, il.lot_number) AS lot_number, il.expiration_date AS expires_on
@@ -429,7 +430,7 @@ async function hrDocumentsDue(): Promise<JobResult> {
   const fresh = new Map<string, Row>();
   for (const t of days) {
     const r = await db.query(
-      `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d),
+      `WITH today AS (SELECT (now() AT TIME ZONE '${businessTz()}')::date AS d),
             due AS (
               SELECT 'cin'::text AS kind, e.id AS ref_id, e.store_id, e.first_name || ' ' || e.last_name AS employee,
                      'Carte d''identité'::text AS label, e.cin_expires_on AS due_on
@@ -485,7 +486,7 @@ async function hrDocumentsDue(): Promise<JobResult> {
  * fermée…) met la tâche en erreur avec son motif ; les autres sont passées quand même.
  */
 async function recurringEntries(): Promise<JobResult> {
-  const today = (await db.query(`SELECT to_char((now() AT TIME ZONE 'Africa/Casablanca')::date, 'YYYY-MM-DD') AS d`)).rows[0].d as string;
+  const today = (await db.query(`SELECT to_char((now() AT TIME ZONE '${businessTz()}')::date, 'YYYY-MM-DD') AS d`)).rows[0].d as string;
   const { posted, errors } = await journalTemplateRepository.runRecurring(today, await systemUserId());
   if (errors.length) throw new Error(`${posted} écriture(s) passée(s) ; ${errors.length} échéance(s) refusée(s) : ${errors.join(' | ')}`);
   return { items: posted, message: posted ? `${posted} écriture(s) récurrente(s) passée(s)` : 'Aucune échéance à instancier' };

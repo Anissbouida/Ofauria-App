@@ -2,6 +2,7 @@ import { env } from './config/env.js';
 import app from './app.js';
 import { startScheduler } from './services/scheduler.js';
 import { loadCompanyCurrency } from './services/currency.js';
+import { loadCompanyTimezone } from './services/company-timezone.js';
 import { loadCountryPack } from './services/country-pack.js';
 import { logger } from './utils/logger.js';
 
@@ -18,5 +19,6 @@ app.listen(env.PORT, () => {
   logger.info(`   Environment: ${env.NODE_ENV}`);
   startScheduler();
   void loadCompanyCurrency(); // devise de la société pour documents et messages (G6-06)
+  void loadCompanyTimezone(); // fuseau de la société pour journées, échéances et documents (audit des profils)
   void loadCountryPack(); // pack pays : paramètres légaux pour les validateurs synchrones (G6-06)
 });

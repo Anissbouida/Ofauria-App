@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
@@ -37,7 +38,7 @@ async function sendInvitation(req: AuthRequest, user: { id: string; email: strin
   const status = await mailStatus();
   let queued = false;
   if (status.configured && origin) {
-    const until = new Date(expiresAt).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
+    const until = new Date(expiresAt).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: businessTz() });
     await enqueueEmail({
       to: user.email, toName: user.first_name ?? null, userId: user.id, createdBy: req.user?.userId ?? null,
       type: 'invitation', referenceType: 'user', referenceId: user.id,

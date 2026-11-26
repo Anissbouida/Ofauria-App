@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 
@@ -59,7 +60,7 @@ export const documentSequenceRepository = {
   /** Aperçu d'un modèle non enregistré (numéro 1 de la période courante). */
   async sample(pattern: string, padding: number) {
     const r = await db.query(
-      `SELECT replace(render_document_pattern($1, (now() AT TIME ZONE 'Africa/Casablanca')::date), '{SEQ}', lpad('1', $2, '0')) AS sample`,
+      `SELECT replace(render_document_pattern($1, (now() AT TIME ZONE '${businessTz()}')::date), '{SEQ}', lpad('1', $2, '0')) AS sample`,
       [pattern, padding],
     );
     return String(r.rows[0].sample);

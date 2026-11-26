@@ -11,7 +11,7 @@ import { cashRegisterRepository } from '../repositories/cash-register.repository
 import { saleRepository } from '../repositories/sale.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { paymentRepository, invoiceRepository } from '../repositories/accounting.repository.js';
-import { getLocalNow } from '../utils/timezone.js';
+import { businessTz, getLocalNow } from '../utils/timezone.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
@@ -518,7 +518,7 @@ export const orderController = {
       try {
         await c.query('BEGIN');
         await postOrQueue(c, { kind: 'advance_forfeit', id: req.params.id }, async () => {
-          const day = (await c.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+          const day = (await c.query(`SELECT (now() AT TIME ZONE '${businessTz()}')::date::text AS d`)).rows[0].d;
           const entry = await fromAdvanceForfeit(c, req.params.id, day);
           if (entry) await persistEntry(c, entry, { userId: req.user!.userId });
         });

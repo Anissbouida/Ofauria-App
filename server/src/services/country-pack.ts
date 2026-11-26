@@ -18,6 +18,7 @@
  * Analogie Oracle : une table de paramètres « à date d'effet » lue par un package qui garde le
  * résultat en variable de package quelques secondes.
  */
+import { businessTz } from '../utils/timezone.js';
 import { countryPackRepository, type CountryParamRow, type CountryPackRow } from '../repositories/country-pack.repository.js';
 import { DEFAULT_OT_RATES, type OvertimeRates } from './overtime-engine.js';
 import { DEFAULT_SENIORITY_BRACKETS, type SeniorityBracket } from './payroll-engine.js';
@@ -56,7 +57,7 @@ export const MA_DEFAULTS: CountryParams = {
 export const FALLBACK_COUNTRY = 'MA';
 const TTL_MS = 60_000;
 
-const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: businessTz() });
 
 const valueOf = (row: CountryParamRow): unknown =>
   row.value_numeric !== null && row.value_numeric !== undefined ? Number(row.value_numeric) : row.value_json;

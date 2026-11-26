@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
 import { pickQtyUnit, unitCodeSql, unitIdSql, type WeightUnit } from '../utils/qty-unit.js';
@@ -263,7 +264,7 @@ export const recipeComponentRepository = {
              FROM recipe_formats f LEFT JOIN users u ON u.id = f.updated_by
             WHERE f.id = $1 FOR UPDATE OF f`, [formatId])).rows[0];
         if (cur && cur.version !== data.expectedVersion) {
-          const at = new Date(cur.updated_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca' });
+          const at = new Date(cur.updated_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: businessTz() });
           const err = new Error(`Cette composition a été modifiée${cur.who ? ` par ${cur.who}` : ''} à ${at} depuis que vous l'avez ouverte. Rechargez la fiche pour voir ses changements, puis refaites les vôtres.`);
           (err as { code?: string }).code = 'STALE_FORMAT';
           throw err;

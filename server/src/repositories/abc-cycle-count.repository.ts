@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db, withTransaction } from '../config/database.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { stockCountRepository } from './stock-count.repository.js';
@@ -82,7 +83,7 @@ export const abcCycleCountRepository = {
         ingredient_id: string; ingredient_name: string; unit: string; abc_class: 'A' | 'B' | 'C';
         abc_value: number; last_count: string | null; due_date: string | null;
       }>;
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: businessTz() });
     const withDue = rows.map(r => ({ ...r, due: !r.due_date || String(r.due_date).slice(0, 10) <= today }));
     const classes = (['A', 'B', 'C'] as const).map(c => ({
       class: c, items: withDue.filter(r => r.abc_class === c).length, due: withDue.filter(r => r.abc_class === c && r.due).length,

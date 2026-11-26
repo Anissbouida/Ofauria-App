@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { RoutingOperationInput } from '../validators/routing.validator.js';
 import { db, withTransaction } from '../config/database.js';
 
@@ -213,14 +214,14 @@ export const routingRepository = {
        -- d'arrêt total (aucune étape terminée) sortait du temps planifié et gonflait la
        -- disponibilité. Faute de calendrier par poste, ce sont les jours d'activité connus.
        days AS (
-         SELECT (pie.completed_at AT TIME ZONE 'Africa/Casablanca')::date AS d
+         SELECT (pie.completed_at AT TIME ZONE '${businessTz()}')::date AS d
            FROM production_item_etapes pie
           WHERE pie.work_center_id = $1 AND pie.status = 'completed'
             AND pie.completed_at >= $2 AND pie.completed_at < $3 AND pie.duree_reelle_min IS NOT NULL
          UNION
          SELECT g::date FROM stops,
-                generate_series((a AT TIME ZONE 'Africa/Casablanca')::date,
-                                ((b - interval '1 second') AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day') g
+                generate_series((a AT TIME ZONE '${businessTz()}')::date,
+                                ((b - interval '1 second') AT TIME ZONE '${businessTz()}')::date, interval '1 day') g
           WHERE b > a
        ),
        act AS (SELECT COUNT(*) AS active_days FROM days),
@@ -230,8 +231,8 @@ export const routingRepository = {
        cal AS (SELECT EXISTS (SELECT 1 FROM work_center_calendar WHERE work_center_id = $1) AS has),
        opening AS (
          SELECT COALESCE(SUM(fn_work_center_capacity($1, g::date)), 0) AS open_min
-           FROM generate_series(($2::timestamptz AT TIME ZONE 'Africa/Casablanca')::date,
-                                (($3::timestamptz - interval '1 second') AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day') g
+           FROM generate_series(($2::timestamptz AT TIME ZONE '${businessTz()}')::date,
+                                (($3::timestamptz - interval '1 second') AT TIME ZONE '${businessTz()}')::date, interval '1 day') g
        )
        SELECT ROUND(dt.downtime)::int AS downtime_min, act.active_days::int AS active_days,
               cap.cap, CASE WHEN cal.has THEN opening.open_min ELSE cap.cap * act.active_days END AS planned_min,

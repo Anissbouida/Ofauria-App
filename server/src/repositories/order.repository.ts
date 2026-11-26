@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
@@ -383,8 +384,8 @@ export const orderRepository = {
       if (cur?.pickup_date) {
         await client.query(
           `UPDATE production_plans
-              SET plan_date = GREATEST(CURRENT_DATE, plan_date + (($2::timestamptz AT TIME ZONE 'Africa/Casablanca')::date
-                                                  - ($3::timestamptz AT TIME ZONE 'Africa/Casablanca')::date)),
+              SET plan_date = GREATEST(CURRENT_DATE, plan_date + (($2::timestamptz AT TIME ZONE '${businessTz()}')::date
+                                                  - ($3::timestamptz AT TIME ZONE '${businessTz()}')::date)),
                   updated_at = NOW()
             WHERE order_id = $1 AND status IN ('draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce')`,
           [id, data.newPickupDate, cur.pickup_date]);

@@ -8,6 +8,7 @@
  *     (motif lisible, rejouable) — plus de console.error silencieux ;
  *   - strict : l'échec annule la pièce (équivalent d'un FORM_TRIGGER_FAILURE).
  */
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { getParameter } from './module-parameters.service.js';
@@ -152,7 +153,7 @@ export async function replayOutbox(userId: string, onlyId?: string, opts: { only
         const entry = row ? await fromClosureDiff(client, row, it.source_detail === 'card' ? 'card' : 'cash') : null;
         if (entry) await persistEntry(client, entry, { userId });
       } else if (it.source_kind === 'advance_forfeit') {
-        const day = (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+        const day = (await client.query(`SELECT (now() AT TIME ZONE '${businessTz()}')::date::text AS d`)).rows[0].d;
         const entry = await fromAdvanceForfeit(client, it.source_id, day);
         if (entry) await persistEntry(client, entry, { userId });
       } else if (it.source_kind === 'stock_count') {

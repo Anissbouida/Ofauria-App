@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { db, withTransaction } from '../config/database.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { stockMovementBehaviors } from '@ofauria/shared';
@@ -542,10 +543,10 @@ export const receptionVoucherRepository = {
             `SELECT COALESCE(SUM(stock_quantity + vitrine_quantity), 0) AS qty FROM product_store_stock WHERE product_id = $1`,
             [productId])).rows[0]?.qty ?? '0');
           const lotNumber = (await client.query(
-            `SELECT 'PA-' || to_char(now() AT TIME ZONE 'Africa/Casablanca', 'YYMMDD') || '-' ||
+            `SELECT 'PA-' || to_char(now() AT TIME ZONE '${businessTz()}', 'YYMMDD') || '-' ||
                     lpad((COUNT(*) + 1)::text, 4, '0') AS n
                FROM product_lots WHERE reception_voucher_item_id IS NOT NULL
-                AND created_at::date = (now() AT TIME ZONE 'Africa/Casablanca')::date`)).rows[0].n as string;
+                AND created_at::date = (now() AT TIME ZONE '${businessTz()}')::date`)).rows[0].n as string;
           await client.query(
             `INSERT INTO product_lots (product_id, store_id, lot_number, produced_at, expires_at, quantity_total,
                                        backroom_qty, vitrine_qty, status, unit_cost, reception_voucher_item_id, notes)

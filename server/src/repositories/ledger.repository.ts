@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { QueryResult } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { vatRegimeSetting } from '../services/module-parameters.service.js';
@@ -1037,12 +1038,12 @@ export const tvaDeclarationRepository = {
          ), ev AS (
            SELECT d.id, al.amount,
                   CASE WHEN al.posted_with_payment THEN pay.payment_date
-                       ELSE GREATEST((al.allocated_at AT TIME ZONE 'Africa/Casablanca')::date, pay.payment_date) END AS on_date
+                       ELSE GREATEST((al.allocated_at AT TIME ZONE '${businessTz()}')::date, pay.payment_date) END AS on_date
              FROM def d JOIN payment_allocations al ON al.invoice_id = d.source_id
              JOIN payments pay ON pay.id = al.payment_id AND pay.status <> 'void'
             WHERE d.source_kind = 'invoice'
            UNION ALL
-           SELECT d.id, s.total, (s.paid_at AT TIME ZONE 'Africa/Casablanca')::date
+           SELECT d.id, s.total, (s.paid_at AT TIME ZONE '${businessTz()}')::date
              FROM def d JOIN sales s ON s.id = d.source_id
             WHERE d.source_kind = 'sale' AND s.payment_status = 'paid' AND s.paid_at IS NOT NULL
          ), cum AS (

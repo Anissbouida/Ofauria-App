@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import pg from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { env } from './env.js';
@@ -19,7 +20,7 @@ const pool = new pg.Pool({
 });
 
 pool.on('connect', (client) => {
-  client.query(`SET TIME ZONE '${DB_TIMEZONE}'`).catch((err) => {
+  client.query(`SET TIME ZONE '${businessTz()}'`).catch((err) => {
     logger.error({ err: err }, '[db] impossible de fixer le fuseau de session');
   });
   // JIT désactivé (scénario 1, constat 112) : les requêtes de l'application sont courtes,

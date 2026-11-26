@@ -71,6 +71,20 @@ export function formatBusinessDateTime(value: string | Date): string {
 }
 
 /**
+ * Fuseau de la SOCIÉTÉ (audit des profils) : company_settings.timezone (mig 674), chargé au
+ * démarrage et à chaque application de la configuration ; à défaut BUSINESS_TIMEZONE. Kalum ne
+ * suppose plus Casablanca : les journées de caisse, échéances, dates « du jour » et documents
+ * suivent le fuseau de la société. Valeur toujours filtrée par la liste blanche (injectée en SQL).
+ */
+let companyTimezone: string | null = null;
+export function setCompanyTimezone(tz: string | null | undefined): void {
+  companyTimezone = tz && isValidTimezone(tz) ? tz : null;
+}
+export function businessTz(): string {
+  return companyTimezone ?? BUSINESS_TIMEZONE;
+}
+
+/**
  * Get the current user's timezone from async context
  * Falls back to 'Africa/Casablanca' if not set
  */

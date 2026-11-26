@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
@@ -30,7 +31,7 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
 async function today(c: PoolClient) {
-  return (await c.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d as string;
+  return (await c.query(`SELECT (now() AT TIME ZONE '${businessTz()}')::date::text AS d`)).rows[0].d as string;
 }
 
 /** Impute `amount` (au plus) d'un avoir sur une facture du même client. Renvoie le montant imputé. */

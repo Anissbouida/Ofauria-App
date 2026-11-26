@@ -30,6 +30,7 @@
  * insert en transaction.
  */
 
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
@@ -839,7 +840,7 @@ export async function fromSale(
     const shift = await client.query(
       `SELECT 1 FROM manual_shift_entries
          WHERE store_id = $1
-           AND entry_date = DATE(COALESCE($2::timestamptz, $3::timestamptz) AT TIME ZONE 'Africa/Casablanca')
+           AND entry_date = DATE(COALESCE($2::timestamptz, $3::timestamptz) AT TIME ZONE '${businessTz()}')
          LIMIT 1`,
       [s.store_id, s.paid_at, s.created_at]
     );
@@ -1360,7 +1361,7 @@ export async function fromAllocation(
 ): Promise<GeneratedEntry | null> {
   const a = (await client.query(
     // Une affectation ne précède jamais le règlement qu'elle affecte.
-    `SELECT a.id, a.amount, a.invoice_id, GREATEST((a.allocated_at AT TIME ZONE 'Africa/Casablanca')::date, p.payment_date)::text AS allocated_on,
+    `SELECT a.id, a.amount, a.invoice_id, GREATEST((a.allocated_at AT TIME ZONE '${businessTz()}')::date, p.payment_date)::text AS allocated_on,
             p.id AS payment_id, p.customer_id, p.store_id, i.invoice_number
        FROM payment_allocations a JOIN payments p ON p.id = a.payment_id JOIN invoices i ON i.id = a.invoice_id
       WHERE a.id = $1 AND NOT a.posted_with_payment`, [allocationId])).rows[0];

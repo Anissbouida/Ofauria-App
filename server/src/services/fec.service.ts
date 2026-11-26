@@ -18,6 +18,7 @@
  *   - Une attestation accompagne le fichier : empreinte SHA-256, vérification
  *     de la chaîne, ancres de clôture.
  */
+import { businessTz } from '../utils/timezone.js';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { ledgerIntegrityRepository, type IntegrityActor } from '../repositories/ledger-integrity.repository.js';
@@ -49,7 +50,6 @@ export const letterCode = (rank: number) => {
   return s;
 };
 
-const TZ = 'Africa/Casablanca';
 
 /** Lignes du FEC, dans l'ordre de validation, sur [start, end]. */
 async function fecRows(start: string, end: string): Promise<FecRow[]> {
@@ -77,12 +77,12 @@ async function fecRows(start: string, end: string): Promise<FecRow[]> {
                           ELSE inv.invoice_number END,
                      pay.reference, pay.check_number, sa.sale_number, rv.voucher_number,
                      cs.closure_number::text, e.entry_number) AS piece_ref,
-            COALESCE(e.piece_date, inv.invoice_date, pay.payment_date, (sa.created_at AT TIME ZONE '${TZ}')::date,
-                     rv.reception_date, (cs.closed_at AT TIME ZONE '${TZ}')::date, e.entry_date)::text AS piece_date,
+            COALESCE(e.piece_date, inv.invoice_date, pay.payment_date, (sa.created_at AT TIME ZONE '${businessTz()}')::date,
+                     rv.reception_date, (cs.closed_at AT TIME ZONE '${businessTz()}')::date, e.entry_date)::text AS piece_date,
             COALESCE(NULLIF(jel.label, ''), e.description, '') AS ecriture_lib,
             jel.debit::text AS debit, jel.credit::text AS credit,
-            lett.rk::text AS let_rank, COALESCE((la.at AT TIME ZONE '${TZ}')::date, lett.last_date)::text AS date_let,
-            (COALESCE(e.posted_at, e.created_at) AT TIME ZONE '${TZ}')::date::text AS valid_date,
+            lett.rk::text AS let_rank, COALESCE((la.at AT TIME ZONE '${businessTz()}')::date, lett.last_date)::text AS date_let,
+            (COALESCE(e.posted_at, e.created_at) AT TIME ZONE '${businessTz()}')::date::text AS valid_date,
             -- Dette ou créance en devise : montant d'origine sur la ligne de tiers.
             CASE WHEN a.is_collective AND COALESCE(inv.currency_code, pay.currency_code, fn_base_currency()) <> fn_base_currency()
                       AND COALESCE(inv.exchange_rate, pay.exchange_rate, 0) > 0
@@ -143,7 +143,7 @@ export async function buildFec(p: { year?: number; start?: string; end?: string 
   let fy: { year: number; status: string; closed_at: string | null; chain_seq: number | null; chain_hash: string | null } | null = null;
   if (p.year) {
     const r = await db.query(
-      `SELECT year, status, (closed_at AT TIME ZONE 'Africa/Casablanca')::date::text AS closed_at, chain_seq, chain_hash,
+      `SELECT year, status, (closed_at AT TIME ZONE '${businessTz()}')::date::text AS closed_at, chain_seq, chain_hash,
               start_date::text AS start_date, end_date::text AS end_date
          FROM fiscal_years WHERE year = $1`, [p.year]);
     if (!r.rows[0]) throw Object.assign(new Error(`Exercice ${p.year} introuvable`), { statusCode: 404 });

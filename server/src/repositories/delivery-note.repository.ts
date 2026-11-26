@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import type { PoolClient } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { companyCountryCode } from '../services/module-parameters.service.js';
@@ -568,7 +569,7 @@ export const deliveryNoteRepository = {
       const lines = (await client.query(
         `SELECT i.*, d.number AS note_number FROM delivery_note_items i JOIN delivery_notes d ON d.id = i.delivery_note_id
           WHERE i.delivery_note_id = ANY($1::uuid[]) ORDER BY d.delivery_date, d.number, i.description`, [data.deliveryNoteIds])).rows;
-      const invoiceDate = data.invoiceDate || (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d`)).rows[0].d;
+      const invoiceDate = data.invoiceDate || (await client.query(`SELECT (now() AT TIME ZONE '${businessTz()}')::date AS d`)).rows[0].d;
       const isoDate = String(invoiceDate instanceof Date ? invoiceDate.toISOString().slice(0, 10) : invoiceDate);
       // O2C L4 (G-IV-09) : on ne facture pas une livraison avant qu'elle ait eu lieu.
       const lastDelivery = notes.map(n => n.delivery_day as string).sort().at(-1)!;

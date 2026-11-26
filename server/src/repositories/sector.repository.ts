@@ -1,3 +1,4 @@
+import { businessTz } from '../utils/timezone.js';
 import { policySnapshot, restorePolicies, type PolicyRow } from '../services/policies.js';
 import type { PoolClient } from 'pg';
 import { db, inTransaction } from '../config/database.js';
@@ -804,7 +805,7 @@ export const sectorRepository = {
     const secondaries=await Promise.all((snap.secondarySectors??[]).filter(c=>c!==pack.code).map(c=>this.pack(c)));
     if(secondaries.some(p=>!p)) return {error:'Une activité complémentaire de cette version n’existe plus'};
     const target = normalize({ sector: combineSectorPacks(pack,secondaries.filter((p):p is SectorPack=>!!p)), modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) }, current.catalog);
-    const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
+    const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: businessTz() });
     // Une version d'avant les politiques (sans le champ) ne les touche pas.
     await this.commit(current, target, userId, `Restauration de la version du ${date}`,
       { ...(Array.isArray(snap.policies) ? { policies: snap.policies } : {}), ...(snap.layers ? { layers: snap.layers } : {}) });
