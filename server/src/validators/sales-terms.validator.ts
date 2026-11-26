@@ -33,3 +33,11 @@ export const subscriptionStatusSchema = body({ status: txt(20) });
 
 /* Objectifs commerciaux — sales-target.controller.upsert (vendeur et période requis : contrôleur). */
 export const salesTargetSchema = body({ salespersonId: ref, periodStart: txt(40), periodEnd: txt(40), targetAmount: numish });
+
+/* Situations de travaux (mig 713) — progress-billings.routes ; validation et annulation sans corps. */
+export const progressBillingTermsSchema = body({ retentionPct: numish, advanceAmount: numish, advanceRecoveryPct: numish });
+export const progressBillingDraftSchema = body({
+  periodEnd: txt(10), notes: txt(2000),
+  lines: z.array(z.object({ quoteItemId: z.string().uuid(), pctCumulative: numish })).max(2000).nullish(),
+});
+export const progressBillingActionSchema = emptyBody;

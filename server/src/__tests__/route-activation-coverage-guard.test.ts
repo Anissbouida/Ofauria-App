@@ -12,7 +12,9 @@ import { activationRuleFor, featureRuleFor, EXEMPT_PREFIXES } from '../middlewar
 
 const ROUTES = readFileSync(resolve(__dirname, '../routes/index.ts'), 'utf8');
 const MOUNTED = [...new Set([...ROUTES.matchAll(/router\.use\(\s*'(\/[^']+)'/g)].map(m => m[1]))];
-const MIGRATION = readFileSync(resolve(__dirname, '../../migrations/711_capacites_tous_modules.sql'), 'utf8');
+// Capacités inscrites par les migrations de la feuille de route (711 et suivantes).
+const MIGRATION = ['711_capacites_tous_modules.sql', '713_situations_travaux.sql']
+  .map(f => readFileSync(resolve(__dirname, '../../migrations', f), 'utf8')).join('\n');
 
 describe('Garde : toute route montée est couverte par l’activation', () => {
   it('a trouvé les routes montées', () => {
@@ -32,8 +34,8 @@ describe('Garde : toute route montée est couverte par l’activation', () => {
 });
 
 describe('Registre des capacités hors Production', () => {
-  it('chaque capacité du registre est inscrite par la migration 711', () => {
-    const missing = CAPABILITY_SCREENS.filter(c => !MIGRATION.includes(`('${c.key}', '${c.module}',`)).map(c => c.key);
+  it('chaque capacité du registre est inscrite par une migration', () => {
+    const missing = CAPABILITY_SCREENS.filter(c => !MIGRATION.includes(`('${c.key}', '${c.module}'`)).map(c => c.key);
     expect(missing).toEqual([]);
   });
 

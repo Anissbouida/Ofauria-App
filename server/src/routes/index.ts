@@ -95,6 +95,7 @@ import { crmRouter } from './crm.routes.js';
 import { promotionsRouter, loyaltyRouter } from './promotions.routes.js';
 import { posParkedRouter } from './pos-parked.routes.js';
 import filesRoutes from './files.routes.js';
+import progressBillingsRoutes from './progress-billings.routes.js';
 
 const router = Router();
 
@@ -219,5 +220,7 @@ router.use('/crm', crmRouter);
 router.use('/promotions', promotionsRouter);
 router.use('/loyalty', loyaltyRouter);
 router.use('/pos/parked', posParkedRouter);
+// Mig 713 : facturation à l'avancement (situations de travaux).
+router.use('/progress-billings', progressBillingsRoutes);
 
 export default router;

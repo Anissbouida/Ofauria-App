@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight, Undo2, Handshake } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight, Undo2, Handshake, HardHat } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, useCapabilityScreens, type ModuleView } from '../../components/layout/ModuleShell';
@@ -47,6 +47,8 @@ export default function SalesLayout() {
     { key: 'orders:deliveries', label: 'Bons de livraison', icon: PackageCheck, section: 'operations', group: 'Livraison', href: '/delivery-notes', hidden: !hasModule('orders') || !isDirection },
     salesView('routes', Truck, 'Livraison'),
     { key: 'product-transfers', label: 'Transferts', icon: ArrowLeftRight, section: 'operations', group: 'Livraison', href: '/product-transfers', hidden: !hasModule('sales') || !isDirection },
+    // Mig 713 : facturation à l'avancement (situations de travaux), capacité facturation_avancement.
+    { key: 'progress-billings', label: 'Situations de travaux', icon: HardHat, section: 'operations', group: 'Facturation', href: '/progress-billings', hidden: !hasModule('sales') || !isDirection },
     salesView('invoices', FileText, 'Facturation'),
     salesView('unpaid', Clock, 'Facturation'),
     { key: 'dunning', label: 'Relances', icon: BellRing, section: 'operations', group: 'Facturation', href: '/dunning', hidden: !hasModule('sales') || !isDirection },

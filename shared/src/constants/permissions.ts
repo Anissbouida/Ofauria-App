@@ -585,6 +585,8 @@ export const PERMISSIONS = {
   "sales.quotes.edit": { module: "sales", label: "Devis : modifier", defaultRoles: ["admin", "manager"] },
   "sales.quotes.revise": { module: "sales", label: "Devis : revise", defaultRoles: ["admin", "manager"] },
   "sales.quotes.view": { module: "sales", label: "Devis : consulter", defaultRoles: ["admin", "manager"] },
+  "sales.progress_billings.manage": { module: "sales", label: "Situations de travaux : préparer, valider, conditions du marché", defaultRoles: ["admin", "manager"] },
+  "sales.progress_billings.view": { module: "sales", label: "Situations de travaux : consulter", defaultRoles: ["admin", "manager"] },
   "sales.rebates.cancel": { module: "sales", label: "Rebates : annuler", defaultRoles: ["admin", "manager"] },
   "sales.rebates.create": { module: "sales", label: "Rebates : créer", defaultRoles: ["admin", "manager"] },
   "sales.rebates.settle": { module: "sales", label: "Rebates : settle", defaultRoles: ["admin", "manager"] },

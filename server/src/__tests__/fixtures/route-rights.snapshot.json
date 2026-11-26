@@ -1886,6 +1886,22 @@
  "GET /products/:id/stock-history": null,
  "GET /products/alerts/low-stock": null,
  "GET /products/top-selling": null,
+ "GET /progress-billings": [
+  "admin",
+  "manager"
+ ],
+ "GET /progress-billings/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /progress-billings/contracts": [
+  "admin",
+  "manager"
+ ],
+ "GET /progress-billings/prepare/:quoteId": [
+  "admin",
+  "manager"
+ ],
  "GET /projects": null,
  "GET /projects/:id": null,
  "GET /projects/:id/invoices": null,
@@ -4233,6 +4249,10 @@
   "admin",
   "manager"
  ],
+ "POST /progress-billings/draft/:quoteId": [
+  "admin",
+  "manager"
+ ],
  "POST /projects": null,
  "POST /projects/:id/invoices": null,
  "POST /projects/:id/status": null,
@@ -5386,6 +5406,18 @@
   "manager"
  ],
  "PUT /products/:id/recycle-destinations": [
+  "admin",
+  "manager"
+ ],
+ "PUT /progress-billings/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "PUT /progress-billings/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "PUT /progress-billings/terms/:quoteId": [
   "admin",
   "manager"
  ],

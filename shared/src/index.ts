@@ -16,6 +16,7 @@ export * from './constants/module-activation.js';
 export * from './constants/dependency-engine.js';
 export * from './constants/capabilities.js';
 export * from './constants/capability-screens.js';
+export * from './constants/progress-billing.js';
 export * from './constants/stock-roles.js';
 export * from './constants/screen-catalog.js';
 export * from './constants/shifts.js';

@@ -59,6 +59,7 @@ const EXTRA_RULES: GuardRule[] = [
   { prefix: '/pos', modules: ['pos'] },
   { prefix: '/sachet-config', modules: ['pos'] },
   { prefix: '/complaints', modules: ['controle', 'sales'] },
+  { prefix: '/progress-billings', modules: ['sales'] },
   // Achats
   { prefix: '/rfqs', modules: ['purchasing'] },
   { prefix: '/landed-costs', modules: ['purchasing'] },
