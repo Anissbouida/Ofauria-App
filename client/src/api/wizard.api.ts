@@ -7,7 +7,7 @@ export type WizardData = Record<string, string | string[] | boolean>;
 export type WizardAnswers = Record<string, { reviewed?: boolean; note?: string; data?: WizardData }>;
 export interface WizardParameter { step:string; module:string; key:string; label:string; help:string; value:Record<string,unknown>|null; fields:{name:string;label:string;type:string;unit?:string;min?:number;max?:number;options?:{value:string;label:string}[]}[] }
 export interface WizardCatalog {
-  profiles: { code: string; label: string; description?: string; status?: string; wizard?: boolean; lineage: string[]; modules: string[]; features: string[]; labels?: Record<string,string> }[];
+  profiles: { code: string; label: string; description?: string; status?: string; wizard?: boolean; lineage: string[]; modules: string[]; features: string[]; offFeatures?: string[]; labels?: Record<string,string> }[];
   specialties: { code: string; label: string; description: string | null; sector: string; enabled: boolean }[];
   country: string; currency: string; currentSector: string; modules: string[];
   currentSecondary?: string[];

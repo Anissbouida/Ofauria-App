@@ -48,7 +48,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { ModuleShell, useModuleView, MODULE_SECTIONS, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, useModuleView, MODULE_SECTIONS, type ModuleView } from '../../components/layout/ModuleShell';
 import {
   Breadcrumb, PageHeader, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState,
   FormField, FormFooter, Alert, Modal, ErrorState,
@@ -117,7 +117,7 @@ const PAGE_LEADS: Record<string, string> = {
 
 export default function PurchasingPage() {
   const approvalsCount = useApprovalsCount();
-  const views: ModuleView<PurchasingTab | 'approvals' | 'settings'>[] = [
+  const views: ModuleView<PurchasingTab | 'approvals' | 'settings'>[] = useCapabilityScreens('purchasing', [
     // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
     // Poste de travail (refonte 2026-11) : circuit d'achat, actions à mener, montants à suivre.
     { key: 'workbench', label: 'Poste de travail', icon: LayoutDashboard, section: 'dashboard' },
@@ -146,7 +146,7 @@ export default function PurchasingPage() {
     { key: 'scores', label: 'Évaluation des fournisseurs', icon: Award, section: 'reports' },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
     { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing', external: true },
-  ];
+  ]);
   // Onglet ouvrable par lien (?tab=purchase_orders), ex. depuis Stock › À commander après création des BC.
   const { current, select } = useModuleView(views);
   const tab = current?.key;

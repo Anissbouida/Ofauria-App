@@ -30,6 +30,8 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
  */
 export type SectorPack = {
   code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean;
+  /** Capacités du socle que le profil éteint par défaut (mig 710) ; la société peut les rallumer. */
+  offFeatures?: string[];
   /** Héritage vivant (mig 633) : parent, regroupement et état affichés dans le choix du profil. */
   base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number; in_wizard?: boolean;
   /** Chaîne des parents, de la racine au profil lui-même (codes). */
@@ -49,6 +51,8 @@ export type Activation = {
   /** Modules du préréglage, en clés canoniques. */
   packModules: AppModule[];
   packFeatures: string[];
+  /** Capacités du socle éteintes par défaut par le profil (mig 710). */
+  packOff?: string[];
   moduleOverrides: ModuleOverrides;
   featureOverrides: ModuleOverrides;
   catalog: FeatureDef[];
@@ -75,6 +79,8 @@ const EMPTY_ROLLOUT: ModuleRollout = { pilots: {}, storeDisabled: {} };
 export function combineSectorPacks(primary: SectorPack, others: SectorPack[]): SectorPack {
   return { ...primary, modules:[...new Set([...primary.modules,...others.flatMap(p=>p.modules)])],
     features:[...new Set([...(primary.features??[]),...others.flatMap(p=>p.features??[])])],
+    // Une capacité éteinte par le principal reste éteinte, sauf si un secteur secondaire la cite.
+    offFeatures:(primary.offFeatures??[]).filter(k=>!others.some(p=>(p.features??[]).includes(k))),
     secondarySectors:others.map(p=>p.code).sort(), specialtyLineage:[...new Set([...(primary.lineage??[primary.code]),...others.flatMap(p=>p.lineage??[p.code])])] };
 }
 
@@ -86,12 +92,13 @@ async function secondaryCodes():Promise<string[]> {
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
   home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [], is_custom: r.is_custom ?? false,
+  offFeatures: r.off_features ?? [],
   base_sector: r.base_sector ?? null, inherits: r.inherits ?? false, family: r.family ?? null,
   status: r.status ?? 'disponible', description: r.description ?? null, sort_order: r.sort_order ?? 100, in_wizard: r.in_wizard ?? false,
 });
 
 const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features, sp.is_custom,
-  sp.base_sector, sp.inherits, sp.add_modules, sp.remove_modules, sp.add_features, sp.remove_features,
+  sp.base_sector, sp.inherits, sp.add_modules, sp.remove_modules, sp.add_features, sp.remove_features, sp.off_features,
   sp.family, sp.status, sp.description, sp.sort_order, sp.in_wizard`;
 
 /** Profondeur maximale d'héritage (garde-fou contre une chaîne anormale). */
@@ -120,6 +127,7 @@ function resolvePacks(rows: Record<string, any>[]): Map<string, SectorPack> {
           ...own,
           modules: [...new Set(minus([...parent.modules, ...(r.add_modules ?? [])], r.remove_modules ?? []))].sort(),
           features: [...new Set(minus([...(parent.features ?? []), ...(r.add_features ?? [])], r.remove_features ?? []))].sort(),
+          offFeatures: [...new Set([...(parent.offFeatures ?? []), ...(own.offFeatures ?? [])])].sort(),
           lineage: [...(parent.lineage ?? [parent.code]), code],
         };
       }
@@ -143,9 +151,10 @@ let cache: { at: number; value: Activation } | null = null;
 
 const canonicalPack = (pack: SectorPack): AppModule[] => [...new Set(pack.modules.map(m => canonicalModule(m as AppModule)))];
 
-function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, catalog: FeatureDef[], modules: Set<AppModule>): Set<string> {
-  // Préréglage du secteur + socle (capacités default_on, mig 632), puis écarts de la société.
-  const set = new Set([...packFeatures, ...catalog.filter(f => f.default_on).map(f => f.key)]);
+function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, catalog: FeatureDef[], modules: Set<AppModule>, packOff: string[] = []): Set<string> {
+  // Préréglage du secteur + socle (capacités default_on, mig 632) moins celles que le profil
+  // éteint (mig 710), puis écarts de la société.
+  const set = new Set([...packFeatures, ...catalog.filter(f => capabilityDefault(f, packFeatures, f.key, packOff)).map(f => f.key)]);
   for (const [k, on] of Object.entries(overrides)) {
     if (on === undefined) continue;
     if (on) set.add(k); else set.delete(k);
@@ -165,14 +174,14 @@ function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, cat
 }
 
 /** Valeur d'une capacité sans écart de la société : préréglage du secteur ou socle. */
-function featureDefault(key: string, packFeatures: string[], catalog: FeatureDef[]): boolean {
-  return capabilityDefault(catalog.find(f => f.key === key), packFeatures, key);
+function featureDefault(key: string, packFeatures: string[], catalog: FeatureDef[], packOff: string[] = []): boolean {
+  return capabilityDefault(catalog.find(f => f.key === key), packFeatures, key, packOff);
 }
 
 /** Modules et options effectifs d'un état cible (secteur + écarts). */
 function stateOf(target: Target, catalog: FeatureDef[]): ActivationState {
   const modules = effectiveModules(target.sector.modules, target.modules);
-  return { modules, features: computeFeatures(target.sector.features ?? [], target.features, catalog, modules) };
+  return { modules, features: computeFeatures(target.sector.features ?? [], target.features, catalog, modules, target.sector.offFeatures ?? []) };
 }
 
 /** Retire les écarts égaux au préréglage : les tables ne gardent que les vrais écarts. */
@@ -185,7 +194,7 @@ function normalize(target: Target, catalog: FeatureDef[] = []): Target {
   }
   const features: ModuleOverrides = {};
   for (const [k, on] of Object.entries(target.features)) {
-    if (on !== undefined && on !== featureDefault(k, packFeatures, catalog)) features[k] = on;
+    if (on !== undefined && on !== featureDefault(k, packFeatures, catalog, target.sector.offFeatures ?? [])) features[k] = on;
   }
   return { sector: target.sector, modules, features, rollout: target.rollout };
 }
@@ -370,7 +379,7 @@ export const sectorRepository = {
     const catalog = catalogRes.rows as FeatureDef[];
     const state = stateOf({ sector, modules: moduleOverrides, features: featureOverrides, rollout }, catalog);
     const value: Activation = {
-      sector, packModules: canonicalPack(sector), packFeatures: sector.features ?? [],
+      sector, packModules: canonicalPack(sector), packFeatures: sector.features ?? [], packOff: sector.offFeatures ?? [],
       moduleOverrides, featureOverrides, catalog, modules: state.modules, features: state.features, rollout,
     };
     if(!transactional)cache = { at: Date.now(), value };

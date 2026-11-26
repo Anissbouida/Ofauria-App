@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import '../projects/projects.css';
 import '../sales/sales.css';
 import './employees.css';
@@ -48,7 +48,7 @@ export default function EmployeesPage() {
   // Rubriques standard (ModuleShell) : le travail courant (pointage, planning, congés,
   // avances, paie) en Opérations, les fiches salariés en référentiel du module.
   // Le lien « Mon espace » de l'en-tête ouvre ?tab=me.
-  const views: ModuleView<HrTab>[] = [
+  const views: ModuleView<HrTab>[] = useCapabilityScreens('employees', [
     { key: 'analytics', label: 'Pilotage', icon: BarChart3, section: 'dashboard' },
     { key: 'me', label: 'Mon espace', icon: UserCircle, section: 'dashboard', hidden: !hasSelf },
     { key: 'attendance', label: 'Pointage', icon: Clock, section: 'operations' },
@@ -58,7 +58,7 @@ export default function EmployeesPage() {
     { key: 'payroll', label: 'Paie', icon: Banknote, section: 'operations' },
     { key: 'commissions', label: 'Commissions', icon: Percent, section: 'operations' },
     { key: 'employees', label: 'Employés', icon: Users, section: 'setup' },
-  ];
+  ]);
   const { current, select } = useModuleView(views);
 
   // Guard cote client, miroir de authorizeModule('employees') cote serveur :

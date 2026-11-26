@@ -52,7 +52,7 @@ import EcheancierView from './EcheancierView';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 // Barre d'outils commune (prj-toolbar, prj-search, prj-views) : styles de base du gabarit Liste.
 import '../projects/projects.css';
 import {
@@ -358,7 +358,7 @@ export default function AccountingPage() {
   // La vue normée (états CGNC) est accessible à l'admin et au gérant.
   // L'admin pourra étendre l'accès via la gestion des utilisateurs.
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-  const views: ModuleView<AccTab>[] = TAB_META.map(({ adminOnly, ...v }) => ({ ...v, hidden: adminOnly && !isAdmin }));
+  const views: ModuleView<AccTab>[] = useCapabilityScreens('accounting', TAB_META.map(({ adminOnly, ...v }) => ({ ...v, hidden: adminOnly && !isAdmin })));
   const { current, select } = useModuleView(views);
   const tab = current?.key;
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);

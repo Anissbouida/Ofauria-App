@@ -28,7 +28,7 @@ export async function wizardCatalog(includeLabels = true) {
     db.query(`SELECT to_jsonb(c) AS data FROM company_settings c WHERE id=1`), wizardParameters(),readInterfacePreferences(),
   ]);
   const profiles = await Promise.all(packs.map(async p => ({ code: p.code, label: p.label, description: p.description,
-    status: p.status, wizard: p.in_wizard === true, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
+    status: p.status, wizard: p.in_wizard === true, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [], offFeatures: p.offFeatures ?? [],
     labels: includeLabels ? await (p.code === activation.sector.code ? sectorRepository.labels(p.code) : sectorRepository.sectorLabels(p.code)) : {} })));
   return {
     profiles, parameters,interfacePreferences, sodRules, approvalRules, centralStoreAvailable: !!centralStore, storeNames, finance,

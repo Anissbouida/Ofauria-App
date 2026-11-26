@@ -110,7 +110,7 @@ export default function SectorTab() {
     if (!act) return null;
     const moduleOverrides = mergeOverrides(act.moduleOverrides, draft.modules, act.packModules);
     // Valeur sans écart : préréglage du secteur, ou socle commun (capacités default_on, mig 632).
-    const featureDefaults = [...act.packFeatures, ...act.catalog.filter(f => f.default_on).map(f => f.key)];
+    const featureDefaults = [...act.packFeatures, ...act.catalog.filter(f => f.default_on && !(act.packOff ?? []).includes(f.key)).map(f => f.key)];
     const featureOverrides = mergeOverrides(act.featureOverrides, draft.features, featureDefaults);
     const active = effectiveModules(act.packModules, moduleOverrides);
     const featureOn = (k: string) => featureOverrides[k] ?? featureDefaults.includes(k);

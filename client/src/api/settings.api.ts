@@ -283,6 +283,8 @@ export interface ModuleActivation {
   sector: { code: string; label: string };
   packModules: string[];
   packFeatures: string[];
+  /** Capacités du socle éteintes par défaut par le profil (mig 710). */
+  packOff?: string[];
   moduleOverrides: Record<string, boolean>;
   featureOverrides: Record<string, boolean>;
   /** Catalogue de capacités (mig 507, étendu mig 632 : nature, dépendances, socle actif par défaut). */

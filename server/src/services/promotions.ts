@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { tierFor } from './loyalty.js';
 import { currencySymbol } from './currency.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 
 /**
  * Moteur de promotions (mig 372). Entrée : lignes déjà chiffrées (prix du canal, palier…).
@@ -139,7 +140,9 @@ export function promoLabel(p: Promo) {
 
 export async function evaluate(lines: PromoLine[], ctx: PromoContext, runner: Runner = db): Promise<PromoResult> {
   const code = ctx.couponCode?.trim() || null;
-  const [promos, cust] = await Promise.all([candidates(runner, ctx), customerFacts(runner, ctx.customerId)]);
+  // Capacité « Promotions et fidélité » éteinte (mig 710) : aucune promotion appliquée, la caisse encaisse normalement.
+  const enabled = await sectorRepository.featureOn('promotions_fidelite');
+  const [promos, cust] = await Promise.all([enabled ? candidates(runner, ctx) : Promise.resolve([] as Promo[]), customerFacts(runner, ctx.customerId)]);
   const usable = promos.filter(p => customerOk(p, cust));
 
   // À remise égale, le code présenté par le client l'emporte ; sinon l'ordre de tri (priorité).

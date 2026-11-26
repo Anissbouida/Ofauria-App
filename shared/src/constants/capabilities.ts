@@ -59,6 +59,7 @@ export function missingCapabilityDependencies(
 }
 
 /** Valeur d'une capacité quand la société ne l'a pas ajustée : préréglage du secteur ou socle. */
-export function capabilityDefault(def: CapabilityDef | undefined, packFeatures: readonly string[], key: string): boolean {
-  return packFeatures.includes(key) || def?.default_on === true;
+export function capabilityDefault(def: CapabilityDef | undefined, packFeatures: readonly string[], key: string, packOff: readonly string[] = []): boolean {
+  // Le profil peut éteindre une capacité du socle (mig 710) ; il ne peut pas citer et éteindre à la fois.
+  return packFeatures.includes(key) || (def?.default_on === true && !packOff.includes(key));
 }

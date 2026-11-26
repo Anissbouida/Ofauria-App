@@ -2,7 +2,7 @@ import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight, Undo2, Handshake } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
-import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, useCapabilityScreens, type ModuleView } from '../../components/layout/ModuleShell';
 import { SALES_MAIN_TABS } from './SalesPage';
 import '../projects/projects.css';
 import './sales.css';
@@ -29,7 +29,7 @@ export default function SalesLayout() {
   });
   // Opérations rangées par flux (maquette 2026-11-13) : la caisse, puis la chaîne pro
   // devis → commande → livraison → facture, au lieu d'une liste à plat.
-  const views: ModuleView[] = [
+  const views: ModuleView[] = useCapabilityScreens('sales', [
     // Tableau de bord Ventes (maquette planche 1) ; l'analyse détaillée (/reports) passe en Rapports.
     { key: 'sales-dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/sales-dashboard', hidden: !isDirection },
     { key: 'pos', label: 'Point de vente', icon: Monitor, section: 'operations', group: 'Caisse', href: '/pos', external: true, hidden: !hasModule('pos') },
@@ -66,7 +66,7 @@ export default function SalesLayout() {
     // Canaux de vente : écran intégré au module Ventes (route /sales-channels sous SalesLayout),
     // plus de renvoi vers Paramètres. Configuration réservée à la direction.
     { key: 'channels', label: 'Canaux de vente', icon: Radio, section: 'setup', href: '/sales-channels', hidden: !hasModule('sales') || !isDirection },
-  ];
+  ]);
   const tab = params.get('tab');
   const currentKey = pathname === '/sales'
     ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) ? tab : 'sales'}`

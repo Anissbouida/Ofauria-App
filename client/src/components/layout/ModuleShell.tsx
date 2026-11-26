@@ -1,6 +1,8 @@
 import { Fragment, createContext, useCallback, useContext, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, type LucideIcon } from 'lucide-react';
+import { screenCapability } from '@ofauria/shared';
+import { usePermissions } from '../../context/PermissionsContext';
 import './module-shell.css';
 import './apple-look.css';
 
@@ -54,6 +56,20 @@ export interface ModuleView<K extends string = string> {
    * s'affiche quand il change d'une entree a la suivante, dans l'ordre du tableau `views`.
    */
   group?: string;
+}
+
+/**
+ * Écrans d'un module filtrés par les capacités de la société (feuille de route, étape 1.4) :
+ * un écran déclaré dans le registre partagé (CAPABILITY_SCREENS) disparaît du menu quand sa
+ * capacité est éteinte. La page n'écrit plus ce masquage elle-même ; le serveur ferme l'API
+ * avec la même déclaration.
+ */
+export function useCapabilityScreens<V extends { key: string; hidden?: boolean }>(module: string, views: V[]): V[] {
+  const { hasFeature } = usePermissions();
+  return views.map(v => {
+    const cap = screenCapability(module, v.key);
+    return cap && !hasFeature(cap) ? { ...v, hidden: true } : v;
+  });
 }
 
 /**
