@@ -70,5 +70,5 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 6 — exceptions individuelles (mig 706), contrôlé à l'écran
 - [x] Lot 7 — établissements par compte, établissement actif (mig 707), contrôlé à l'écran
 - [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708), contrôlé à l'écran
-- [x] Lot 9 — revue des accès en campagnes, comptes dormants (mig 709)
+- [x] Lot 9 — revue des accès en campagnes, comptes dormants (mig 709), contrôlé à l'écran (ouverture et liste ; décisions couvertes par les tests)
 - [ ] Lot 10
