@@ -37,6 +37,8 @@ router.post('/draft/:quoteId', authenticate, can('sales.progress_billings.manage
   }));
 router.put('/:id/validate', authenticate, can('sales.progress_billings.manage'), validateUuidParams('id'), validate(progressBillingActionSchema),
   asyncHandler(async (req: AuthRequest, res: Response) => ok(res, await progressBillingRepository.validate(String(req.params.id), req.user!.userId))));
+router.put('/:id/invoice', authenticate, can('sales.progress_billings.manage'), validateUuidParams('id'), validate(progressBillingActionSchema),
+  asyncHandler(async (req: AuthRequest, res: Response) => ok(res, await progressBillingRepository.invoice(String(req.params.id), req.user!.userId))));
 router.put('/:id/cancel', authenticate, can('sales.progress_billings.manage'), validateUuidParams('id'), validate(progressBillingActionSchema),
   asyncHandler(async (req: AuthRequest, res: Response) => { await progressBillingRepository.cancel(String(req.params.id)); ok(res, null); }));
 

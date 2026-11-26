@@ -1,5 +1,6 @@
 import { db, withTransaction } from '../config/database.js';
 import { computeProgressBilling, progressRegressions } from '@ofauria/shared';
+import { invoiceRepository } from './accounting.repository.js';
 
 /**
  * Situations de travaux (facturation à l'avancement, mig 713, feuille de route étape 3.3).
@@ -168,6 +169,45 @@ export const progressBillingRepository = {
       }
       if (Number(b.period_ht) === 0) throw new ProgressBillingError('Aucun avancement sur la période');
       await db.query(`UPDATE progress_billings SET status = 'validated', validated_by = $2, validated_at = now() WHERE id = $1`, [id, userId]);
+      return this.get(id);
+    });
+  },
+
+  /**
+   * Facture la situation validée (mig 725) : facture client émise, une ligne par ouvrage au net
+   * de la période (après retenue et remboursement d'avance), TVA et TTC de la situation.
+   */
+  async invoice(id: string, userId: string) {
+    return withTransaction(async () => {
+      const b = (await db.query(
+        `SELECT b.*, q.customer_id, q.number AS quote_number, q.store_id,
+                (SELECT COALESCE(delai_paiement_jours, 0) FROM customers c WHERE c.id = q.customer_id) AS term
+           FROM progress_billings b JOIN quotes q ON q.id = b.quote_id WHERE b.id = $1 FOR UPDATE OF b`, [id])).rows[0];
+      if (!b) throw new ProgressBillingError('Situation introuvable', 404);
+      if (b.status !== 'validated') throw new ProgressBillingError('Seule une situation validée se facture');
+      if (b.invoice_id) throw new ProgressBillingError('Cette situation est déjà facturée', 409);
+      if (!b.customer_id) throw new ProgressBillingError('Le marché n’a pas de client enregistré : rattachez le devis à un client avant de facturer');
+      const lines = (await db.query(`SELECT * FROM progress_billing_lines WHERE billing_id = $1 AND amount_period <> 0`, [id])).rows;
+      const periodHt = Number(b.period_ht);
+      const share = periodHt !== 0 ? Number(b.net_ht) / periodHt : 0;
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      const items = lines.map(l => {
+        const net = r2(Number(l.amount_period) * share);
+        return { description: `${l.label} — avancement ${Number(l.pct_cumulative)} %`, quantity: 1, unitPrice: net, subtotal: net, tvaRate: Number(l.tva_rate) || null };
+      });
+      // Arrondis : la dernière ligne absorbe l'écart pour retomber sur le net HT de la situation.
+      const diff = r2(Number(b.net_ht) - items.reduce((s, i) => s + i.subtotal, 0));
+      if (items.length && diff !== 0) { const last = items[items.length - 1]; last.unitPrice = r2(last.unitPrice + diff); last.subtotal = last.unitPrice; }
+      const date = new Date().toISOString().slice(0, 10);
+      const due = new Date(Date.now() + Number(b.term || 0) * 86400000).toISOString().slice(0, 10);
+      const inv = await invoiceRepository.create({
+        invoiceType: 'emitted', customerId: b.customer_id, invoiceDate: date, dueDate: due,
+        amount: Number(b.net_ht), taxAmount: Number(b.tax_amount), totalAmount: Number(b.total_ttc), items,
+        notes: `Situation de travaux ${b.number} (marché ${b.quote_number}) — travaux de la période ${Number(b.period_ht).toFixed(2)} HT, `
+          + `retenue de garantie ${Number(b.retention_amount).toFixed(2)}, remboursement d'avance ${Number(b.advance_recovery_amount).toFixed(2)}.`,
+        createdBy: userId, storeId: b.store_id ?? undefined,
+      });
+      await db.query(`UPDATE progress_billings SET invoice_id = $2 WHERE id = $1`, [id, inv.id]);
       return this.get(id);
     });
   },

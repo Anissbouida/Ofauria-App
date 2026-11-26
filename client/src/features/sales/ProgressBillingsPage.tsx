@@ -107,6 +107,7 @@ function ContractDetail({ contract }: { contract: ProgressContract }) {
   });
   const validate = useMutation({ mutationFn: (id: string) => progressBillingsApi.validate(id), onSuccess: () => { notify.success('Situation validée'); refresh(); }, onError });
   const cancel = useMutation({ mutationFn: (id: string) => progressBillingsApi.cancel(id), onSuccess: refresh, onError });
+  const invoice = useMutation({ mutationFn: (id: string) => progressBillingsApi.invoice(id), onSuccess: () => { notify.success('Facture créée'); refresh(); }, onError });
   const saveTerms = useMutation({
     mutationFn: () => progressBillingsApi.setTerms(contract.id, { retentionPct: Number(terms.retentionPct), advanceAmount: Number(terms.advanceAmount), advanceRecoveryPct: Number(terms.advanceRecoveryPct) }),
     onSuccess: () => { notify.success('Conditions du marché enregistrées'); refresh(); }, onError,
@@ -185,7 +186,7 @@ function ContractDetail({ contract }: { contract: ProgressContract }) {
       {validated.length > 0 && (
         <DataPanel label="Situations validées">
           <table className="odoo-table">
-            <thead><tr><th>Situation</th><th>Fin de période</th><th className="ds-num">Cumul HT</th><th className="ds-num">Période HT</th><th className="ds-num">Retenue</th><th className="ds-num">Avance</th><th className="ds-num">Net TTC</th></tr></thead>
+            <thead><tr><th>Situation</th><th>Fin de période</th><th className="ds-num">Cumul HT</th><th className="ds-num">Période HT</th><th className="ds-num">Retenue</th><th className="ds-num">Avance</th><th className="ds-num">Net TTC</th><th>Facture</th></tr></thead>
             <tbody>
               {validated.map(b => (
                 <tr key={b.id}>
@@ -196,6 +197,10 @@ function ContractDetail({ contract }: { contract: ProgressContract }) {
                   <td className="ds-num">{n2(b.retention_amount)}</td>
                   <td className="ds-num">{n2(b.advance_recovery_amount)}</td>
                   <td className="ds-num ds-strong">{n2(b.total_ttc)}</td>
+                  <td>{b.invoice_id ? <StatusTag tone="done" label="Facturée" />
+                    : <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={invoice.isPending} onClick={async () => {
+                        if (await confirm(`Créer la facture de la situation ${b.number} (${n2(b.total_ttc)} TTC) ?`, { title: 'Facturer la situation', confirmLabel: 'Facturer' })) invoice.mutate(b.id);
+                      }}>Facturer</button>}</td>
                 </tr>
               ))}
             </tbody>

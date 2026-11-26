@@ -81,6 +81,21 @@ describe.skipIf(!hasTestDb)('Situations de travaux', () => {
     expect(mine.retention_held).toBe(100000);
   });
 
+  it('une situation validée se facture une fois, aux totaux de la situation (mig 725)', async () => {
+    const p = testPool();
+    const s1 = (await repo.list(quoteId)).find((b: { situation_no: number }) => b.situation_no === 1);
+    await expect(repo.invoice(s1.id, fx.userId)).rejects.toThrow(/client/);
+    const customerId = (await p.query(`INSERT INTO customers (first_name, last_name, company_name) VALUES ('MO', $1, $2) RETURNING id`, [RUN, `Promoteur ${RUN}`])).rows[0].id;
+    await p.query(`UPDATE quotes SET customer_id = $2 WHERE id = $1`, [quoteId, customerId]);
+    const done = await repo.invoice(s1.id, fx.userId);
+    expect(done.invoice_id).toBeTruthy();
+    const inv = (await p.query(`SELECT invoice_type, amount::float8, tax_amount::float8, total_amount::float8 FROM invoices WHERE id = $1`, [done.invoice_id])).rows[0];
+    expect(inv).toEqual({ invoice_type: 'emitted', amount: 240000, tax_amount: 48000, total_amount: 288000 });
+    const items = Number((await p.query(`SELECT COALESCE(SUM(subtotal), 0) AS s FROM invoice_items WHERE invoice_id = $1`, [done.invoice_id])).rows[0].s);
+    expect(items).toBe(240000);
+    await expect(repo.invoice(s1.id, fx.userId)).rejects.toThrow(/déjà facturée/);
+  });
+
   it('une ligne de bon de commande affectée au chantier compte dans ses achats engagés (mig 716)', async () => {
     const p = testPool();
     const projectId = (await p.query(`INSERT INTO projects (number, name, store_id, created_by) VALUES ($1, 'Chantier R+4', $2, $3) RETURNING id`,

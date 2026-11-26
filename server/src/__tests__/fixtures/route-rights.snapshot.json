@@ -5482,6 +5482,10 @@
   "admin",
   "manager"
  ],
+ "PUT /progress-billings/:id/invoice": [
+  "admin",
+  "manager"
+ ],
  "PUT /progress-billings/:id/validate": [
   "admin",
   "manager"

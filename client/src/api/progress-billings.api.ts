@@ -20,6 +20,8 @@ export interface ProgressBilling {
   contract_ht: string; cumulative_ht: string; previous_ht: string; period_ht: string;
   retention_amount: string; advance_recovery_amount: string; net_ht: string; tax_amount: string; total_ttc: string;
   validated_at: string | null;
+  /** Mig 725 : facture émise pour la situation. */
+  invoice_id?: string | null;
   lines?: { id: string; quote_item_id: string; label: string; contract_amount: string; pct_cumulative: string; amount_cumulative: string; amount_previous: string; amount_period: string }[];
 }
 
@@ -33,6 +35,7 @@ export const progressBillingsApi = {
   saveDraft: (quoteId: string, d: { periodEnd: string; notes?: string; lines: { quoteItemId: string; pctCumulative: number }[] }): Promise<ProgressBilling> =>
     api.post(`/progress-billings/draft/${quoteId}`, d).then(r => r.data.data),
   validate: (id: string): Promise<ProgressBilling> => api.put(`/progress-billings/${id}/validate`).then(r => r.data.data),
+  invoice: (id: string): Promise<ProgressBilling> => api.put(`/progress-billings/${id}/invoice`).then(r => r.data.data),
   cancel: (id: string) => api.put(`/progress-billings/${id}/cancel`).then(r => r.data),
 };
 
