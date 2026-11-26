@@ -38,6 +38,11 @@ export interface ProfileLayers {
    * existent ; montants à zéro par défaut, saisis à l'utilisation.
    */
   entry_templates?: ProfileEntryTemplate[];
+  /**
+   * Feuille de route 3.6 : mention de pied des documents commerciaux (devis, facture, bon de
+   * commande) propre au métier. Posée seulement si la société n'a encore aucune mention.
+   */
+  document_mentions?: { doc_type: 'quote' | 'invoice' | 'purchase_order'; footer_note: string }[];
 }
 export interface ProfileEntryTemplate {
   name: string; journal_code: string; description: string | null;
@@ -206,7 +211,16 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
     seenTpl.add(name.toLowerCase());
     entry_templates.push({ name, journal_code: journal, description: str(t.description, 500), lines });
   }
-  return { order_types, policies, print_templates, work_centers, locations, control_plans, entry_templates };
+  const document_mentions: NonNullable<ProfileLayers['document_mentions']> = [];
+  for (const m of Array.isArray(raw.document_mentions) ? raw.document_mentions.slice(0, 10) : []) {
+    if (!isObj(m)) continue;
+    const doc = String(m.doc_type ?? ''); const note = str(m.footer_note, 1000);
+    if (!['quote', 'invoice', 'purchase_order'].includes(doc) || !note || document_mentions.some(x => x.doc_type === doc)) {
+      warnings.push(`Mention de document ignorée : ${doc || '?'}`); continue;
+    }
+    document_mentions.push({ doc_type: doc as 'quote' | 'invoice' | 'purchase_order', footer_note: note });
+  }
+  return { order_types, policies, print_templates, work_centers, locations, control_plans, entry_templates, document_mentions };
 }
 
 /**
@@ -214,7 +228,7 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
  * seulement si le type par défaut actuel n'a encore aucun ordre (société qui démarre).
  */
 export async function applyLayers(client: Runner, layers: ProfileLayers, userId?: string | null) {
-  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0, controlPlans: 0, entryTemplates: 0, entryTemplatesSkipped: [] as string[] };
+  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0, controlPlans: 0, entryTemplates: 0, entryTemplatesSkipped: [] as string[], documentMentions: 0 };
   for (const t of layers.order_types) {
     const r = await client.query(
       `INSERT INTO production_order_types (code, label, description, requires_bon_sortie, requires_weighing, requires_quality_check,
@@ -293,6 +307,12 @@ export async function applyLayers(client: Runner, layers: ProfileLayers, userId?
     }
     out.entryTemplates++;
   }
+  for (const m of layers.document_mentions ?? []) {
+    const r = await client.query(
+      `UPDATE document_templates SET footer_note = $2, updated_by = $3, updated_at = now()
+        WHERE doc_type = $1 AND COALESCE(btrim(footer_note), '') = '' RETURNING doc_type`, [m.doc_type, m.footer_note, userId ?? null]);
+    out.documentMentions += r.rows.length;
+  }
   return out;
 }
 
@@ -305,6 +325,7 @@ export function describeLayers(l: ProfileLayers): string[] {
   if (l.work_centers?.length) items.push(`Postes de charge : ${l.work_centers.map(w => w.name).join(', ')} (ajoutés s'ils manquent)`);
   if (l.control_plans?.length) items.push(`Plans de contrôle : ${l.control_plans.length} ligne(s) sur ${new Set(l.control_plans.map(c => c.category)).size} famille(s) (ajoutées si la famille existe)`);
   if (l.locations?.length) items.push(`Emplacements : ${l.locations.map(x => x.name).join(', ')} (dans chaque établissement qui ne les a pas)`);
+  if (l.document_mentions?.length) items.push(`Mentions de documents : ${l.document_mentions.map(m => ({ quote: 'devis', invoice: 'facture', purchase_order: 'bon de commande' })[m.doc_type]).join(', ')} (si aucune mention n'est saisie)`);
   if (l.entry_templates?.length) items.push(`Modèles d'écritures : ${l.entry_templates.map(t => t.name).join(', ')} (ajoutés si leurs comptes existent)`);
   return items;
 }

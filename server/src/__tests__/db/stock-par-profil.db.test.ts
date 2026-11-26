@@ -129,6 +129,29 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     }
   });
 
+  it('les mentions de documents du profil ne remplacent jamais une mention saisie (mig 721)', async () => {
+    const { cleanLayers, applyLayers } = await import('../../services/industry-profile.js');
+    const { sectorRepository } = await import('../../repositories/sector.repository.js');
+    const warnings: string[] = [];
+    const layers = cleanLayers(await sectorRepository.resolvedProfile('transport'), warnings);
+    expect(warnings).toEqual([]);
+    expect(layers.document_mentions?.map(m => m.doc_type)).toEqual(['quote', 'invoice']);
+    const client = await testPool().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`UPDATE document_templates SET footer_note = NULL WHERE doc_type = 'quote'`);
+      await client.query(`UPDATE document_templates SET footer_note = 'Mention de la société' WHERE doc_type = 'invoice'`);
+      const out = await applyLayers(client, { order_types: [], policies: [], print_templates: [], document_mentions: layers.document_mentions });
+      expect(out.documentMentions).toBe(1);
+      const rows = Object.fromEntries((await client.query(`SELECT doc_type, footer_note FROM document_templates WHERE doc_type IN ('quote', 'invoice')`)).rows.map(r => [r.doc_type, r.footer_note]));
+      expect(rows.quote).toMatch(/grille tarifaire/);
+      expect(rows.invoice).toBe('Mention de la société');
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
   it('un profil enregistré depuis la configuration garde les capacités éteintes (off_features)', async () => {
     const { exportCurrentConfig, saveModelAsSector, deleteCustomSector } = await import('../../services/config-templates.js');
     const model = await exportCurrentConfig(`Profil test ${RUN}`) as { features: string[]; modules: string[] };
