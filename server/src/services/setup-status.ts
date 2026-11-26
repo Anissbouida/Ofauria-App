@@ -1,5 +1,6 @@
 import type { SettingsSection } from '@ofauria/shared';
 import { db } from '../config/database.js';
+import { getParameter } from './module-parameters.service.js';
 import { currencySymbol } from './currency.js';
 
 /**
@@ -144,7 +145,7 @@ export async function setupStatus(): Promise<SetupCheck[]> {
       detail: miss.length ? `Manque : ${miss.join(', ')} (loi 69-21 sur les délais de paiement)` : 'Conditions et pénalités de retard imprimées' });
   }
   const posting = (await exists('module_parameters'))
-    ? (await db.query(`SELECT value FROM module_parameters WHERE key = 'ledger.posting_mode'`)).rows[0]?.value : undefined;
+    ? await getParameter<unknown>('ledger.posting_mode', { fallback: undefined }) : undefined;
   add({ key: 'ledger.mode', page: 'ledger', section: 'business', required: false,
     label: 'Passation des écritures', status: posting !== undefined ? 'ok' : 'info',
     detail: posting !== undefined ? 'Mode choisi' : 'Mode par défaut : à confirmer avec le comptable' });

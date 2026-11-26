@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { companyCountryCode } from '../services/module-parameters.service.js';
 import { setAuditUser, auditedQuery } from '../utils/audit-context.js';
 
 /** Codes de TVA datés (mig 309 / 331). Un taux ne se modifie pas : on ouvre une nouvelle période. */
@@ -17,9 +18,9 @@ export const taxCodeRepository = {
     const r = await db.query(
       `SELECT tc.rate FROM tax_codes tc
         WHERE tc.code = $1
-          AND tc.country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+          AND tc.country_code = $2
           AND tc.valid_from <= CURRENT_DATE AND (tc.valid_to IS NULL OR tc.valid_to >= CURRENT_DATE)
-        ORDER BY tc.valid_from DESC LIMIT 1`, [code]);
+        ORDER BY tc.valid_from DESC LIMIT 1`, [code, await companyCountryCode()]);
     return r.rows[0] ? Number(r.rows[0].rate) : null;
   },
 

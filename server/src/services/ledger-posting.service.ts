@@ -10,6 +10,7 @@
  */
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
+import { getParameter } from './module-parameters.service.js';
 import {
   fromGoodsReceipt, persistEntry, regenerateInvoiceEntry, regeneratePaymentEntries,
   regenerateSaleEntry, fromSaleReturn, fromClosureDiff, fromAdvanceForfeit,
@@ -37,8 +38,8 @@ const backoff = (attemptsExpr: string) =>
   `make_interval(mins => CASE ${attemptsExpr} WHEN 1 THEN 15 WHEN 2 THEN 60 WHEN 3 THEN 360 ELSE 1440 END)`;
 
 export async function getPostingMode(client: PoolClient | typeof db = db): Promise<PostingMode> {
-  const r = await client.query(`SELECT value->>'mode' AS mode FROM module_parameters WHERE key = 'ledger.posting_mode'`);
-  return r.rows[0]?.mode === 'strict' ? 'strict' : 'outbox';
+  const v = await getParameter<{ mode?: string }>('ledger.posting_mode', { client, fallback: {} });
+  return v?.mode === 'strict' ? 'strict' : 'outbox';
 }
 
 let spSeq = 0;

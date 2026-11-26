@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { db, withTransaction } from '../config/database.js';
+import { companyCountryCode } from '../services/module-parameters.service.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { shipProduct, reverseAllocations } from '../services/product-shipment.js';
@@ -108,12 +109,12 @@ export const deliveryNoteRepository = {
               -- courant du pays de la société. Source prioritaire du défaut.
               (SELECT tc.rate FROM tax_codes tc
                 WHERE tc.code = p.tax_code
-                  AND tc.country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+                  AND tc.country_code = $2
                   AND tc.valid_from <= CURRENT_DATE AND (tc.valid_to IS NULL OR tc.valid_to >= CURRENT_DATE)
                 ORDER BY tc.valid_from DESC LIMIT 1) AS code_rate,
               (SELECT i.tva_rate FROM delivery_note_items i JOIN delivery_notes d ON d.id = i.delivery_note_id
                 WHERE i.product_id = p.id AND i.tva_rate IS NOT NULL ORDER BY d.created_at DESC LIMIT 1) AS last_tva
-         FROM products p WHERE p.id = ANY($1::uuid[])`, [productIds])).rows;
+         FROM products p WHERE p.id = ANY($1::uuid[])`, [productIds, await companyCountryCode()])).rows;
     const out: Record<string, { unitPrice: number; tvaRate: number | null }> = {};
     for (const r of rows) {
       // Le défaut d'une ligne professionnelle est un prix HT (phase 5.1, mig 479).

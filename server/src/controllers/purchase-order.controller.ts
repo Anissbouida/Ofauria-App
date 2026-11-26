@@ -7,6 +7,7 @@ import { purchaseOrderRepository, type PoLineType } from '../repositories/purcha
 import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
 import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service.js';
 import { db } from '../config/database.js';
+import { getParameter } from '../services/module-parameters.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { purchaseOrderActionsRepository } from '../repositories/purchase-order-actions.repository.js';
 import { managementRepository } from '../repositories/management.repository.js';
@@ -91,8 +92,7 @@ async function poApprovalExtras(poId: string): Promise<{ buyer_role: string | nu
  *   - 'block' : refuse l'envoi d'un BC sans DA ni dispense.
  */
 async function poRequestGate(poId: string): Promise<{ mode: string; satisfied: boolean; hasDa: boolean; exempt: boolean }> {
-  const param = (await db.query(
-    `SELECT value FROM module_parameters WHERE key = 'purchasing.po_requires_request'`)).rows[0]?.value as { mode?: string } | undefined;
+  const param = await getParameter<{ mode?: string } | undefined>('purchasing.po_requires_request', { fallback: undefined });
   const mode = param?.mode ?? 'warn';
   const hasDa = (await db.query(`SELECT 1 FROM purchase_requests WHERE purchase_order_id = $1 LIMIT 1`, [poId])).rows.length > 0;
   const exempt = (await db.query(`SELECT request_exempt_reason FROM purchase_orders WHERE id = $1`, [poId])).rows[0]?.request_exempt_reason != null;

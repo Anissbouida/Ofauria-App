@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getParameter } from './module-parameters.service.js';
 import { createNotification } from '../utils/notify.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { resolveRole } from './access-rights.js';
@@ -184,8 +185,7 @@ export const approvalService = {
     const requester = await db.query(`SELECT role FROM users WHERE id = $1`, [input.requestedBy]);
     // Lot 10 : un changement d'accès sensible suit toujours le circuit (un autre administrateur).
     if (input.docType !== 'access_change' && requester.rows[0] && (await isAdmin(requester.rows[0].role))) {
-      const sodMode = (await db.query(
-        `SELECT value->>'mode' AS m FROM module_parameters WHERE key = 'purchasing.sod_mode'`)).rows[0]?.m ?? 'warn';
+      const sodMode = (await getParameter<{ mode?: string }>('purchasing.sod_mode', { fallback: {} }))?.mode ?? 'warn';
       if (sodMode !== 'block') return { outcome: 'not_required' };
     }
 

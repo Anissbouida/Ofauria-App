@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { companyCountryCode } from '../services/module-parameters.service.js';
 
 /**
  * Pack pays (G6-06, mig 606) : accès aux données. La logique (valeur en vigueur, cache,
@@ -27,11 +28,8 @@ export interface CountryParamRow {
 export const countryPackRepository = {
   /** Pays actif de la société : module_parameters company.country_code (mig 309), 'MA' à défaut. */
   async activeCountry(): Promise<string> {
-    const r = await db.query(
-      `SELECT CASE WHEN to_regclass('public.module_parameters') IS NOT NULL
-                   THEN (SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code') END AS c`);
-    const c = String(r.rows[0]?.c ?? '').trim().toUpperCase();
-    return /^[A-Z]{2}$/.test(c) ? c : 'MA';
+    // Base antérieure à la mig 306 (table absente) : repli sur le Maroc.
+    return companyCountryCode().catch(() => 'MA');
   },
 
   /** Tables du pack présentes (base antérieure à la mig 606 : repli sur les valeurs intégrées). */

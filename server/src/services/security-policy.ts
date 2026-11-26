@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getParameter } from './module-parameters.service.js';
 
 /**
  * Politique de sécurité (refonte Utilisateurs, lot 8, mig 708) — paramètre security.policy,
@@ -54,7 +55,7 @@ export async function securityPolicy(): Promise<SecurityPolicy> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.policy;
   let raw: Record<string, unknown> = {};
   try {
-    raw = (await db.query(`SELECT value FROM module_parameters WHERE key = 'security.policy'`)).rows[0]?.value ?? {};
+    raw = (await getParameter<Record<string, unknown>>('security.policy', { fallback: {} })) ?? {};
   } catch { /* table absente : défauts */ }
   const policy = { ...POLICY_DEFAULTS };
   for (const k of Object.keys(POLICY_DEFAULTS) as (keyof SecurityPolicy)[]) {

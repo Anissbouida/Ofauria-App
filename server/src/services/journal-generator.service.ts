@@ -33,6 +33,7 @@
 import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
+import { getParameter } from './module-parameters.service.js';
 
 /* ═══ Types ═══ */
 export interface GeneratedLine {
@@ -72,8 +73,8 @@ function round2(n: number): number { return Math.round(n * 100) / 100; }
 
 /** Commission du prestataire carte (mig 356, paramètre accounting.card_commission), en %. */
 export async function cardCommissionPct(client: PoolClient | typeof db): Promise<number> {
-  const r = await client.query(`SELECT value->>'pct' AS pct FROM module_parameters WHERE key = 'accounting.card_commission'`);
-  const pct = parseFloat(r.rows[0]?.pct ?? '0');
+  const v = await getParameter<{ pct?: number | string }>('accounting.card_commission', { client, fallback: {} });
+  const pct = parseFloat(String(v?.pct ?? '0'));
   return Number.isFinite(pct) && pct > 0 ? pct : 0;
 }
 
@@ -1366,8 +1367,8 @@ export async function fromAllocation(
 
 /** Politique appliquée à une pièce dont la période est fermée (paramètre ledger.closed_period_policy). */
 async function closedPeriodPolicy(client: PoolClient | typeof db): Promise<'redate' | 'refuse'> {
-  const r = await client.query(`SELECT value->>'policy' AS policy FROM module_parameters WHERE key = 'ledger.closed_period_policy'`);
-  return r.rows[0]?.policy === 'refuse' ? 'refuse' : 'redate';
+  const v = await getParameter<{ policy?: string }>('ledger.closed_period_policy', { client, fallback: {} });
+  return v?.policy === 'refuse' ? 'refuse' : 'redate';
 }
 
 export async function persistEntry(

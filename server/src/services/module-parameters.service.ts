@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import type { PoolClient } from 'pg';
 import { FLAGS } from '../config/feature-flags.js';
 import { baseCurrencyCode } from './currency.js';
 import { resolveConfig } from './config-resolver.js';
@@ -137,10 +138,26 @@ export async function getPersonSizes(): Promise<number[]> {
   return sizes.length ? sizes : [4, 6, 8, 10, 12, 16];
 }
 
-export async function getParameter<T>(key: string): Promise<T> {
-  const r = await db.query(`SELECT value FROM module_parameters WHERE key = $1`, [key]);
+/** Connexion acceptée : la base, ou la connexion d'une transaction en cours (lecture cohérente). */
+type Queryable = { query: typeof db.query } | Pick<PoolClient, 'query'>;
+
+/**
+ * Lecture unique d'un paramètre (lot 2 du suivi multisectoriel) : tout le serveur passe par ici
+ * plutôt que par un SELECT direct sur module_parameters ; la garde config-reads-guard le vérifie.
+ * Le défaut est celui du registre DEFAULTS, ou celui que l'appelant donne pour une clé hors registre.
+ */
+export async function getParameter<T>(key: string, opts: { client?: Queryable; fallback?: T } = {}): Promise<T> {
+  const r = await (opts.client ?? db).query(`SELECT value FROM module_parameters WHERE key = $1`, [key]);
   const value = r.rows[0]?.value;
-  return resolveConfig(DEFAULTS[key], value == null ? [] : [{ scope_type: 'company', scope_id: '', value }]).value as T;
+  const fallback = (opts.fallback !== undefined ? opts.fallback : DEFAULTS[key]) as T;
+  return resolveConfig(fallback, value == null ? [] : [{ scope_type: 'company' as const, scope_id: '', value: value as T }]).value;
+}
+
+/** Pays actif de la société (company.country_code, mig 309) ; 'MA' à défaut ou si la valeur est invalide. */
+export async function companyCountryCode(client?: Queryable): Promise<string> {
+  const v = await getParameter<{ code?: string }>('company.country_code', { client, fallback: {} });
+  const c = String(v?.code ?? '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(c) ? c : 'MA';
 }
 
 export async function listParameters(prefix: string) {

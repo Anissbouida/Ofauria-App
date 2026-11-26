@@ -20,7 +20,7 @@
   "controllers/production-etapes.controller.ts": 3,
   "controllers/production.controller.ts": 1,
   "controllers/public.controller.ts": 5,
-  "controllers/purchase-order.controller.ts": 12,
+  "controllers/purchase-order.controller.ts": 11,
   "controllers/purchase-request.controller.ts": 1,
   "controllers/quality.controller.ts": 1,
   "controllers/recipe-import.controller.ts": 27,

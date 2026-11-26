@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getParameter } from '../services/module-parameters.service.js';
 import { recordAction, withActor, assertReasonCode } from '../services/document-actions.service.js';
 import { createInvoiceFromPo } from './reception-voucher.repository.js';
 import { logger } from '../utils/logger.js';
@@ -222,9 +223,8 @@ export const purchaseOrderActionsRepository = {
   async _applyOffContractHold(
     client: { query: typeof db.query }, id: string, userId: string,
   ): Promise<{ held: boolean; mode: string; lines: Array<{ item: string; unitPrice: number; contractPrice: number | null }> }> {
-    const param = (await client.query(
-      `SELECT value FROM module_parameters WHERE key = 'purchasing.off_contract_enforcement'`)).rows[0]?.value as
-      { mode?: string; price_tol_pct?: number; require_contract_price?: boolean } | undefined;
+    const param = await getParameter<{ mode?: string; price_tol_pct?: number; require_contract_price?: boolean } | undefined>(
+      'purchasing.off_contract_enforcement', { client, fallback: undefined });
     const mode = param?.mode ?? 'warn';
     if (mode === 'off') return { held: false, mode, lines: [] };
     const tol = Number(param?.price_tol_pct ?? 5);

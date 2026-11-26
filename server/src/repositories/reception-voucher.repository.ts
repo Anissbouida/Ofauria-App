@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { getParameter } from '../services/module-parameters.service.js';
 import { stockMovementBehaviors } from '@ofauria/shared';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
@@ -1113,7 +1114,8 @@ export const receptionVoucherRepository = {
       if (orig.product_id) throw fail(409, 'Produit de revente : la correction de réception n\'est pas encore prise en charge, corrigez le stock du produit (ajustement) et la facture.');
 
       if (!isAdmin) {
-        const win = (await client.query(`SELECT COALESCE((value->>'hours')::int, 72) AS h FROM module_parameters WHERE key = 'purchasing.receipt_correction_window_hours'`)).rows[0]?.h ?? 72;
+        const hours = Number((await getParameter<{ hours?: number | string }>('purchasing.receipt_correction_window_hours', { client, fallback: {} }))?.hours);
+        const win = Number.isFinite(hours) && hours > 0 ? Math.trunc(hours) : 72;
         const ageH = (Date.now() - new Date(orig.rv_created_at).getTime()) / 3_600_000;
         if (ageH > win) throw fail(409, `Délai de correction dépassé (${win} h) : demandez à un administrateur`);
       }

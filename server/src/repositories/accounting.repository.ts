@@ -6,7 +6,7 @@ import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt, cardCommissionPct as readCardCommissionPct } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
-import { legalMentionsRules } from '../services/module-parameters.service.js';
+import { legalMentionsRules, getParameter, companyCountryCode } from '../services/module-parameters.service.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
 import { baseCurrencyCode, currencySymbol } from '../services/currency.js';
 
@@ -1582,9 +1582,9 @@ export const invoiceRepository = {
   async taxCodes(at?: string) {
     const r = await db.query(
       `SELECT code, label, rate, kind, recoverable, valid_from, valid_to, legal_ref FROM tax_codes
-        WHERE country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+        WHERE country_code = $2
           AND valid_from <= COALESCE($1::date, CURRENT_DATE) AND (valid_to IS NULL OR valid_to >= COALESCE($1::date, CURRENT_DATE))
-        ORDER BY rate DESC, code`, [at ?? null]);
+        ORDER BY rate DESC, code`, [at ?? null, await companyCountryCode()]);
     return r.rows;
   },
 
@@ -2966,11 +2966,11 @@ export const paymentRepository = {
               fn_fiscal_threshold('CASH_DAILY_PER_SUPPLIER', $2::date)   AS day_limit,
               fn_fiscal_threshold('CASH_MONTHLY_PER_SUPPLIER', $2::date) AS month_limit,
               COALESCE(fn_fiscal_threshold('CASH_WARN_PCT', $2::date), 80) AS warn_pct,
-              s.name, s.kind, s.supplies_unprocessed_agri,
-              (SELECT value->>'mode' FROM module_parameters WHERE key = 'purchasing.cash_limit_enforcement') AS enforcement
+              s.name, s.kind, s.supplies_unprocessed_agri
          FROM suppliers s, fn_cash_cumul($1, $2::date) c
         WHERE s.id = $1`, [supplierId, date]);
     const row = r.rows[0];
+    if (row) row.enforcement = (await getParameter<{ mode?: string }>('purchasing.cash_limit_enforcement', { fallback: {} }))?.mode ?? null;
     if (!row) throw Object.assign(new Error('Fournisseur introuvable'), { statusCode: 404 });
     const dayAfter = parseFloat(row.day_total) + amount;
     const monthAfter = parseFloat(row.month_total) + amount;
