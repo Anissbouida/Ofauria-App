@@ -565,6 +565,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'purchasing.reception_quarantine', domain: 'purchasing', section: 'business',
+    label: 'Quarantaine de tout lot reçu',
+    help: 'Chaque lot reçu reste en quarantaine (ni consommé, ni vendu) jusqu\'à un contrôle de réception conforme, même si l\'article ne l\'exige pas. Activé par défaut dans le profil Santé et pharmacie (mig 712).',
+    fields: [{ name: 'enabled', label: 'Mettre en quarantaine à la réception', type: 'boolean' }],
+    defaults: { enabled: false },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
     key: 'purchasing.lot_dlc_enforcement', domain: 'purchasing', section: 'business',
     label: 'Lot fournisseur et DLC à la réception',
     help: 'Que faire quand le lot ou la date limite exigés pour un article ne sont pas saisis.',

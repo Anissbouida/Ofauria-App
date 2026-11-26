@@ -279,7 +279,7 @@ export const inventoryRepository = {
                    THEN (il.expiration_date - CURRENT_DATE)::int END      AS days_to_expiry
          FROM ingredient_lots il
          JOIN ingredients i ON i.id = il.ingredient_id
-        WHERE il.status = 'active' AND il.quantity_remaining > 0${storeFilter}
+        WHERE il.status = 'active' AND il.quantity_remaining > 0 AND il.owner_customer_id IS NULL${storeFilter}
         ORDER BY il.received_at ASC, value DESC`,
       params,
     );
@@ -319,7 +319,7 @@ export const inventoryRepository = {
               ROUND(SUM(il.quantity_remaining * COALESCE(il.unit_cost, 0))::numeric, 2)::float8 AS value
          FROM ingredient_lots il
          JOIN ingredients i ON i.id = il.ingredient_id
-        WHERE il.status = 'active' AND il.quantity_remaining > 0${storeFilter}
+        WHERE il.status = 'active' AND il.quantity_remaining > 0 AND il.owner_customer_id IS NULL${storeFilter}
         GROUP BY i.id, i.name, i.unit
        HAVING SUM(il.quantity_remaining) > 0
         ORDER BY value DESC, i.name`,

@@ -14,6 +14,8 @@ export const STOCK_LOCATION_ROLES = {
   vente: { label: 'Vente', help: 'Vitrine, magasin, surface de vente.' },
   quarantaine: { label: 'Quarantaine', help: 'Lots retenus en attente de contrôle.' },
   expedition: { label: 'Expédition', help: 'Préparé pour un client, en attente d\'enlèvement.' },
+  chantier: { label: 'Chantier', help: 'Stock déposé sur un chantier, rattaché à un projet (mig 712).' },
+  quai: { label: 'Quai', help: 'Zone de réception et d\'expédition d\'un entrepôt (mig 712).' },
 } as const;
 
 export type StockLocationRole = keyof typeof STOCK_LOCATION_ROLES;

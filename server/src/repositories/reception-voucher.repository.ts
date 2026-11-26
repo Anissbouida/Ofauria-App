@@ -8,6 +8,13 @@ import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { recordSupplierPriceAtReception } from './supplier-item.repository.js';
+import { resolvePolicy } from '../services/policies.js';
+
+/** Politique purchasing.reception_quarantine (mig 712) : quarantaine de tout lot reçu. */
+async function receptionQuarantine(storeId?: string | null): Promise<boolean> {
+  const p = await resolvePolicy<{ enabled?: boolean }>('purchasing.reception_quarantine', { storeId: storeId ?? null });
+  return p.value.enabled === true;
+}
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).
 const CAT_MATIERES_PREMIERES = '10000000-0000-0000-0000-000000000003'; // racine niveau 1
@@ -618,7 +625,8 @@ export const receptionVoucherRepository = {
         // Contrôle qualité obligatoire (L5 P2P, mig 461) : le lot entre en quarantaine
         // et n'est libéré qu'après un contrôle réception conforme. Exclu de l'inventaire
         // disponible et de la FEFO tant qu'il n'est pas 'active' (le CMUP n'est pas touché).
-        const quarantined = !!reqs?.requires_qc;
+        // Mig 712 : le profil (ou la société) peut imposer la quarantaine à toute réception.
+        const quarantined = !!reqs?.requires_qc || await receptionQuarantine(data.storeId);
         if (reqs) {
           const missing: string[] = [];
           if (reqs.requires_dlc && !item.expirationDate) missing.push('DLC');
