@@ -243,7 +243,7 @@ export async function saveModelAsSector(raw: unknown, userId?: string | null): P
     // la société ; le profil enregistré la garde éteinte par défaut (off_features).
     // Seules comptent les capacités d'un module retenu : celles d'un module absent sont éteintes
     // par construction et doivent revenir actives si le module est ajouté plus tard.
-    const socle = (await client.query(`SELECT key, module_key FROM app_features WHERE default_on`)).rows as { key: string; module_key: string }[];
+    const socle = (await sectorRepository.activation()).catalog.filter(f => f.default_on);
     const kept = new Set(model.modules.flatMap(m => resolveModuleKeys(m)));
     const offFeatures = socle.filter(f => kept.has(f.module_key) && !model.features.includes(f.key)).map(f => f.key).sort();
     await client.query(
