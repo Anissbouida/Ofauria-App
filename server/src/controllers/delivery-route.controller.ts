@@ -20,12 +20,17 @@ export const deliveryRouteController = {
     res.status(201).json({ success: true, data: await deliveryRouteRepository.create({
       label: String(b.label), routeDate: b.routeDate ? String(b.routeDate) : null, driverName: b.driverName ? String(b.driverName) : null,
       notes: b.notes ? String(b.notes) : null, storeId: req.user!.storeId ?? null, userId: req.user!.userId,
+      vehicleLabel: b.vehicleLabel ? String(b.vehicleLabel) : null,
+      kmStart: b.kmStart === null || b.kmStart === undefined || b.kmStart === '' ? null : Number(b.kmStart),
     }) });
   },
   async setStatus(req: AuthRequest, res: Response) {
     const status = String((req.body as Record<string, unknown>).status);
     if (!['planned', 'in_progress', 'done'].includes(status)) { res.status(400).json({ success: false, error: { message: 'Statut invalide' } }); return; }
-    const d = await deliveryRouteRepository.setStatus(req.params.id, status as 'planned' | 'in_progress' | 'done');
+    const raw = (req.body as Record<string, unknown>).kmEnd;
+    const kmEnd = raw === null || raw === undefined || raw === '' ? null : Number(raw);
+    if (kmEnd !== null && !(kmEnd >= 0)) { res.status(400).json({ success: false, error: { message: 'Kilométrage invalide' } }); return; }
+    const d = await deliveryRouteRepository.setStatus(req.params.id, status as 'planned' | 'in_progress' | 'done', { kmEnd, userId: req.user!.userId });
     if (!d) { res.status(404).json({ success: false, error: { message: 'Tournée introuvable' } }); return; }
     res.json({ success: true, data: d });
   },

@@ -70,8 +70,11 @@ function RouteForm({ onClose, onSaved }: { onClose: () => void; onSaved: (r: Del
   const [label, setLabel] = useState('');
   const [routeDate, setRouteDate] = useState(new Date().toISOString().slice(0, 10));
   const [driver, setDriver] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [kmStart, setKmStart] = useState('');
+  const { data: vehicles = [] } = useQuery({ queryKey: ['delivery-route-vehicles'], queryFn: deliveryRoutesApi.vehicles });
   const save = useMutation({
-    mutationFn: () => deliveryRoutesApi.create({ label: label.trim(), routeDate, driverName: driver || null }),
+    mutationFn: () => deliveryRoutesApi.create({ label: label.trim(), routeDate, driverName: driver || null, vehicleLabel: vehicle.trim() || null, kmStart: kmStart === '' ? null : Number(kmStart) }),
     onSuccess: r => { notify.success('Tournée créée'); onSaved(r); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
@@ -88,6 +91,13 @@ function RouteForm({ onClose, onSaved }: { onClose: () => void; onSaved: (r: Del
         <FormField label="Chauffeur" htmlFor="rt-driver">
           <input id="rt-driver" type="text" value={driver} onChange={e => setDriver(e.target.value)} className="ds-input" />
         </FormField>
+        <FormField label="Véhicule" htmlFor="rt-vehicle">
+          <input id="rt-vehicle" type="text" list="rt-vehicles" value={vehicle} onChange={e => setVehicle(e.target.value)} className="ds-input" placeholder="Équipement de la flotte" />
+          <datalist id="rt-vehicles">{vehicles.map(v => <option key={v} value={v} />)}</datalist>
+        </FormField>
+        <FormField label="Kilométrage au départ" htmlFor="rt-km">
+          <input id="rt-km" type="number" min={0} value={kmStart} onChange={e => setKmStart(e.target.value)} className="ds-input" />
+        </FormField>
       </div>
     </Modal>
   );
@@ -97,6 +107,8 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['delivery-route', id], queryFn: () => deliveryRoutesApi.getById(id) });
   const [adding, setAdding] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [kmEnd, setKmEnd] = useState('');
   const refresh = (r: DeliveryRoute) => qc.setQueryData(['delivery-route', id], r);
   const mut = <T,>(fn: () => Promise<DeliveryRoute>) => fn().then(refresh).catch(e => notify.error(apiErrorMessage(e)));
 
@@ -111,7 +123,17 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <>
-    <Modal title={data?.label ?? 'Tournée'} subtitle={data ? `${day(data.route_date)}${data.driver_name ? ` · ${data.driver_name}` : ''}` : undefined} onClose={onClose} width={720}
+    {closing && data && (
+      <Modal title="Terminer la tournée" onClose={() => setClosing(false)} width={420}
+        footer={<FormFooter onCancel={() => setClosing(false)} submitLabel="Terminer" disabled={kmEnd !== '' && !(Number(kmEnd) >= 0)}
+          onSubmit={() => { setClosing(false); mut(() => deliveryRoutesApi.setStatus(id, 'done', kmEnd === '' ? null : Number(kmEnd))); }} />}>
+        <FormField label={`Kilométrage au retour — ${data.vehicle_label}`} htmlFor="rt-km-end">
+          <input id="rt-km-end" type="number" min={data.km_start ? Number(data.km_start) : 0} autoFocus value={kmEnd} onChange={e => setKmEnd(e.target.value)} className="ds-input" />
+        </FormField>
+        <p className="sal-sub">Le relevé met à jour les plans d'entretien au kilomètre de ce véhicule.</p>
+      </Modal>
+    )}
+    <Modal title={data?.label ?? 'Tournée'} subtitle={data ? `${day(data.route_date)}${data.driver_name ? ` · ${data.driver_name}` : ''}${data.vehicle_label ? ` · ${data.vehicle_label}` : ''}${data.km_end && data.km_start ? ` · ${Number(data.km_end) - Number(data.km_start)} km` : ''}` : undefined} onClose={onClose} width={720}
       aside={data && <StatusTag tone={STATUS[data.status].tone} icon={STATUS[data.status].icon} label={STATUS[data.status].label} />}>
       {isLoading || !data ? <LoadingState bare /> : (
         <>
@@ -120,7 +142,12 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <div style={{ flex: 1 }} />
             <div style={{ width: 170 }}>
               <FormField label="Statut" htmlFor="rt-status">
-                <select id="rt-status" value={data.status} onChange={e => mut(() => deliveryRoutesApi.setStatus(id, e.target.value as RouteStatus))} className="ds-input">
+                <select id="rt-status" value={data.status} onChange={e => {
+                  const to = e.target.value as RouteStatus;
+                  // Clôture d'une tournée avec véhicule : le kilométrage de retour relève les compteurs d'entretien.
+                  if (to === 'done' && data.vehicle_label) { setClosing(true); setKmEnd(data.km_start ? String(Number(data.km_start)) : ''); return; }
+                  mut(() => deliveryRoutesApi.setStatus(id, to));
+                }} className="ds-input">
                   <option value="planned">Planifiée</option><option value="in_progress">En cours</option><option value="done">Terminée</option>
                 </select>
               </FormField>

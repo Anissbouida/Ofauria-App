@@ -744,6 +744,12 @@
   "manager",
   "saleswoman"
  ],
+ "GET /delivery-routes/vehicles": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
  "GET /dunning": [
   "admin",
   "manager"

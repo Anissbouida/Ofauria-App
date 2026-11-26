@@ -37,17 +37,47 @@ export const deliveryRouteRepository = {
     return { ...r, stops };
   },
 
-  async create(input: { label: string; routeDate?: string | null; driverName?: string | null; notes?: string | null; storeId?: string | null; userId: string | null }) {
+  async create(input: { label: string; routeDate?: string | null; driverName?: string | null; notes?: string | null; storeId?: string | null; userId: string | null;
+                       vehicleLabel?: string | null; kmStart?: number | null }) {
     const r = await db.query(
-      `INSERT INTO delivery_routes (label, route_date, driver_name, notes, store_id, created_by)
-       VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4, $5, $6) RETURNING id`,
-      [input.label.trim().slice(0, 120), input.routeDate || null, input.driverName?.trim()?.slice(0, 120) || null, input.notes?.trim() || null, input.storeId ?? null, input.userId]);
+      `INSERT INTO delivery_routes (label, route_date, driver_name, notes, store_id, created_by, vehicle_label, km_start)
+       VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [input.label.trim().slice(0, 120), input.routeDate || null, input.driverName?.trim()?.slice(0, 120) || null, input.notes?.trim() || null, input.storeId ?? null, input.userId,
+       input.vehicleLabel?.trim()?.slice(0, 120) || null, input.kmStart ?? null]);
     return this.getById(r.rows[0].id);
   },
 
-  async setStatus(id: string, status: 'planned' | 'in_progress' | 'done') {
-    const r = await db.query(`UPDATE delivery_routes SET status = $2 WHERE id = $1 RETURNING id`, [id, status]);
-    return r.rows[0] ? this.getById(id) : null;
+  /**
+   * Statut de la tournée. À la clôture, le kilométrage de retour (mig 718) est enregistré et
+   * devient un relevé de compteur des plans d'entretien au kilomètre du véhicule (mig 717).
+   */
+  async setStatus(id: string, status: 'planned' | 'in_progress' | 'done', opts: { kmEnd?: number | null; userId?: string | null } = {}) {
+    const route = (await db.query(`SELECT id, vehicle_label, km_start FROM delivery_routes WHERE id = $1`, [id])).rows[0];
+    if (!route) return null;
+    if (opts.kmEnd !== null && opts.kmEnd !== undefined && route.km_start !== null && opts.kmEnd < Number(route.km_start)) {
+      throw Object.assign(new Error(`Kilométrage de retour inférieur au départ (${Number(route.km_start)} km)`), { statusCode: 400 });
+    }
+    await db.query(`UPDATE delivery_routes SET status = $2, km_end = COALESCE($3, km_end) WHERE id = $1`,
+      [id, status, status === 'done' ? opts.kmEnd ?? null : null]);
+    if (status === 'done' && opts.kmEnd !== null && opts.kmEnd !== undefined && route.vehicle_label) {
+      const plans = (await db.query(
+        `SELECT pl.id FROM maintenance_plans pl LEFT JOIN fixed_assets fa ON fa.id = pl.fixed_asset_id
+          WHERE pl.is_active AND pl.meter_unit = 'km'
+            AND lower(btrim(COALESCE(fa.label, pl.equipment_label))) = lower(btrim($1))
+            AND (pl.current_meter IS NULL OR pl.current_meter <= $2)`, [route.vehicle_label, opts.kmEnd])).rows;
+      for (const p of plans) {
+        await db.query(`INSERT INTO maintenance_meter_readings (plan_id, reading, recorded_by) VALUES ($1, $2, $3)`, [p.id, opts.kmEnd, opts.userId ?? null]);
+        await db.query(`UPDATE maintenance_plans SET current_meter = $2, current_meter_at = now(), last_service_meter = COALESCE(last_service_meter, $2) WHERE id = $1`, [p.id, opts.kmEnd]);
+      }
+    }
+    return this.getById(id);
+  },
+
+  /** Véhicules connus : équipements des plans d'entretien au kilomètre (suggestions). */
+  async vehicles() {
+    return (await db.query(
+      `SELECT DISTINCT COALESCE(fa.label, pl.equipment_label) AS label FROM maintenance_plans pl LEFT JOIN fixed_assets fa ON fa.id = pl.fixed_asset_id
+        WHERE pl.is_active AND pl.meter_unit = 'km' AND COALESCE(fa.label, pl.equipment_label) IS NOT NULL ORDER BY 1`)).rows.map(r => r.label as string);
   },
 
   async addStops(routeId: string, deliveryNoteIds: string[]) {

@@ -87,4 +87,16 @@ describe.skipIf(!hasTestDb)('Flotte : entretien au compteur (mig 717)', () => {
   it('le compteur ne recule pas', async () => {
     await expect(repo.recordMeter(planId, 90000, fx.userId)).rejects.toThrow(/reculer/);
   });
+
+  it('la clôture d’une tournée relève le compteur du véhicule (mig 718)', async () => {
+    await testPool().query(`UPDATE maintenance_plans SET equipment_label = $2 WHERE id = $1`, [planId, `Camion ${RUN}`]);
+    const { deliveryRouteRepository } = await import('../../repositories/delivery-route.repository.js');
+    const route = await deliveryRouteRepository.create({ label: `Tournée ${RUN}`, vehicleLabel: `camion ${RUN} `, kmStart: 115200, storeId: fx.storeId, userId: fx.userId });
+    await expect(deliveryRouteRepository.setStatus(route!.id, 'done', { kmEnd: 100, userId: fx.userId })).rejects.toThrow(/inférieur/);
+    const done = await deliveryRouteRepository.setStatus(route!.id, 'done', { kmEnd: 115480, userId: fx.userId });
+    expect(Number(done!.km_end)).toBe(115480);
+    expect(Number((await repo.findPlan(planId)).current_meter)).toBe(115480);
+    expect(await deliveryRouteRepository.vehicles()).toContain(`Camion ${RUN}`);
+    await testPool().query(`DELETE FROM delivery_routes WHERE id = $1`, [route!.id]);
+  });
 });

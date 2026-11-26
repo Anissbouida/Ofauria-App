@@ -4,6 +4,8 @@ export type RouteStatus = 'planned' | 'in_progress' | 'done';
 export interface DeliveryRouteRow {
   id: string; label: string; route_date: string; driver_name: string | null; status: RouteStatus;
   notes: string | null; created_by_name: string | null; stops: number; delivered: number;
+  /** Mig 718 : véhicule et kilométrage. */
+  vehicle_label?: string | null; km_start?: string | null; km_end?: string | null;
 }
 export interface RouteStop {
   id: string; sequence: number; delivered_at: string | null; note: string | null;
@@ -22,9 +24,10 @@ export const deliveryRoutesApi = {
   list: (status?: RouteStatus): Promise<DeliveryRouteRow[]> =>
     api.get('/delivery-routes', { params: status ? { status } : {} }).then(r => r.data.data),
   getById: (id: string): Promise<DeliveryRoute> => api.get(`/delivery-routes/${id}`).then(r => normalize(r.data.data)),
-  create: (data: { label: string; routeDate?: string | null; driverName?: string | null; notes?: string | null }): Promise<DeliveryRoute> =>
+  create: (data: { label: string; routeDate?: string | null; driverName?: string | null; notes?: string | null; vehicleLabel?: string | null; kmStart?: number | null }): Promise<DeliveryRoute> =>
     api.post('/delivery-routes', data).then(r => normalize(r.data.data)),
-  setStatus: (id: string, status: RouteStatus): Promise<DeliveryRoute> => api.post(`/delivery-routes/${id}/status`, { status }).then(r => normalize(r.data.data)),
+  setStatus: (id: string, status: RouteStatus, kmEnd?: number | null): Promise<DeliveryRoute> => api.post(`/delivery-routes/${id}/status`, { status, ...(kmEnd !== undefined && kmEnd !== null ? { kmEnd } : {}) }).then(r => normalize(r.data.data)),
+  vehicles: (): Promise<string[]> => api.get('/delivery-routes/vehicles').then(r => r.data.data),
   availableNotes: (): Promise<AvailableNote[]> => api.get('/delivery-routes/available-notes').then(r => r.data.data),
   addStops: (id: string, deliveryNoteIds: string[]): Promise<DeliveryRoute> => api.post(`/delivery-routes/${id}/stops`, { deliveryNoteIds }).then(r => normalize(r.data.data)),
   removeStop: (stopId: string): Promise<DeliveryRoute> => api.delete(`/delivery-routes/stops/${stopId}`).then(r => normalize(r.data.data)),
