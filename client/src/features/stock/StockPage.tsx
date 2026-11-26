@@ -14,6 +14,7 @@ import { PesageStockList } from './PesageStockList';
 import DepositStockTab from './DepositStockTab';
 import ReservationsTab from './ReservationsTab';
 import MovementsTab from './MovementsTab';
+import QuarantineTab from './QuarantineTab';
 import { HistoryList } from './HistoryList';
 import { LotMovementModal } from './LotMovementModal';
 import IngredientFormModal from './IngredientFormModal';
@@ -98,6 +99,7 @@ const PAGE_LEADS: Record<string, string> = {
   closing: 'Instantanés valorisés du stock à chaque fin de période.',
   emplacements: 'Chambres, zones et bacs de rangement, reliés à leur sonde de température.',
   points: 'Seuils de réapprovisionnement calculés à partir de la consommation et des délais.',
+  quarantaine: 'Lots reçus retenus jusqu\'au contrôle de réception, et lots bloqués par un contrôle non conforme.',
   mouvements: 'Tous les mouvements du stock dans une seule liste : bons de sortie, réceptions, ouvertures de contenant, pertes, ajustements, retours.',
   reservations: 'Stock réservé par les commandes clients et les ordres de fabrication, et ce qui reste disponible.',
   deposants: 'Marchandise détenue pour le compte de clients : réceptions à quai, expéditions et stock par lot, hors stock de la société.',
@@ -114,7 +116,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants' | 'reservations' | 'mouvements';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points' | 'deposants' | 'reservations' | 'mouvements' | 'quarantaine';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -128,6 +130,7 @@ export default function StockPage() {
   const { settings } = useSettings();
   const { user } = useAuth();
   const { hasModule } = usePermissions();
+  const { data: movementRules } = useQuery({ queryKey: ['movement-rules'], queryFn: inventoryApi.movementRules, staleTime: 300_000 });
   const { ingredient, ingredients, ingredientLc, ingredientsLc } = useProdTerms();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
   // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
@@ -138,7 +141,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants', 'reservations', 'mouvements'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points', 'deposants', 'reservations', 'mouvements', 'quarantaine'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -382,6 +385,8 @@ export default function StockPage() {
     { key: 'bons', label: 'Bons de sortie', icon: ClipboardList, section: 'operations', hidden: !isWarehouseUser, badge: bons.length },
     // Refonte Stock (mig 724) : liste unique des mouvements, par pièce.
     { key: 'mouvements', label: 'Mouvements', icon: ArrowLeftRight, section: 'operations', hidden: !isWarehouseUser },
+    // Refonte Stock : lots en quarantaine, visibles quand la quarantaine à réception s'applique.
+    { key: 'quarantaine', label: 'Quarantaine', icon: ShieldAlert, section: 'operations', hidden: !isWarehouseUser || !movementRules?.receptionQuarantine },
     { key: 'commander', label: 'À commander', icon: ShoppingCart, section: 'operations', hidden: !isWarehouseUser, badge: toOrderCount },
     { key: 'consumables', label: 'Consommables', icon: Boxes, section: 'operations', hidden: !isWarehouseUser },
     // Mig 367 : inventaire physique (le magasin compte, la direction valide).
@@ -537,6 +542,8 @@ export default function StockPage() {
         <StockClosingTab />
       ) : econoTab === 'points' ? (
         <ReorderPointsTab />
+      ) : econoTab === 'quarantaine' ? (
+        <QuarantineTab />
       ) : econoTab === 'mouvements' ? (
         <MovementsTab />
       ) : econoTab === 'reservations' ? (
