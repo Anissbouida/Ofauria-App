@@ -31,7 +31,10 @@ describe.skipIf(!hasTestDb)('Vocabulaire des écrans de fabrication (M8-03)', ()
     expect(fab).toMatchObject({ finished_products_tab: 'Nomenclatures produits finis', base_preps: 'Sous-ensembles', formats_tab: 'Conditionnements', yield: 'Quantité de base', batch: 'Lot de fabrication' });
     expect((await sector.labels('generique')).base_prep).toBe('Sous-ensemble');
     const boul = await sector.labels('boulangerie');
-    for (const k of ['finished_products_tab', 'base_preps', 'formats_tab', 'yield', 'batch']) expect(boul[k]).toBeUndefined();
+    // Mig 731 (audit des profils) : les termes historiques sont portés par le profil Boulangerie
+    // (mêmes mots qu'avant pour Ofauria) ; les replis du catalogue sont désormais neutres.
+    expect(boul).toMatchObject({ finished_products_tab: 'Recettes produits finis', base_preps: 'Préparations de base', batch: 'Fournée', ingredient: 'Ingrédient', reserve_zone: 'Économat' });
+    for (const k of ['formats_tab', 'yield']) expect(boul[k]).toBeUndefined();
   });
 
   it('option « saisie par fournée » : boulangerie seulement', async () => {

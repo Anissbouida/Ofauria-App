@@ -1,3 +1,4 @@
+import { vocabularyFallback } from '@ofauria/shared';
 import { VOCABULARY_KEY_SET, INTERFACE_KEYS, WORKSPACES, parseWorkspace, parseTableDensity } from '@ofauria/shared';
 import { db } from '../../config/database.js';
 import { sectorRepository } from '../../repositories/sector.repository.js';
@@ -56,7 +57,9 @@ export async function prepareWizardLayers(primary:string,company?:WizardData,voc
     const wanted=new Map(current.map(r=>[r.label_key,r.label_value]));
     const defaults=await sectorRepository.sectorLabels(primary);
     for(const [key,v] of Object.entries(vocabulary))if(VOCABULARY_KEY_SET.has(key)&&isText(v)&&v.trim()){
-      if(defaults[key]===v.trim())wanted.delete(key);else wanted.set(key,v.trim());
+      // Audit des profils (L6) : un terme égal au terme du profil OU au repli du catalogue n'est pas un
+      // renommage de la société (sinon il serait figé et ne suivrait plus le profil).
+      if(defaults[key]===v.trim()||vocabularyFallback(key)===v.trim())wanted.delete(key);else wanted.set(key,v.trim());
     }
     layers.labels=[...wanted].map(([key,value])=>({key,value}));
   }

@@ -94,7 +94,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
   const groupedRows = useMemo(() => {
     const planningGroup = (role: string): { key: string; label: string } => {
       if (role === 'cashier' || role === 'saleswoman') {
-        return { key: 'sales_floor', label: 'Caissière & Vendeuse' };
+        return { key: 'sales_floor', label: 'Équipe de vente' };
       }
       // Fonction hors des groupes connus (référentiel de l'entreprise) ou absente : son propre groupe,
       // jamais masquée.

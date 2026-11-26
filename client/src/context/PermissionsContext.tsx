@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { usersApi } from '../api/users.api';
 import { settingsApi } from '../api/settings.api';
 import type { AppModule, UserPermission } from '@ofauria/shared';
-import { DEFAULT_ROLE_MODULES, resolveModuleKeys } from '@ofauria/shared';
+import { DEFAULT_ROLE_MODULES, resolveModuleKeys, vocabularyFallback } from '@ofauria/shared';
 
 interface PermissionsContextType {
   permissions: UserPermission[];
@@ -141,7 +141,9 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   return (
     <PermissionsContext.Provider value={{
       permissions, hasModule, canView, canCreate, canEdit, canDelete, getModuleConfig,
-      sectorLabel: (key: string, fallback: string) => sectorLabels[key] ?? fallback,
+      // Audit des profils (L6) : à défaut de terme du profil, le repli NEUTRE du catalogue l'emporte sur
+      // le repli écrit par l'appelant (souvent le terme historique de boulangerie).
+      sectorLabel: (key: string, fallback: string) => sectorLabels[key] ?? vocabularyFallback(key) ?? fallback,
       hasFeature: (key: string) => !sectorFeatures || sectorFeatures.has(key),
       moduleActive: inSector,
       isLoading, reload,

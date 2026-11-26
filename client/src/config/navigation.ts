@@ -83,11 +83,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { module: 'pos', href: '/pos', icon: Monitor, color: 'bg-green-600',
         description: 'Caisse et ventes directes' },
       { module: 'sales', href: '/sales', icon: Receipt, color: 'bg-emerald-500',
-        description: 'Historique des ventes' },
+        description: 'Ventes, factures et créances' },
       { module: 'orders', href: '/orders', icon: ClipboardList, color: 'bg-orange-500',
-        description: 'Commandes clients a produire' },
+        description: 'Commandes clients à préparer et livrer' },
       { module: 'customers', href: '/customers', icon: Users, color: 'bg-cyan-600',
-        description: 'Fichier clients et fidelite' },
+        description: 'Fichier clients et suivi commercial' },
       // Projets (mig 358) : travaux suivis dans le temps pour un client — événement,
       // chantier, mission, commande sur devis — avec tâches et temps passé.
       { module: 'projects', href: '/projects', icon: FolderKanban, color: 'bg-fuchsia-600',
@@ -105,7 +105,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { module: 'purchasing', href: '/purchasing', icon: ShoppingBag, color: 'bg-blue-700',
         description: 'Fournisseurs, commandes et factures' },
       { module: 'stock', aliases: MODULE_ALIASES.stock as AppModule[] | undefined, href: '/stock', icon: Warehouse, color: 'bg-amber-600',
-        description: 'Stock scelle, stock entame, emballages et bons de sortie' },
+        description: 'Articles en stock, mouvements, inventaires et réceptions' },
       // Emballages fusionné dans Stock (onglet « Consommables ») : /packaging redirige vers /stock?tab=consumables.
     ],
   },
@@ -119,7 +119,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // porte d'entrée unique du domaine fabrication.
       // Demandes boutique (ex-« Besoins ») : onglet du module Production, plus une tuile.
       { module: 'production', href: '/production', icon: Factory, color: 'bg-indigo-500',
-        description: 'Plans, demandes boutique, fiches techniques, prévisions et HACCP',
+        description: 'Ordres de fabrication, nomenclatures, prévisions et suivi',
         fallback: { module: 'replenishment', href: '/replenishment' } },
     ],
   },
@@ -144,7 +144,7 @@ export const NAV_GROUPS: NavGroup[] = [
     titleKey: 'nav.group.management',
     items: [
       { module: 'accounting', href: '/accounting', icon: Calculator, color: 'bg-yellow-600',
-        description: 'Caisse, charges et tresorerie' },
+        description: 'Journaux, trésorerie, TVA et états financiers' },
       { module: 'employees', href: '/employees', icon: UserCog, color: 'bg-teal-600',
         description: 'Pointage, paie et dossiers du personnel' },
       // Maintenance (mig 359) : entretien du matériel (immobilisations) et interventions chez le client.
