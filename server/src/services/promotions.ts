@@ -140,7 +140,7 @@ export function promoLabel(p: Promo) {
 
 export async function evaluate(lines: PromoLine[], ctx: PromoContext, runner: Runner = db): Promise<PromoResult> {
   const code = ctx.couponCode?.trim() || null;
-  // Capacité « Promotions et fidélité » éteinte (mig 710) : aucune promotion appliquée, la caisse encaisse normalement.
+  // Capacité « Promotions et fidélité » éteinte (mig 711) : aucune promotion appliquée, la caisse encaisse normalement.
   const enabled = await sectorRepository.featureOn('promotions_fidelite');
   const [promos, cust] = await Promise.all([enabled ? candidates(runner, ctx) : Promise.resolve([] as Promo[]), customerFacts(runner, ctx.customerId)]);
   const usable = promos.filter(p => customerOk(p, cust));

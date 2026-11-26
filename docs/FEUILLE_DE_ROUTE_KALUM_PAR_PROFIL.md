@@ -304,4 +304,4 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 |---|---|---|
 | 1.1 Inventaire | Fait | 49 familles hors garde : 15 du socle exemptées (justifiées dans `EXEMPT_PREFIXES`), 34 métier rattachées à leur module, liste des modules lecteurs comprise |
 | 1.2 Fermeture des API | Fait | Table unique dans `module-activation.middleware.ts` ; test `route-activation-coverage-guard` : toute route montée a une règle ou une exemption |
-| 1.3 Capacités tous modules | Fait | Mig 710 : 18 capacités (Ventes, Caisse, Achats, Comptabilité, Personnel), actives par défaut ; `sector_packs.off_features` pour les extinctions par profil |
+| 1.3 Capacités tous modules | Fait | Mig 711 : 18 capacités (Ventes, Caisse, Achats, Comptabilité, Personnel), actives par défaut ; `sector_packs.off_features` pour les extinctions par profil |

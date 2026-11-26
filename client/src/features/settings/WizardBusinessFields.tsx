@@ -54,7 +54,7 @@ export const profileStatus = (status?: string) => status === 'a_valider' ? <Tag 
  *  celles des profils retenus et du socle. */
 function defaultCapabilities(catalog: WizardCatalog | undefined, profiles: WizardCatalog['profiles'], unchanged: boolean): string[] {
   if (unchanged) return catalog?.activeCapabilities ?? [];
-  // Socle (default_on) moins ce que tous les profils retenus éteignent par défaut (mig 710).
+  // Socle (default_on) moins ce que tous les profils retenus éteignent par défaut (mig 711).
   const off = (code: string) => profiles.length > 0 && profiles.every(p => (p.offFeatures ?? []).includes(code) && !p.features.includes(code));
   return [...new Set([...profiles.flatMap(p => p.features), ...(catalog?.capabilities ?? []).filter(c => c.default_on && !off(c.code)).map(c => c.code)])];
 }

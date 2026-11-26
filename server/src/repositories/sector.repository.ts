@@ -30,7 +30,7 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
  */
 export type SectorPack = {
   code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean;
-  /** Capacités du socle que le profil éteint par défaut (mig 710) ; la société peut les rallumer. */
+  /** Capacités du socle que le profil éteint par défaut (mig 711) ; la société peut les rallumer. */
   offFeatures?: string[];
   /** Héritage vivant (mig 633) : parent, regroupement et état affichés dans le choix du profil. */
   base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number; in_wizard?: boolean;
@@ -51,7 +51,7 @@ export type Activation = {
   /** Modules du préréglage, en clés canoniques. */
   packModules: AppModule[];
   packFeatures: string[];
-  /** Capacités du socle éteintes par défaut par le profil (mig 710). */
+  /** Capacités du socle éteintes par défaut par le profil (mig 711). */
   packOff?: string[];
   moduleOverrides: ModuleOverrides;
   featureOverrides: ModuleOverrides;
@@ -153,7 +153,7 @@ const canonicalPack = (pack: SectorPack): AppModule[] => [...new Set(pack.module
 
 function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, catalog: FeatureDef[], modules: Set<AppModule>, packOff: string[] = []): Set<string> {
   // Préréglage du secteur + socle (capacités default_on, mig 632) moins celles que le profil
-  // éteint (mig 710), puis écarts de la société.
+  // éteint (mig 711), puis écarts de la société.
   const set = new Set([...packFeatures, ...catalog.filter(f => capabilityDefault(f, packFeatures, f.key, packOff)).map(f => f.key)]);
   for (const [k, on] of Object.entries(overrides)) {
     if (on === undefined) continue;

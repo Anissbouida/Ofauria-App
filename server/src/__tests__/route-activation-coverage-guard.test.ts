@@ -12,7 +12,7 @@ import { activationRuleFor, featureRuleFor, EXEMPT_PREFIXES } from '../middlewar
 
 const ROUTES = readFileSync(resolve(__dirname, '../routes/index.ts'), 'utf8');
 const MOUNTED = [...new Set([...ROUTES.matchAll(/router\.use\(\s*'(\/[^']+)'/g)].map(m => m[1]))];
-const MIGRATION = readFileSync(resolve(__dirname, '../../migrations/710_capacites_tous_modules.sql'), 'utf8');
+const MIGRATION = readFileSync(resolve(__dirname, '../../migrations/711_capacites_tous_modules.sql'), 'utf8');
 
 describe('Garde : toute route montée est couverte par l’activation', () => {
   it('a trouvé les routes montées', () => {
@@ -32,7 +32,7 @@ describe('Garde : toute route montée est couverte par l’activation', () => {
 });
 
 describe('Registre des capacités hors Production', () => {
-  it('chaque capacité du registre est inscrite par la migration 710', () => {
+  it('chaque capacité du registre est inscrite par la migration 711', () => {
     const missing = CAPABILITY_SCREENS.filter(c => !MIGRATION.includes(`('${c.key}', '${c.module}',`)).map(c => c.key);
     expect(missing).toEqual([]);
   });

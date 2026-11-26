@@ -1,4 +1,4 @@
--- 710 — Capacités pour tous les modules (feuille de route « Kalum piloté par le profil », étape 1.3).
+-- 711 — Capacités pour tous les modules (feuille de route « Kalum piloté par le profil », étape 1.3).
 --
 -- POURQUOI
 --   Le catalogue app_features ne couvrait que Production, Stock, Contrôle et Articles. Un écran

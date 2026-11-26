@@ -1,6 +1,6 @@
 /**
  * Registre des capacités hors Production (feuille de route « Kalum piloté par le profil »,
- * phase 1, étapes 1.3 et 1.4 ; mig 710).
+ * phase 1, étapes 1.3 et 1.4 ; mig 711).
  *
  * Une seule déclaration par capacité, lue :
  *   - par la garde d'activation du serveur (`api`) : route fermée quand la capacité est éteinte ;
