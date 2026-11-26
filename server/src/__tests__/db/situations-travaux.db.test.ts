@@ -81,6 +81,26 @@ describe.skipIf(!hasTestDb)('Situations de travaux', () => {
     expect(mine.retention_held).toBe(100000);
   });
 
+  it('une ligne de bon de commande affectée au chantier compte dans ses achats engagés (mig 716)', async () => {
+    const p = testPool();
+    const projectId = (await p.query(`INSERT INTO projects (number, name, store_id, created_by) VALUES ($1, 'Chantier R+4', $2, $3) RETURNING id`,
+      [`PRJ-${RUN}`, fx.storeId, fx.userId])).rows[0].id;
+    const supplierId = (await p.query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`Négoce matériaux ${RUN}`])).rows[0].id;
+    const poId = (await p.query(`INSERT INTO purchase_orders (order_number, supplier_id, store_id, status) VALUES ($1, $2, $3, 'en_attente') RETURNING id`,
+      [`BC-${RUN}`, supplierId, fx.storeId])).rows[0].id;
+    // Ligne de service : désignation + catégorie de dépense obligatoires (po_item_kind_check).
+    const cat = (await p.query(`SELECT id FROM expense_categories ORDER BY created_at LIMIT 1`)).rows[0].id;
+    await p.query(`INSERT INTO purchase_order_items (purchase_order_id, line_type, description, category_id, quantity_ordered, quantity_delivered, unit_price, project_id)
+                   VALUES ($1, 'service', 'Location grue', $3, 2, 1, 5000, $2), ($1, 'service', 'Hors chantier', $3, 1, 0, 999, NULL)`, [poId, projectId, cat]);
+    const { projectRepository } = await import('../../repositories/project.repository.js');
+    const prj = await projectRepository.findById(projectId);
+    expect(Number(prj.committed_purchases)).toBe(10000);
+    expect(Number(prj.received_purchases)).toBe(5000);
+    await p.query(`DELETE FROM purchase_order_items WHERE purchase_order_id = $1`, [poId]);
+    await p.query(`DELETE FROM purchase_orders WHERE id = $1`, [poId]);
+    await p.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  });
+
   it('un devis non accepté ne se facture pas à l’avancement', async () => {
     await testPool().query(`UPDATE quotes SET status = 'sent' WHERE id = $1`, [quoteId]);
     await expect(repo.prepare(quoteId)).rejects.toThrow(/accepté/);

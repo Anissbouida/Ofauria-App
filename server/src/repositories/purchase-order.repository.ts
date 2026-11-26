@@ -387,12 +387,12 @@ export const purchaseOrderRepository = {
         const tvaRate = await defaultLineTvaRate(client, item, free.categoryId);
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, unit_price,
-                                             line_type, description, category_id, base_unit, foreign_unit_price, tva_rate)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                                             line_type, description, category_id, base_unit, foreign_unit_price, tva_rate, project_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, item.productId ?? null, qty, item.unitPrice ?? null,
            lineTypeOf(item), free.description, free.categoryId, free.unit,
            data.currencyCode && data.currencyCode !== baseCurrencyCode() ? (item.foreignUnitPrice ?? null) : null,
-           tvaRate]
+           tvaRate, (item as { projectId?: string | null }).projectId ?? null]
         );
       }
 
@@ -668,10 +668,10 @@ export const purchaseOrderRepository = {
           const tvaRate = await defaultLineTvaRate(client, it, free.categoryId);
           const inserted = await client.query<{ id: string }>(
             `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, quantity_delivered, unit_price,
-                                               line_type, description, category_id, base_unit, tva_rate)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+                                               line_type, description, category_id, base_unit, tva_rate, project_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
             [id, it.ingredientId ?? null, it.packagingId ?? null, it.productId ?? null, qord, newDel, price,
-             lineTypeOf(it), free.description, free.categoryId, free.unit, tvaRate]
+             lineTypeOf(it), free.description, free.categoryId, free.unit, tvaRate, (it as { projectId?: string | null }).projectId ?? null]
           );
           if (newDel > 0.0001) {
             // Cas atypique : admin ajoute une ligne avec qty deja livree

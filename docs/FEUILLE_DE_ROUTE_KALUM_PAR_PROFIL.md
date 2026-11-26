@@ -323,3 +323,6 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 4.2 Dossier de lot | Fait (règles) | Profil Santé : pesée et contrôle qualité obligatoires, étapes imposées, libération manuelle, séparation des tâches (qui a pesé ne réceptionne pas), quarantaine à la réception. Reste : document « dossier de lot » imprimable signé |
 | 4.3 Nomenclature et gamme | Existant | Semi-finis (multi-niveaux), versions et nomenclatures alternatives, gammes et postes (`/routings`) |
 | 4.4 Boulangerie | Inchangée | Aucun écran modifié pour Ofauria |
+| 5.1 Réception par profil | Fait | Quarantaine imposée par profil (mig 712), réception à quai et lieu chantier (rôles mig 712) |
+| 5.2 Achats affectés | Fait | Mig 716 : `purchase_order_items.project_id`, champ « Chantier / projet » au nouveau bon de commande, commandes engagées et reçues sur la fiche projet (hors factures déjà comptées). Reste : affectation à un véhicule (avec la phase 6) |
+| 5.3 Plans de contrôle | Existant | Plans de contrôle par profil (`control_plans`), inspections, non-conformités, libération |

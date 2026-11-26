@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, Fragment, type CSSProperties } from 'react';
 import { usePermissions } from '../../context/PermissionsContext';
+import { projectsApi } from '../../api/projects.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1221,6 +1222,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [supplierId, setSupplierId] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  // Chantier / projet servi par la commande (mig 716) : porté par chaque ligne.
+  const { hasModule: hasPoModule } = usePermissions();
+  const [projectId, setProjectId] = useState('');
+  const { data: openProjects } = useQuery({ queryKey: ['projects', 'po-select'], queryFn: () => projectsApi.list({ status: 'active', limit: '200', offset: '0' }), enabled: hasPoModule('projects') });
   const [searchIngredient, setSearchIngredient] = useState('');
   // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
   // (packaging_items). kind decide la table cible cote serveur. categoryId =
@@ -1461,6 +1466,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
         quantityOrdered,
         unitPrice: unitPrice != null && unitPrice > 0 ? Math.round(unitPrice * rate * 10000) / 10000 : null,
         ...(currency !== BASE_CURRENCY && unitPrice != null && unitPrice > 0 ? { foreignUnitPrice: unitPrice } : {}),
+        ...(projectId ? { projectId } : {}),
       })),
     });
   };
@@ -1540,6 +1546,14 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <FormField label="Notes" htmlFor="po-new-notes">
               <input id="po-new-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="ds-input" placeholder="Optionnel…" />
             </FormField>
+            {hasPoModule('projects') && (openProjects?.rows.length ?? 0) > 0 && (
+              <FormField label="Chantier / projet" htmlFor="po-new-project">
+                <select id="po-new-project" className="ds-input" value={projectId} onChange={e => setProjectId(e.target.value)}>
+                  <option value="">Aucun</option>
+                  {openProjects!.rows.map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}
+                </select>
+              </FormField>
+            )}
           </div>
 
           {currencies.length > 1 && (

@@ -61,6 +61,8 @@ export const createPurchaseOrderSchema = z.object({
       quantityOrdered: z.coerce.number().positive('Quantité commandée invalide (doit être > 0)').max(1_000_000),
       unitPrice: z.coerce.number().min(0, 'Prix invalide').max(1_000_000).optional().nullable(),
       foreignUnitPrice: z.coerce.number().min(0, 'Prix en devise invalide').max(1_000_000).optional().nullable(),
+      // Chantier / projet servi par la ligne (mig 716).
+      projectId: z.string().guid('Projet invalide').optional().nullable(),
     }).refine((i) => {
       if (i.lineType === 'service' || i.lineType === 'asset') {
         return !i.ingredientId && !i.packagingId && !i.productId && Boolean(i.description?.trim()) && Boolean(i.categoryId);

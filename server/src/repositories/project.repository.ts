@@ -37,6 +37,15 @@ const INVOICE_AGG = `
          COUNT(*) FILTER (WHERE i.status <> 'cancelled') AS invoice_count
     FROM invoices i WHERE i.project_id IS NOT NULL GROUP BY i.project_id`;
 
+/** Achats engagés (mig 716) : lignes de bon de commande affectées au projet, hors annulés. */
+const PURCHASE_AGG = `
+  SELECT poi.project_id,
+         COALESCE(SUM(poi.quantity_ordered * COALESCE(poi.unit_price, 0)), 0) AS committed_purchases,
+         COALESCE(SUM(COALESCE(poi.quantity_delivered, 0) * COALESCE(poi.unit_price, 0)), 0) AS received_purchases
+    FROM purchase_order_items poi JOIN purchase_orders po ON po.id = poi.purchase_order_id
+   WHERE poi.project_id IS NOT NULL AND po.status NOT IN ('annule', 'non_livre')
+   GROUP BY poi.project_id`;
+
 const SELECT = `
   SELECT p.*,
          COALESCE(NULLIF(btrim(COALESCE(cu.company_name, '')), ''),
@@ -52,6 +61,8 @@ const SELECT = `
          COALESCE(ia.external_cost, 0) AS external_cost,
          COALESCE(ia.external_revenue, 0) AS external_revenue,
          COALESCE(ia.invoice_count, 0)::int AS invoice_count,
+         COALESCE(pa.committed_purchases, 0) AS committed_purchases,
+         COALESCE(pa.received_purchases, 0) AS received_purchases,
          COALESCE(tk.total, 0)::int AS task_count,
          COALESCE(tk.done, 0)::int AS task_done,
          COALESCE(tk.late, 0)::int AS task_late,
@@ -63,6 +74,7 @@ const SELECT = `
     LEFT JOIN users cb ON cb.id = p.created_by
     LEFT JOIN (${TIME_AGG}) ta ON ta.project_id = p.id
     LEFT JOIN (${INVOICE_AGG}) ia ON ia.project_id = p.id
+    LEFT JOIN (${PURCHASE_AGG}) pa ON pa.project_id = p.id
     LEFT JOIN (
       SELECT project_id, COUNT(*) FILTER (WHERE status <> 'cancelled') AS total,
              COUNT(*) FILTER (WHERE status = 'done') AS done,

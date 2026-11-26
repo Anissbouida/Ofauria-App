@@ -15,6 +15,8 @@ export type Project = {
   created_by_name: string | null; created_at: string; updated_at: string;
   hours_spent: string; cost_spent: string; billable_amount: string; unbilled_amount: string; unbilled_hours: string;
   external_cost: string; external_revenue: string; invoice_count: number;
+  /** Mig 716 : lignes de bon de commande affectées au projet (engagé / reçu), hors factures. */
+  committed_purchases?: string; received_purchases?: string;
   task_count: number; task_done: number; task_late: number; is_overdue: boolean;
   tasks?: Task[];
 };

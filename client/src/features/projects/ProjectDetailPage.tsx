@@ -292,6 +292,10 @@ export default function ProjectDetailPage() {
               <dl className="prj-legend">
                 <dt><span className="prj-swatch" style={{ background: 'var(--ds-accent)' }} />Achats rattachés</dt><dd>{money(externalCost, { decimals: 0 })}</dd>
                 <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--ds-accent) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{money(laborCost, { decimals: 0 })}</dd>
+                {Number(p.committed_purchases || 0) > 0 && <>
+                  <dt><span className="prj-swatch" style={{ background: 'var(--ds-border-strong, #CBD5E1)' }} />Commandes engagées (reçu {money(Number(p.received_purchases || 0), { decimals: 0 })})</dt>
+                  <dd>{money(Number(p.committed_purchases), { decimals: 0 })}</dd>
+                </>}
                 {revenue > 0 && <>
                   <dt><span className="prj-swatch" style={{ background: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }} />{margin < 0 ? 'Perte' : 'Marge'}</dt>
                   <dd style={{ color: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{money(margin, { decimals: 0 })}</dd>
