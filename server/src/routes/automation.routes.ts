@@ -1,4 +1,6 @@
 import { Router, type Request, type Response } from 'express';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { needsMet } from '@ofauria/shared';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
@@ -7,7 +9,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 import { mailStatus, sendTestEmail, processOutbox } from '../services/mailer.js';
-import { JOBS, runJob, runDueJobs } from '../services/scheduler.js';
+import { JOB_NEEDS, JOBS, runJob, runDueJobs } from '../services/scheduler.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
 
@@ -87,6 +89,7 @@ automationRouter.post('/mail/outbox/:id/:action', authenticate, authorizeSetting
 
 /* ─── Tâches planifiées ───────────────────────────────────────────────────── */
 automationRouter.get('/jobs', authenticate, authorizeSettings('notifications'), asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const ctx = await sectorRepository.needsContext();
   const [jobs, runs, ext] = await Promise.all([
     db.query(`SELECT j.*, ${'u.first_name || \' \' || u.last_name'} AS updated_by_name FROM scheduled_jobs j LEFT JOIN users u ON u.id = j.updated_by ORDER BY j.display_order`),
     db.query(`SELECT * FROM (SELECT r.*, row_number() OVER (PARTITION BY r.job_key ORDER BY r.started_at DESC) AS rn FROM scheduled_job_runs r) x
@@ -94,7 +97,9 @@ automationRouter.get('/jobs', authenticate, authorizeSettings('notifications'), 
     db.query(`SELECT last_external_tick AS last, last_internal_tick AS internal FROM scheduler_state LIMIT 1`),
   ]);
   res.json({ success: true, data: {
-    jobs: jobs.rows.map(j => ({ ...j, implemented: !!JOBS[j.key], runs: runs.rows.filter(r => r.job_key === j.key) })),
+    // Audit des profils (L5) : tâches dont le module ou la capacité est éteint retirées de la liste.
+    jobs: jobs.rows.filter(j => needsMet(JOB_NEEDS[j.key as string], ctx))
+      .map(j => ({ ...j, implemented: !!JOBS[j.key], runs: runs.rows.filter(r => r.job_key === j.key) })),
     engine: {
       internal: process.env.SCHEDULER_DISABLED !== 'true',
       externalConfigured: (process.env.CRON_SECRET ?? '').length >= 32,

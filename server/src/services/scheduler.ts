@@ -1,4 +1,6 @@
 import { db } from '../config/database.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { needsMet, resolveModuleKeys, type ScreenNeeds } from '@ofauria/shared';
 import { lowStockAlertsEnabled } from './operating-rules.js';
 import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
 import { cycleCountJob } from '../repositories/abc-cycle-count.repository.js';
@@ -528,6 +530,43 @@ export const JOBS: Record<string, Handler> = {
   housekeeping,
 };
 
+/**
+ * Audit des profils (L5) : ce dont chaque tâche a besoin. Une tâche dont le module ou la capacité
+ * est éteint pour la société est sautée (passage tracé « ignorée »), au lieu d'envoyer des alertes
+ * DLC à une entreprise de BTP ou de poser des blocages de relance sans la capacité.
+ */
+export const JOB_NEEDS: Readonly<Record<string, ScreenNeeds>> = {
+  purchase_suggestions: { modules: ['stock', 'purchasing'] },
+  project_tasks_overdue: { modules: ['projects'] },
+  maintenance_due: { modules: ['maintenance'] },
+  rfq_deadline: { modules: ['purchasing'], features: ['appels_offres'] },
+  quotes_expire: { features: ['devis'] },
+  dunning_run: { features: ['relances'] },
+  crm_activities_due: { modules: ['crm'] },
+  loyalty_expire: { features: ['promotions_fidelite'] },
+  depreciation_monthly: { features: ['immobilisations'] },
+  prepaid_recognition: { features: ['charges_avance'] },
+  lots_expire: { features: ['lots', 'dlc_ddm'] },
+  dlc_alerts: { features: ['dlc_ddm'] },
+  hr_documents_due: { modules: ['employees'] },
+  reorder_points: { modules: ['stock'] },
+  cycle_counts: { modules: ['stock'] },
+};
+
+/** Besoins non remplis d'une tâche (texte), ou null si elle peut tourner. */
+async function jobBlockedBy(key: string): Promise<string | null> {
+  const needs = JOB_NEEDS[key];
+  if (!needs) return null;
+  const a = await sectorRepository.activation();
+  const ctx = {
+    moduleActive: (m: string) => resolveModuleKeys(m).some(k => a.modules.has(k as never)),
+    hasFeature: (f: string) => a.features.has(f),
+  };
+  if (needsMet(needs, ctx)) return null;
+  const missing = [...(needs.modules ?? []).filter(m => !ctx.moduleActive(m)), ...(needs.features ?? []).filter(f => !ctx.hasFeature(f))];
+  return `Ignorée : ${missing.join(', ')} inactif pour la société`;
+}
+
 /* ─── Moteur ──────────────────────────────────────────────────────────────── */
 
 /** Exécute une tâche et trace le passage. Ne lève pas : l'erreur est enregistrée. */
@@ -539,7 +578,8 @@ export async function runJob(key: string, trigger: 'auto' | 'manual' | 'external
   const started = Date.now();
   let status: 'ok' | 'error' = 'ok'; let result: JobResult = { items: 0, message: '' };
   try {
-    result = await handler();
+    const blocked = await jobBlockedBy(key);
+    result = blocked ? { items: 0, message: blocked } : await handler();
   } catch (err) {
     status = 'error';
     result = { items: 0, message: err instanceof Error ? err.message : String(err) };

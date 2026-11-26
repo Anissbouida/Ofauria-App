@@ -1,4 +1,6 @@
 import { PROCESSING_REGISTER } from '../services/personal-data.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { needsMet } from '@ofauria/shared';
 import { masterDataQualityRepository, type QualityKey } from '../repositories/master-data-quality.repository.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -40,7 +42,14 @@ export const dataController = {
     res.json({ success: true, data: items });
   },
   async status(_req: AuthRequest, res: Response) {
-    res.json({ success: true, data: { ...(await dataStatus()), entities: IMPORT_ENTITIES.map(e => ({ key: e.key, label: e.label, modes: e.modes, note: e.note ?? null })) } });
+    // Audit des profils (L5) : entités d'un module éteint (matières, fiches techniques, ordres de fabrication…) non proposées.
+    const ENTITY_NEEDS: Record<string, { modules?: string[] }> = {
+      suppliers: { modules: ['purchasing'] }, customers: { modules: ['customers'] }, ingredients: { modules: ['stock'] },
+      packaging_items: { modules: ['stock'] }, products: { modules: ['products'] }, recipes: { modules: ['recipes'] },
+      production_plans: { modules: ['production'] }, product_lots: { modules: ['production'] },
+    };
+    const ctx = await sectorRepository.needsContext();
+    res.json({ success: true, data: { ...(await dataStatus()), entities: IMPORT_ENTITIES.filter(e => needsMet(ENTITY_NEEDS[e.key], ctx)).map(e => ({ key: e.key, label: e.label, modes: e.modes, note: e.note ?? null })) } });
   },
 
   async template(req: AuthRequest, res: Response) {

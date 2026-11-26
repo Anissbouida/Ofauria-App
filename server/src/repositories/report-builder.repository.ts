@@ -1,4 +1,6 @@
 import { db } from '../config/database.js';
+import { sectorRepository } from './sector.repository.js';
+import { needsMet } from '@ofauria/shared';
 import { CF_ENTITIES, type CfEntity } from '../services/custom-fields.js';
 
 /**
@@ -239,10 +241,20 @@ export type RunConfig = {
   limit?: number;
 };
 
+/** Audit des profils (L5) : une source n'est proposée que si ses données existent pour la société. */
+const SOURCE_NEEDS: Record<string, { modules?: string[]; anyModules?: string[] }> = {
+  ventes: { anyModules: ['pos', 'sales'] }, production: { modules: ['production'] }, achats: { anyModules: ['purchasing', 'accounting'] },
+  stock: { modules: ['stock'] }, lots: { modules: ['production'] }, paie: { modules: ['employees'] },
+};
+async function sourceOn(key: string): Promise<boolean> {
+  return needsMet(SOURCE_NEEDS[key], await sectorRepository.needsContext());
+}
+
 export const reportBuilderRepository = {
   /** Catalogue des sources (métadonnées pour le constructeur) — sans les expressions SQL. */
   async listSources() {
-    const all = await Promise.all(Object.values(SOURCES).map(withCustomFields));
+    const on = await Promise.all(Object.keys(SOURCES).map(sourceOn));
+    const all = await Promise.all(Object.values(SOURCES).filter((_, i) => on[i]).map(withCustomFields));
     return all.map(s => ({
       key: s.key, label: s.label, hasDate: !!s.dateColumn,
       dimensions: s.dimensions.map(d => ({ key: d.key, label: d.label, type: d.type })),

@@ -88,6 +88,31 @@ export const ROUTE_NEEDS: ReadonlyArray<{ prefix: string; needs: ScreenNeeds }> 
   { prefix: '/reports', needs: { modules: ['reports'] } },
 ];
 
+/**
+ * Paramètres et politiques → besoins (lot L5) : un réglage n'est proposé (Paramètres, Politiques,
+ * assistant) que si ce qu'il règle existe pour la société.
+ */
+export const PARAM_NEEDS: Readonly<Record<string, ScreenNeeds>> = {
+  'sales.closure': { modules: ['unsold'] },
+  'sales.pos_stock': { modules: ['pos'], features: ['vitrine'] },
+  'sales.person_sizes': { modules: ['pos'], features: ['vitrine'] },
+  'sales.returns': { modules: ['pos'] },
+  'sales.staff_discount': { modules: ['pos'] },
+  'sales.quotes': { features: ['devis'] },
+  'sales.dunning': { features: ['relances'] },
+  'accounting.card_commission': { modules: ['pos'] },
+  'purchasing.lot_dlc_enforcement': { modules: ['stock'], features: ['lots'] },
+  'purchasing.reception_quarantine': { modules: ['stock'], features: ['quarantaine'] },
+  'purchasing.supplier_score': { features: ['evaluation_fournisseurs'] },
+  'production.showcase_time': { features: ['vitrine'] },
+  'quality.ccp_rule': { features: ['ccp_cuisson'] },
+  'quality.auto_release': { features: ['controle_qualite'] },
+  'stock.dlc_alerts': { modules: ['stock'], features: ['dlc_ddm'] },
+  'stock.negative_policy': { modules: ['stock'] },
+  'stock.low_stock_alerts': { modules: ['stock'] },
+  'stock.organization': { modules: ['stock'] },
+};
+
 export interface NeedsContext { moduleActive: (m: string) => boolean; hasFeature: (f: string) => boolean }
 
 /** Les besoins sont-ils remplis pour la société ? */

@@ -395,6 +395,15 @@ export const sectorRepository = {
     return (await this.activation()).features.has(key);
   },
 
+  /** Contexte d'évaluation des besoins (registre screen-needs) pour la société. */
+  async needsContext() {
+    const a = await this.activation();
+    return {
+      moduleActive: (m: string) => resolveModuleKeys(m).some(k => a.modules.has(k as never)),
+      hasFeature: (f: string) => a.features.has(f),
+    };
+  },
+
   /** Module actif pour la société (audit des profils) : le code lit le module, jamais le secteur. */
   async moduleOn(module: string): Promise<boolean> {
     const active = (await this.activation()).modules;

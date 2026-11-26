@@ -1,4 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -55,7 +56,9 @@ export default function ReportsOverview(p: Props) {
   const prevTo = addDays(startDate, -1);
   const prevFrom = addDays(prevTo, -(spanDays - 1));
   const { data: prevSales = [] } = useQuery({ queryKey: ['reports-sales', prevFrom, prevTo], queryFn: () => reportsApi.sales(prevFrom, prevTo) });
-  const { data: cost } = useQuery({ queryKey: ['reports-cost-summary', startDate, endDate], queryFn: () => reportsApi.costSummary(startDate, endDate) });
+  // Audit des profils (L5) : coût matière et prime cost (cibles de restauration) seulement avec la production.
+  const { moduleActive } = usePermissions();
+  const { data: cost } = useQuery({ queryKey: ['reports-cost-summary', startDate, endDate], queryFn: () => reportsApi.costSummary(startDate, endDate), enabled: moduleActive('production') });
   const { data: fin } = useQuery({ queryKey: ['reports-finance', startDate, endDate], queryFn: () => reportsApi.financeOverview(startDate, endDate) });
 
   const prev = useMemo(() => {
@@ -103,7 +106,7 @@ export default function ReportsOverview(p: Props) {
 
   // Alertes décisionnelles.
   const alerts: { tone: 'o' | 'r' | 'x'; icon: typeof AlertTriangle; text: string }[] = [];
-  if (p.d.lowStockCount > 0) alerts.push({ tone: 'o', icon: Package, text: `${ingredients} en stock bas : ${p.d.lowStockCount}` });
+  if (moduleActive('stock') && p.d.lowStockCount > 0) alerts.push({ tone: 'o', icon: Package, text: `${ingredients} en stock bas : ${p.d.lowStockCount}` });
   if (cost && cost.foodCostPct > cost.targets.foodCostPctMax) alerts.push({ tone: 'r', icon: AlertTriangle, text: `Coût matière ${pct(cost.foodCostPct)} au-dessus de la cible (${pct(cost.targets.foodCostPctMax)})` });
   if (cost && cost.primeCostPct > cost.targets.primeCostPctMax) alerts.push({ tone: 'r', icon: AlertTriangle, text: `Prime cost ${pct(cost.primeCostPct)} au-dessus de la cible (${pct(cost.targets.primeCostPctMax)})` });
   if (fin && fin.pipeline.uncashedChecks.overdue > 0) alerts.push({ tone: 'r', icon: Wallet, text: `Chèques échus non encaissés : ${dh(fin.pipeline.uncashedChecks.overdue)}` });

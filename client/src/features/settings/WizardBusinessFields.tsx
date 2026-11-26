@@ -6,7 +6,7 @@ import { settingsApi } from '../../api/settings.api';
 import { BASE_CURRENCY } from '../../api/currencies.api';
 import { currencySymbol } from '../../utils/money';
 import { Briefcase, Check, Download, Upload, ChefHat, Cross, Factory, Hammer, Info, Layers, LayoutGrid, Lightbulb, Lock, Package, Plus, Shirt, ShoppingCart, Sprout, Store, Truck, TriangleAlert, Utensils } from 'lucide-react';
-import { ACTIVATABLE_MODULES, CORE_MODULES, MODULE_GROUPS, MODULE_LABELS, requiredModules, dependentModules, effectiveModules, VOCABULARY_KEYS, WORKSPACES, TABLE_DENSITIES, parseWorkspace, parseTableDensity, type AppModule } from '@ofauria/shared';
+import { needsMet, type ScreenNeeds, ACTIVATABLE_MODULES, CORE_MODULES, MODULE_GROUPS, MODULE_LABELS, requiredModules, dependentModules, effectiveModules, VOCABULARY_KEYS, WORKSPACES, TABLE_DENSITIES, parseWorkspace, parseTableDensity, type AppModule } from '@ofauria/shared';
 import type { WizardAnswers, WizardCatalog, WizardData } from '../../api/wizard.api';
 import { Switch } from '../../components/ds/Switch';
 
@@ -281,7 +281,10 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
 
   if (step === 'operations' || step === 'rules') {
     const mods = new Set(list(draftData('modules', answers, catalog, company).selected) as AppModule[]);
-    const params = (catalog?.parameters ?? []).filter(p => p.step === step && mods.has(p.module as AppModule));
+    // Audit des profils (L5) : un réglage n'est proposé que si ses modules et capacités sont retenus dans le brouillon.
+    const draftCaps = new Set(list(draftData('modules', answers, catalog, company).features));
+    const params = (catalog?.parameters ?? []).filter(p => p.step === step && mods.has(p.module as AppModule)
+      && needsMet((p as { needs?: ScreenNeeds | null }).needs ?? undefined, { moduleActive: m => mods.has(m as AppModule), hasFeature: f => draftCaps.has(f) }));
     const orphaned = Object.keys(data).filter(key => !key.startsWith('approval:') && !params.some(p => p.fields.some(f => `${p.key}:${f.name}` === key)));
     const byModule = [...new Set(params.map(p => p.module))];
     // Le rythme propose l'horizon du plan directeur qui lui correspond (modifiable ensuite).

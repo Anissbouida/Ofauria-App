@@ -4,6 +4,7 @@ import { parameterByKey, validateParameter, PARAMETERS, type ParamDef } from './
 import { listWorkshops } from './workshops.js';
 import { withCurrency } from './currency.js';
 import { resolveConfig } from './config-resolver.js';
+import { needsMet, PARAM_NEEDS } from '@ofauria/shared';
 
 /**
  * Politiques à héritage (M1-02, mig 538).
@@ -202,7 +203,9 @@ export async function restorePolicies(client: Queryable, list: PolicyRow[], user
  * d'où elle vient, et toutes les valeurs posées avec le nom de leur niveau.
  */
 export async function listPolicies(ctx: PolicyContext = {}) {
-  const defs = policyDefinitions();
+  // Audit des profils (L5) : politiques de ce que la société n'a pas retirées de l'écran.
+  const needsCtx = await (await import('../repositories/sector.repository.js')).sectorRepository.needsContext();
+  const defs = policyDefinitions().filter(d => needsMet(PARAM_NEEDS[d.key], needsCtx));
   const [rows, stores, workshops, orderTypes] = await Promise.all([
     policySnapshot(),
     db.query(`SELECT id, name FROM stores ORDER BY name`),

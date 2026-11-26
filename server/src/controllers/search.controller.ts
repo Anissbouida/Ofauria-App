@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { sectorRepository } from '../repositories/sector.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 
@@ -15,25 +16,30 @@ export const searchController = {
     const like = `%${raw.replace(/[%_]/g, m => '\\' + m)}%`;
     const PER = 6;
 
+    // Audit des profils (L5) : chaque type n'est cherché que si son module est actif (plus de liens
+    // morts vers Stock ou Produits pour une société de services) ; libellé de l'article au vocabulaire.
+    const ctx = await sectorRepository.needsContext();
+    const none = Promise.resolve({ rows: [] as Record<string, any>[] });
     const [ingredients, products, customers, suppliers] = await Promise.all([
-      db.query(
-        `SELECT id, name, unit FROM ingredients WHERE name ILIKE $1 ORDER BY name LIMIT ${PER}`, [like]),
-      db.query(
+      ctx.moduleActive('stock') ? db.query(
+        `SELECT id, name, unit FROM ingredients WHERE name ILIKE $1 ORDER BY name LIMIT ${PER}`, [like]) : none,
+      ctx.moduleActive('products') ? db.query(
         `SELECT p.id, p.name, c.name AS category FROM products p
            LEFT JOIN categories c ON c.id = p.category_id
-          WHERE p.name ILIKE $1 ORDER BY p.name LIMIT ${PER}`, [like]),
-      db.query(
+          WHERE p.name ILIKE $1 ORDER BY p.name LIMIT ${PER}`, [like]) : none,
+      ctx.moduleActive('customers') ? db.query(
         `SELECT id, company_name, first_name, last_name, phone, city FROM customers
           WHERE company_name ILIKE $1 OR first_name ILIKE $1 OR last_name ILIKE $1
-          ORDER BY COALESCE(company_name, last_name, first_name) LIMIT ${PER}`, [like]),
-      db.query(
-        `SELECT id, name, phone FROM suppliers WHERE name ILIKE $1 ORDER BY name LIMIT ${PER}`, [like]),
+          ORDER BY COALESCE(company_name, last_name, first_name) LIMIT ${PER}`, [like]) : none,
+      ctx.moduleActive('purchasing') ? db.query(
+        `SELECT id, name, phone FROM suppliers WHERE name ILIKE $1 ORDER BY name LIMIT ${PER}`, [like]) : none,
     ]);
+    const ingredientLabel = (await sectorRepository.labels((await sectorRepository.activation()).sector.code).catch(() => ({} as Record<string, string>)))['ingredient'] || 'Article';
 
     const results: { type: string; typeLabel: string; id: string; label: string; sublabel: string | null; href: string }[] = [];
 
     for (const r of ingredients.rows) {
-      results.push({ type: 'ingredient', typeLabel: 'Ingrédient', id: r.id, label: r.name, sublabel: r.unit || null, href: `/stock/${r.id}` });
+      results.push({ type: 'ingredient', typeLabel: ingredientLabel, id: r.id, label: r.name, sublabel: r.unit || null, href: `/stock/${r.id}` });
     }
     for (const r of products.rows) {
       results.push({ type: 'product', typeLabel: 'Produit', id: r.id, label: r.name, sublabel: r.category || null, href: '/products' });

@@ -5,6 +5,8 @@ import { DOMAIN_LABELS, PARAMETERS, parameterByKey, validateParameter } from '..
 import { history, lockCompanyConfiguration, readAll, write } from '../services/settings-center.js';
 import { withCurrency } from '../services/currency.js';
 import { withTransaction } from '../config/database.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { needsMet, PARAM_NEEDS } from '@ofauria/shared';
 
 /** Paramètres métier (Paramètres › Paramètres métier, lot 4). */
 export const parametersController = {
@@ -14,7 +16,10 @@ export const parametersController = {
     const values = await readAll(origins);
     // Une politique dont le niveau société est une colonne historique (companyColumns) se
     // règle sur son écran d'origine et dans Production › Politiques, pas ici.
-    const visible = PARAMETERS.filter(p => access.canView(p.section) && !(p.storage.kind === 'policy' && !(p.scopes ?? ['company']).includes('company')));
+    // Audit des profils (L5) : un réglage de ce que la société n'a pas (caisse, lots, vitrine…) n'est pas proposé.
+    const ctx = await sectorRepository.needsContext();
+    const visible = PARAMETERS.filter(p => access.canView(p.section) && !(p.storage.kind === 'policy' && !(p.scopes ?? ['company']).includes('company'))
+      && needsMet(PARAM_NEEDS[p.key], ctx));
     const data = await Promise.all(visible.map(async p => ({
       key: p.key,
       domain: p.domain,

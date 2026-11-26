@@ -1,4 +1,6 @@
 import type { Response } from 'express';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { needsMet } from '@ofauria/shared';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
@@ -107,7 +109,16 @@ export const documentsNotificationsController = {
          LEFT JOIN (SELECT type, count(*) AS sent, array_agg(DISTINCT target_role) AS roles
                       FROM notifications WHERE created_at > now() - interval '30 days' GROUP BY type) s ON s.type = r.type
         ORDER BY r.domain, r.label`);
-    res.json({ success: true, data: r.rows });
+    // Audit des profils (L5) : règles d'un domaine que la société n'a pas (production, réassort,
+    // stock frigo…) retirées de la liste.
+    const DOMAIN_NEEDS: Record<string, { modules?: string[]; anyModules?: string[]; features?: string[] }> = {
+      crm: { modules: ['crm'] }, maintenance: { modules: ['maintenance'] }, production: { modules: ['production'] },
+      products: { modules: ['products'] }, projects: { modules: ['projects'] }, purchasing: { modules: ['purchasing'] },
+      quality: { modules: ['controle'] }, quotes: { features: ['devis'] }, replenishment: { modules: ['replenishment'] },
+      sales: { modules: ['sales'] }, sav: { modules: ['customers'] }, stock: { modules: ['stock'] },
+    };
+    const ctx = await sectorRepository.needsContext();
+    res.json({ success: true, data: r.rows.filter(x => needsMet(DOMAIN_NEEDS[x.domain as string], ctx)) });
   },
 
   async updateNotificationRule(req: AuthRequest, res: Response) {

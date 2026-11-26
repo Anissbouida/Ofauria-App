@@ -60,7 +60,9 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, staleTime: 0,
   });
-  const checks = useMemo(() => data?.checks ?? [], [data]);
+  // Audit des profils (L5) : un point de mise en service sur une page masquée (module éteint : caisse,
+  // production…) ne compte pas — sinon la jauge restait bloquée par un point requis introuvable.
+  const checks = useMemo(() => (data?.checks ?? []).filter(c => c.page === 'users' || pages.some(p => p.key === (LEGACY_PAGES[c.page] ?? c.page))), [data, pages]);
 
   // Un point essentiel est acquis dès qu'il n'est plus « à faire » : une
   // recommandation restante (warn) ne bloque pas l'avancement.
