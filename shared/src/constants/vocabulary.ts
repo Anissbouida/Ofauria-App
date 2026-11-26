@@ -32,6 +32,10 @@ export const VOCABULARY_KEYS: VocabularyKey[] = [
   { key: 'reserve_zone', group: 'Matières', designates: 'Réserve des contenants fermés', fallback: 'Économat' },
   { key: 'doc_bon_sortie', group: 'Documents', designates: 'Titre du bon de sortie des matières', fallback: 'Bon de sortie ingrédients' },
   { key: 'doc_fiche_production', group: 'Documents', designates: 'Titre de la fiche de suivi de fabrication', fallback: 'Fiche de production' },
+  // Feuille de route, phase 6 (mig 717) : modules dont le nom dépend du métier.
+  { key: 'projects', group: 'Navigation', designates: 'Module des projets (chantiers, contrats…)', fallback: 'Projets' },
+  { key: 'project', group: 'Navigation', designates: 'Un projet (singulier)', fallback: 'Projet' },
+  { key: 'maintenance', group: 'Navigation', designates: 'Module de maintenance (flotte, équipements)', fallback: 'Maintenance' },
   { key: 'notif_production_done', group: 'Notifications', designates: 'Titre de la notification de fin de fabrication', fallback: 'Production terminée' },
 ];
 

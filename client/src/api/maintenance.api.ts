@@ -24,6 +24,8 @@ export type MaintenancePlan = {
   id: string; label: string; fixed_asset_id: string | null; customer_id: string | null; equipment_label: string | null; equipment_name: string | null;
   customer_label: string | null; serial_no: string | null; frequency_days: number; checklist: string | null; assignee_id: string | null; assignee_name: string | null;
   last_done_on: string | null; next_due_on: string; is_active: boolean; is_overdue: boolean; is_due_soon: boolean; open_count: number;
+  /** Mig 717 : entretien au compteur. */
+  meter_unit?: 'km' | 'h' | null; meter_interval?: string | null; current_meter?: string | null; next_due_meter?: string | null;
 };
 export type InterventionInput = {
   kind?: InterventionKind; priority?: Priority; title: string; fixedAssetId?: string | null; customerId?: string | null; equipmentLabel?: string | null;
@@ -36,6 +38,7 @@ export type InterventionInput = {
 export type PlanInput = {
   label: string; fixedAssetId?: string | null; customerId?: string | null; equipmentLabel?: string | null; serialNo?: string | null;
   frequencyDays: number; checklist?: string | null; assigneeId?: string | null; nextDueOn: string; isActive?: boolean;
+  meterUnit?: 'km' | 'h' | null; meterInterval?: number | null;
 };
 
 export const KIND_LABELS: Record<InterventionKind, string> = { preventive: 'Entretien préventif', corrective: 'Dépannage', installation: 'Installation', warranty: 'Garantie' };
@@ -43,6 +46,8 @@ export const STATUS_LABELS: Record<InterventionStatus, string> = { requested: '�
 export const PRIORITY_LABELS: Record<Priority, string> = { critical: 'Critique', high: 'Haute', normal: 'Normale', low: 'Basse' };
 
 export const maintenanceApi = {
+  /** Mig 717 : relevé de compteur d'un plan suivi en km ou en heures. */
+  recordMeter: (planId: string, reading: number) => api.post(`/maintenance/plans/${planId}/meter`, { reading }).then(r => r.data.data),
   list: (params: Record<string, string>): Promise<{ rows: Intervention[]; total: number; byStatus: Record<string, { count: number; overdue: number }> }> =>
     api.get('/maintenance', { params }).then(r => r.data.data),
   overview: (params: Record<string, string>): Promise<{

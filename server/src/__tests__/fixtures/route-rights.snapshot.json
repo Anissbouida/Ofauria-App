@@ -3745,6 +3745,7 @@
  "POST /maintenance/:id/status": null,
  "POST /maintenance/plans": null,
  "POST /maintenance/plans/:id/create-intervention": null,
+ "POST /maintenance/plans/:id/meter": null,
  "POST /orders": [
   "admin",
   "cashier",

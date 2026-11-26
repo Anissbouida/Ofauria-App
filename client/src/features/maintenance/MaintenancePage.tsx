@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil, type LucideIcon,
+  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil, Gauge, type LucideIcon,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,7 +21,7 @@ import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, typ
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from '../controle/KlUi';
 import { InterventionFormModal, PlanFormModal, n2, PRIORITY_TAG } from './forms';
-import { DataPanel, Drawer, EmptyState, FormField, FormFooter, KpiCard, KpiGrid, NoResultState, SectionHeader } from '../../components/ds';
+import { DataPanel, Drawer, EmptyState, FormField, FormFooter, KpiCard, KpiGrid, Modal, NoResultState, SectionHeader } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 /** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
@@ -65,7 +65,7 @@ export default function MaintenancePage() {
     { key: 'assets', label: 'Immobilisations', icon: Building2, section: 'setup', href: '/accounting?tab=immobilisations', external: true, hidden: !hasModule('accounting') },
   ];
   const { current, select } = useModuleView(views);
-  const { canEdit } = usePermissions();
+  const { canEdit, sectorLabel } = usePermissions();
   const [creating, setCreating] = useState(false);
   // « Nouveau plan » posé dans la barre (fil d'Ariane), comme « Nouvelle intervention ».
   const [planModal, setPlanModal] = useState<null | { plan?: MaintenancePlan }>(null);
@@ -73,7 +73,7 @@ export default function MaintenancePage() {
   const setOpenId = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('open', id); else n.delete('open'); setParams(n); };
 
   return (
-    <ModuleShell title="Maintenance" views={views} current={current} onSelect={select} flush
+    <ModuleShell title={sectorLabel('maintenance', 'Maintenance')} views={views} current={current} onSelect={select} flush
       actions={current?.key !== 'plans' && current?.key !== 'equipment'
         ? <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouvelle intervention</button>
         : current?.key === 'plans' && canEdit('maintenance')
@@ -234,8 +234,25 @@ function Plans({ onOpen, onEdit }: { onOpen: (id: string) => void; onEdit: (plan
   const { canEdit } = usePermissions();
   const { data: plans = [], isLoading } = useQuery({ queryKey: ['maintenance', 'plans'], queryFn: () => maintenanceApi.plans() });
   const fromPlan = useMutation({ mutationFn: (id: string) => maintenanceApi.createFromPlan(id), onSuccess: i => { qc.invalidateQueries({ queryKey: ['maintenance'] }); onOpen(i.id); }, onError: e => notify.error(apiErrorMessage(e)) });
+  // Relevé de compteur (mig 717) : véhicules et engins suivis en km ou en heures.
+  const [meterPlan, setMeterPlan] = useState<MaintenancePlan | null>(null);
+  const [meterValue, setMeterValue] = useState('');
+  const meter = useMutation({
+    mutationFn: () => maintenanceApi.recordMeter(meterPlan!.id, Number(meterValue.replace(',', '.'))),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['maintenance'] }); notify.success('Relevé enregistré'); setMeterPlan(null); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
   return (
     <>
+      {meterPlan && (
+        <Modal title={`Relever le compteur — ${meterPlan.label}`} onClose={() => setMeterPlan(null)} width={420} locked={meter.isPending}
+          footer={<FormFooter onCancel={() => setMeterPlan(null)} onSubmit={() => meter.mutate()} submitLabel="Enregistrer" disabled={!(Number(meterValue.replace(',', '.')) >= 0) || meterValue.trim() === ''} busy={meter.isPending} />}>
+          <FormField label={`Compteur (${meterPlan.meter_unit === 'h' ? 'heures' : 'km'})`} htmlFor="mnt-meter" required>
+            <input id="mnt-meter" className="ds-input" type="number" min={0} autoFocus value={meterValue} onChange={e => setMeterValue(e.target.value)} />
+          </FormField>
+          {meterPlan.next_due_meter && <p className="sal-sub">Prochain entretien à {Number(meterPlan.next_due_meter).toLocaleString('fr-FR')} {meterPlan.meter_unit}.</p>}
+        </Modal>
+      )}
       {isLoading ? <Loading /> : plans.length === 0 ? (
         <EmptyState icon={CalendarClock} title="Aucun plan d'entretien" text="Fours, chambres froides, pétrins, véhicules : définissez la fréquence de contrôle de chaque équipement. À l'échéance, l'intervention se crée d'un clic." />
       ) : (
@@ -247,7 +264,7 @@ function Plans({ onOpen, onEdit }: { onOpen: (id: string) => void; onEdit: (plan
               <td><span className="ds-strong">{pl.label}</span>{!pl.is_active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="inactif" /></span>}</td>
               <td>{pl.equipment_name}{pl.serial_no ? <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}> · {pl.serial_no}</span> : null}</td>
               <td>{pl.customer_label || <span style={{ color: 'var(--ds-muted)' }}>interne</span>}</td>
-              <td>tous les {pl.frequency_days} j</td>
+              <td>tous les {pl.frequency_days} j{pl.meter_unit && <span className="sal-sub">ou {Number(pl.meter_interval).toLocaleString('fr-FR')} {pl.meter_unit} · compteur {pl.current_meter !== null && pl.current_meter !== undefined ? `${Number(pl.current_meter).toLocaleString('fr-FR')} ${pl.meter_unit}` : 'non relevé'}</span>}</td>
               <td>{pl.last_done_on ? format(new Date(pl.last_done_on), 'd MMM yyyy', { locale: fr }) : '—'}</td>
               <td style={{ color: pl.is_overdue ? 'var(--ds-danger)' : pl.is_due_soon ? 'var(--ds-warning)' : undefined, fontWeight: pl.is_overdue ? 600 : 400 }}>{format(new Date(pl.next_due_on), 'd MMM yyyy', { locale: fr })}</td>
               <td>{pl.assignee_name || '—'}</td>
@@ -257,7 +274,10 @@ function Plans({ onOpen, onEdit }: { onOpen: (id: string) => void; onEdit: (plan
                     disabled={pl.open_count > 0 || !pl.is_active || fromPlan.isPending} onClick={() => fromPlan.mutate(pl.id)}>
                     <CalendarPlus size={12} aria-hidden="true" /> Créer l'intervention
                   </button>
-                  <RowMenu label={`Plus d'actions pour ${pl.label}`} items={[{ label: 'Modifier', icon: Pencil, onSelect: () => onEdit(pl) }]} />
+                  <RowMenu label={`Plus d'actions pour ${pl.label}`} items={[
+                    { label: 'Modifier', icon: Pencil, onSelect: () => onEdit(pl) },
+                    ...(pl.meter_unit ? [{ label: 'Relever le compteur', icon: Gauge, onSelect: () => { setMeterPlan(pl); setMeterValue(pl.current_meter ? String(Number(pl.current_meter)) : ''); } }] : []),
+                  ]} />
                 </>}
               </td>
             </tr>

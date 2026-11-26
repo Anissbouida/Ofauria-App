@@ -39,7 +39,7 @@ const PAGE_LEADS: Record<string, string> = {
 };
 
 export default function ProjectsPage() {
-  const { hasModule } = usePermissions();
+  const { hasModule, sectorLabel } = usePermissions();
   const views: ModuleView<View>[] = [
     { key: 'overview', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard' },
     { key: 'projects', label: 'Projets', icon: FolderKanban, section: 'operations' },
@@ -54,7 +54,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
 
   return (
-    <ModuleShell title="Projets" views={views} current={current} onSelect={select} flush
+    <ModuleShell title={sectorLabel('projects', 'Projets')} views={views} current={current} onSelect={select} flush
       actions={(current?.key === 'projects' || current?.key === 'overview') ? (
         <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouveau projet</button>
       ) : undefined}>

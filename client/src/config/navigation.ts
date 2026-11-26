@@ -170,7 +170,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Libelle affiche : MODULE_LABELS, sauf override explicite. */
 /** Modules dont le nom dépend du métier : clé de vocabulaire par secteur (mig 495/514). */
-const SECTOR_LABEL_KEYS: Partial<Record<AppModule, string>> = { production: 'production', recipes: 'recipes' };
+const SECTOR_LABEL_KEYS: Partial<Record<AppModule, string>> = { production: 'production', recipes: 'recipes', projects: 'projects', maintenance: 'maintenance' };
 
 /**
  * Libellé d'une entrée de menu ; `sectorLabel` (PermissionsContext) l'adapte au secteur.

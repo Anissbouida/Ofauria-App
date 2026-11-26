@@ -46,8 +46,12 @@ const SELECT = `
 const PLAN_SELECT = `
   SELECT pl.*, COALESCE(fa.label, pl.equipment_label) AS equipment_name, ${CUSTOMER_LABEL('cu')} AS customer_label,
          ${NAME('e')} AS assignee_name,
-         (pl.is_active AND pl.next_due_on < CURRENT_DATE) AS is_overdue,
-         (pl.is_active AND pl.next_due_on <= CURRENT_DATE + 7) AS is_due_soon,
+         -- Mig 717 : échéance au compteur (km, heures) en plus de la date.
+         (pl.is_active AND (pl.next_due_on < CURRENT_DATE
+            OR (pl.meter_interval IS NOT NULL AND pl.current_meter >= COALESCE(pl.last_service_meter, 0) + pl.meter_interval))) AS is_overdue,
+         (pl.is_active AND (pl.next_due_on <= CURRENT_DATE + 7
+            OR (pl.meter_interval IS NOT NULL AND pl.current_meter >= COALESCE(pl.last_service_meter, 0) + pl.meter_interval * 0.9))) AS is_due_soon,
+         CASE WHEN pl.meter_interval IS NOT NULL THEN COALESCE(pl.last_service_meter, 0) + pl.meter_interval END AS next_due_meter,
          (SELECT COUNT(*)::int FROM maintenance_interventions x WHERE x.plan_id = pl.id AND x.status IN ('requested', 'scheduled', 'in_progress')) AS open_count
     FROM maintenance_plans pl
     LEFT JOIN fixed_assets fa ON fa.id = pl.fixed_asset_id
@@ -63,6 +67,8 @@ export type InterventionInput = {
 export type PlanInput = {
   label: string; fixedAssetId?: string | null; customerId?: string | null; equipmentLabel?: string | null; serialNo?: string | null;
   frequencyDays: number; checklist?: string | null; assigneeId?: string | null; nextDueOn: string; isActive?: boolean;
+  /** Mig 717 : entretien tous les N km ou N heures. */
+  meterUnit?: 'km' | 'h' | null; meterInterval?: number | null;
 };
 
 async function addEvent(runner: { query: typeof db.query }, id: string, p: { type: string; from?: string | null; to?: string | null; note?: string | null; userId: string }) {
@@ -240,7 +246,8 @@ export const maintenanceRepository = {
     await addEvent(db, id, { type: 'status', from, to, note: p.note ?? null, userId: p.userId });
     if (to === 'done' && row.plan_id) {
       await db.query(
-        `UPDATE maintenance_plans SET last_done_on = CURRENT_DATE, next_due_on = CURRENT_DATE + frequency_days WHERE id = $1`,
+        `UPDATE maintenance_plans SET last_done_on = CURRENT_DATE, next_due_on = CURRENT_DATE + frequency_days,
+                last_service_meter = COALESCE(current_meter, last_service_meter) WHERE id = $1`,
         [row.plan_id],
       );
     }
@@ -278,19 +285,35 @@ export const maintenanceRepository = {
     if (input.id) {
       await db.query(
         `UPDATE maintenance_plans SET label = $2, fixed_asset_id = $3, customer_id = $4, equipment_label = $5, serial_no = $6, frequency_days = $7,
-                checklist = $8, assignee_id = $9, next_due_on = $10, is_active = $11 WHERE id = $1`,
+                checklist = $8, assignee_id = $9, next_due_on = $10, is_active = $11, meter_unit = $12, meter_interval = $13 WHERE id = $1`,
         [input.id, input.label.trim(), input.fixedAssetId ?? null, input.customerId ?? null, input.equipmentLabel?.trim() || null,
-         input.serialNo?.trim() || null, input.frequencyDays, input.checklist?.trim() || null, input.assigneeId ?? null, input.nextDueOn, input.isActive ?? true],
+         input.serialNo?.trim() || null, input.frequencyDays, input.checklist?.trim() || null, input.assigneeId ?? null, input.nextDueOn, input.isActive ?? true,
+         input.meterInterval ? input.meterUnit ?? null : null, input.meterUnit ? input.meterInterval ?? null : null],
       );
       return this.findPlan(input.id);
     }
     const r = await db.query(
-      `INSERT INTO maintenance_plans (store_id, label, fixed_asset_id, customer_id, equipment_label, serial_no, frequency_days, checklist, assignee_id, next_due_on, is_active, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      `INSERT INTO maintenance_plans (store_id, label, fixed_asset_id, customer_id, equipment_label, serial_no, frequency_days, checklist, assignee_id, next_due_on, is_active, created_by, meter_unit, meter_interval)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
       [ctx.storeId, input.label.trim(), input.fixedAssetId ?? null, input.customerId ?? null, input.equipmentLabel?.trim() || null,
-       input.serialNo?.trim() || null, input.frequencyDays, input.checklist?.trim() || null, input.assigneeId ?? null, input.nextDueOn, input.isActive ?? true, ctx.userId],
+       input.serialNo?.trim() || null, input.frequencyDays, input.checklist?.trim() || null, input.assigneeId ?? null, input.nextDueOn, input.isActive ?? true, ctx.userId,
+       input.meterInterval ? input.meterUnit ?? null : null, input.meterUnit ? input.meterInterval ?? null : null],
     );
     return this.findPlan(r.rows[0].id);
+  },
+
+  /** Relevé de compteur (mig 717) : jamais en dessous du dernier relevé. */
+  async recordMeter(planId: string, reading: number, userId: string) {
+    const plan = await this.findPlan(planId);
+    if (!plan) return null;
+    if (!plan.meter_unit) throw Object.assign(new Error('Ce plan n’est pas suivi au compteur'), { statusCode: 400 });
+    if (plan.current_meter !== null && reading < Number(plan.current_meter)) {
+      throw Object.assign(new Error(`Le compteur ne peut pas reculer (dernier relevé : ${Number(plan.current_meter)} ${plan.meter_unit})`), { statusCode: 400 });
+    }
+    await db.query(`INSERT INTO maintenance_meter_readings (plan_id, reading, recorded_by) VALUES ($1, $2, $3)`, [planId, reading, userId]);
+    await db.query(`UPDATE maintenance_plans SET current_meter = $2, current_meter_at = now(),
+                           last_service_meter = COALESCE(last_service_meter, $2) WHERE id = $1`, [planId, reading]);
+    return this.findPlan(planId);
   },
 
   /** Crée l'intervention préventive d'un plan (une seule ouverte à la fois). */

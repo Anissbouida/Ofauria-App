@@ -37,7 +37,10 @@ const hasEquipment = (b: { fixedAssetId?: string | null; equipmentLabel?: string
 const planBody = z.object({
   label: text(200).min(1), ...equipment, frequencyDays: z.coerce.number().int().min(1).max(3660), checklist: text(4000).nullish(),
   assigneeId: uuid.nullish(), nextDueOn: isoDate, isActive: z.boolean().optional(),
-}).refine(hasEquipment, { message: 'Équipement requis (immobilisation ou libellé)' });
+  meterUnit: z.enum(['km', 'h']).nullish(), meterInterval: z.coerce.number().positive().max(10_000_000).nullish(),
+}).refine(hasEquipment, { message: 'Équipement requis (immobilisation ou libellé)' })
+  .refine(p => !p.meterUnit === !p.meterInterval, { message: 'Compteur : unité et intervalle vont ensemble' });
+const meterBody = z.object({ reading: z.coerce.number().min(0).max(100_000_000) });
 
 const storeOf = (req: AuthRequest) => (req.user!.role === 'admin' ? undefined : req.user!.storeId);
 const ctx = (req: AuthRequest) => ({ userId: req.user!.userId, storeId: req.user!.storeId ?? null });
@@ -96,6 +99,14 @@ maintenanceRouter.put('/plans/:id', ...EDIT, asyncHandler(async (req: AuthReques
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   if (!(await repo.findPlan(req.params.id))) { notFound(res, 'Plan introuvable'); return; }
   ok(res, await repo.savePlan({ ...r.data, id: req.params.id }, ctx(req)));
+}));
+maintenanceRouter.post('/plans/:id/meter', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  const r = meterBody.safeParse(req.body);
+  if (!r.success) { bad(res, 'Relevé attendu (nombre positif)'); return; }
+  const data = await repo.recordMeter(req.params.id, r.data.reading, req.user!.userId);
+  if (!data) { notFound(res, 'Plan introuvable'); return; }
+  ok(res, data);
 }));
 maintenanceRouter.post('/plans/:id/create-intervention', ...CREATE, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }

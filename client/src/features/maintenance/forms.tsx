@@ -177,6 +177,7 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
     label: plan?.label ?? '', fixedAssetId: plan?.fixed_asset_id ?? null, customerId: plan?.customer_id ?? null, customerName: plan?.customer_label ?? '',
     equipmentLabel: plan?.equipment_label ?? '', serialNo: plan?.serial_no ?? '', frequencyDays: plan?.frequency_days ?? 30,
     checklist: plan?.checklist ?? '', assigneeId: plan?.assignee_id ?? '', nextDueOn: plan?.next_due_on?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'), isActive: plan?.is_active ?? true,
+    meterUnit: (plan?.meter_unit ?? '') as '' | 'km' | 'h', meterInterval: plan?.meter_interval ? String(Number(plan.meter_interval)) : '',
   });
   const set = (p: Partial<typeof f>) => setF(s => ({ ...s, ...p }));
   const save = useMutation({
@@ -184,6 +185,7 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
       const body: PlanInput = {
         label: f.label.trim(), fixedAssetId: f.fixedAssetId, customerId: f.customerId, equipmentLabel: f.equipmentLabel.trim() || null, serialNo: f.serialNo.trim() || null,
         frequencyDays: Number(f.frequencyDays), checklist: f.checklist.trim() || null, assigneeId: f.assigneeId || null, nextDueOn: f.nextDueOn, isActive: f.isActive,
+        meterUnit: f.meterUnit && Number(f.meterInterval) > 0 ? f.meterUnit : null, meterInterval: f.meterUnit && Number(f.meterInterval) > 0 ? Number(f.meterInterval) : null,
       };
       return maintenanceApi.savePlan(body, plan?.id);
     },
@@ -199,6 +201,14 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <FormField label="Tous les (jours)" htmlFor="mnt-f8" required><input id="mnt-f8" className="ds-input" type="number" min="1" max="3660" value={f.frequencyDays} onChange={e => set({ frequencyDays: Number(e.target.value) })} /></FormField>
         <FormField label="Prochaine échéance" htmlFor="mnt-f9" required><input id="mnt-f9" className="ds-input" type="date" value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></FormField>
+        <FormField label="Ou au compteur (véhicule, engin)" htmlFor="mnt-fm">
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input id="mnt-fm" className="ds-input" type="number" min="1" placeholder="Tous les…" aria-label="Intervalle au compteur" value={f.meterInterval} onChange={e => set({ meterInterval: e.target.value })} />
+            <select className="ds-input" aria-label="Unité du compteur" value={f.meterUnit} onChange={e => set({ meterUnit: e.target.value as '' | 'km' | 'h' })} style={{ width: 90 }}>
+              <option value="">—</option><option value="km">km</option><option value="h">heures</option>
+            </select>
+          </div>
+        </FormField>
         <div>
           <span style={label}>Intervenant habituel</span>
           <SearchSelect value={f.assigneeId} onChange={v => set({ assigneeId: v })}

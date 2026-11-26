@@ -52,3 +52,39 @@ describe.skipIf(!hasTestDb)('Grilles tarifaires du transport', () => {
     await expect(repo.price({ basis: 'pallet', quantity: 3, originZone: `Casa-${RUN}` })).rejects.toThrow(/Aucune grille/);
   });
 });
+
+describe.skipIf(!hasTestDb)('Flotte : entretien au compteur (mig 717)', () => {
+  let fx: Fixtures;
+  let planId = '';
+  let repo: typeof import('../../repositories/maintenance.repository.js').maintenanceRepository;
+
+  beforeAll(async () => {
+    fx = await createBaseFixtures();
+    repo = (await import('../../repositories/maintenance.repository.js')).maintenanceRepository;
+    const far = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+    planId = (await repo.savePlan({ label: `Vidange ${RUN}`, equipmentLabel: 'Camion 12 t', frequencyDays: 365, nextDueOn: far, meterUnit: 'km', meterInterval: 15000 },
+      { userId: fx.userId, storeId: fx.storeId })).id;
+  });
+
+  afterAll(async () => {
+    const p = testPool();
+    await p.query(`DELETE FROM maintenance_interventions WHERE plan_id = $1`, [planId]);
+    await p.query(`DELETE FROM maintenance_plans WHERE id = $1`, [planId]);
+    await cleanupFixtures(fx);
+  });
+
+  it('le premier relevé fixe la base ; l’échéance tombe à base + intervalle', async () => {
+    let pl = await repo.recordMeter(planId, 100000, fx.userId);
+    expect(Number(pl.next_due_meter)).toBe(115000);
+    expect(pl.is_overdue).toBe(false);
+    pl = await repo.recordMeter(planId, 113800, fx.userId);
+    expect(pl.is_due_soon).toBe(true);
+    expect(pl.is_overdue).toBe(false);
+    pl = await repo.recordMeter(planId, 115200, fx.userId);
+    expect(pl.is_overdue).toBe(true);
+  });
+
+  it('le compteur ne recule pas', async () => {
+    await expect(repo.recordMeter(planId, 90000, fx.userId)).rejects.toThrow(/reculer/);
+  });
+});
