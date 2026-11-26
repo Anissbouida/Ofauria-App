@@ -1,3 +1,5 @@
+import { rolesApi } from '../../api/users.api';
+import { useQuery } from '@tanstack/react-query';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -16,6 +18,10 @@ import { LanguageMenu } from './LanguageSwitcher';
 import InterfacePreferenceMenu from './InterfacePreferenceMenu';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
+  // Audit des profils (R1) : libellé du rôle lu dans la table des rôles (« Vendeur », « Opérateur de
+  // production »… selon le métier), pas dans les libellés historiques de la boulangerie.
+  const { data: roleRows = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false, staleTime: 300_000 });
+  const roleLabel = (code: string) => (roleRows as { code: string; label: string }[]).find(r => r.code === code)?.label || ROLE_LABELS[code as Role] || code;
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const navigate = useNavigate();
@@ -86,7 +92,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
               <p className="font-semibold text-sm">{user?.firstName} {user?.lastName}</p>
               <p className="text-xs text-gray-500"><bdi>{user?.email}</bdi></p>
               <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                {user?.role ? ROLE_LABELS[user.role as Role] || user.role : ''}
+                {user?.role ? roleLabel(user.role) : ''}
               </span>
             </div>
             {/* Espace employe : bulletins, conges, avances (si le compte est lie a une fiche). */}

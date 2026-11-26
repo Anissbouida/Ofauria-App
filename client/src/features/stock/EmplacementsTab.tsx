@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Plus, Pencil, Trash2, Thermometer, X, Snowflake, Package, Loader2 } from 'lucide-react';
@@ -34,6 +35,10 @@ const emptyForm: StockLocationInput = {
 };
 
 export default function EmplacementsTab() {
+  // Audit des profils (R1) : sondes et températures avec HACCP / relevés ; enceintes lues seulement
+  // avec la production (sinon 403) ; rôles proposés selon les modules et capacités.
+  const { moduleActive, hasFeature } = usePermissions();
+  const coldOn = hasFeature('haccp') || hasFeature('releves_temperature');
   const qc = useQueryClient();
   const types = useReferentiel('stock_location_types');
   const typeLabel = (code: string) => types.map[code]?.label ?? TYPE_LABELS[code] ?? code;
@@ -48,6 +53,7 @@ export default function EmplacementsTab() {
   const { data: equipements = [] } = useQuery<Equipement[]>({
     queryKey: ['production-equipements'],
     queryFn: () => productionCoutApi.listEquipements(),
+    enabled: coldOn && (moduleActive('production') || moduleActive('recipes')),
   });
 
   const saveMut = useMutation({
@@ -89,9 +95,9 @@ export default function EmplacementsTab() {
         <table className="odoo-table">
           <thead>
             <tr>
-              <th>Code</th><th>Nom</th><th>Type</th><th>Rôle</th><th>Sonde / enceinte</th>
-              <th>Plage de température (°C)</th><th className="ds-num">Capacité</th><th>Emplacement parent</th>
-              <th className="ds-num">Lots</th><th className="ds-actions">Actions</th>
+              <th>Code</th><th>Nom</th><th>Type</th><th>Rôle</th>{coldOn && <th>Sonde / enceinte</th>}
+              {coldOn && <th>Plage de température (°C)</th>}<th className="ds-num">Capacité</th><th>Emplacement parent</th>
+              {hasFeature('lots') && <th className="ds-num">Lots</th>}<th className="ds-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -105,15 +111,15 @@ export default function EmplacementsTab() {
                   <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{typeLabel(l.type)}</span></td>
                   <td>{l.role ? (STOCK_LOCATION_ROLES as Record<string, { label: string }>)[l.role]?.label ?? l.role : '—'}
                     {l.role_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }} title="Emplacement utilisé par défaut pour ce rôle">Par défaut</span>}</td>
-                  <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>
-                  <td className="tabular-nums">
+                  {coldOn && <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>}
+                  {coldOn && <td className="tabular-nums">
                     {tMin != null || tMax != null ? (
                       <span className="inline-flex items-center gap-1"><Thermometer size={11} className="text-orange-500" />{tMin ?? '?'} / {tMax ?? '?'}{inherited && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>hérité</span>}</span>
                     ) : '—'}
-                  </td>
+                  </td>}
                   <td className="ds-num">{l.capacite_valeur != null ? `${parseFloat(String(l.capacite_valeur))} ${l.capacite_unite ?? ''}` : '—'}</td>
                   <td className="text-gray-500">{l.parent_code ? `${l.parent_code} — ${l.parent_name}` : '—'}</td>
-                  <td className="tabular-nums ds-num">{l.lot_count > 0 ? <span className="inline-flex items-center gap-1"><Package size={11} className="text-gray-400" />{l.lot_count}</span> : '—'}</td>
+                  {hasFeature('lots') && <td className="tabular-nums ds-num">{l.lot_count > 0 ? <span className="inline-flex items-center gap-1"><Package size={11} className="text-gray-400" />{l.lot_count}</span> : '—'}</td>}
                   <td className="ds-actions">
                     <button type="button" onClick={() => openEdit(l)} className="odoo-btn-secondary ds-btn-sm"><Pencil size={12} aria-hidden="true" /> Modifier</button>
                     <RowMenu items={[{ label: 'Désactiver', icon: Trash2, danger: true, onSelect: () => askDeactivate(l) }]} />
@@ -148,6 +154,10 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
   onCancel: () => void;
   onSave: (data: StockLocationInput) => void;
 }) {
+  const { moduleActive, hasFeature } = usePermissions();
+  const coldOn = hasFeature('haccp') || hasFeature('releves_temperature');
+  const roleOn = (k: string) => k === 'quarantaine' ? hasFeature('quarantaine') : k === 'en_cours_ouvert' ? hasFeature('pesage')
+    : k === 'atelier' ? moduleActive('production') : k === 'chantier' ? moduleActive('projects') : k === 'quai' ? hasFeature('stock_deposant') : true;
   const [f, setF] = useState<StockLocationInput>(initial ? {
     code: initial.code, name: initial.name, type: initial.type, role: initial.role, roleDefault: initial.role_default,
     parentId: initial.parent_id, equipementId: initial.equipement_id,
@@ -185,16 +195,16 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
           {/* Étape 8 multi-industries : le rôle dit à quoi sert l'emplacement (réception, pesée, vente…). */}
           <FormField label="Rôle" htmlFor="loc-role" hint={(STOCK_LOCATION_ROLES as Record<string, { help: string }>)[f.role ?? roleOfLocationType(f.type)]?.help}>
             <select id="loc-role" value={f.role ?? roleOfLocationType(f.type)} onChange={e => set({ role: e.target.value })} className={inp}>
-              {Object.entries(STOCK_LOCATION_ROLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              {Object.entries(STOCK_LOCATION_ROLES).filter(([k]) => roleOn(k) || k === (f.role ?? roleOfLocationType(f.type))).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select></FormField>
           <label className="col-span-2" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={!!f.roleDefault} onChange={e => set({ roleDefault: e.target.checked })} />
             Emplacement par défaut pour ce rôle dans l'établissement
           </label>
-          <FormField label="Enceinte (sonde HACCP)">
+          {coldOn && <FormField label="Enceinte (sonde HACCP)">
             <SearchSelect value={f.equipementId != null ? String(f.equipementId) : ''} onChange={id => set({ equipementId: id || null })}
               placeholder="— aucune —" width="100%" size="md" ariaLabel="Enceinte (sonde HACCP)"
-              options={equipements.map(eq => ({ id: String(eq.id), label: eq.nom as string }))} /></FormField>
+              options={equipements.map(eq => ({ id: String(eq.id), label: eq.nom as string }))} /></FormField>}
           <FormField label="Emplacement parent">
             <SearchSelect value={f.parentId != null ? String(f.parentId) : ''} onChange={id => set({ parentId: id || null })}
               placeholder="— aucun —" width="100%" size="md" ariaLabel="Emplacement parent"

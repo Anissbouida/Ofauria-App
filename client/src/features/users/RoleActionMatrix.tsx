@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { LoadingPanel } from '../employees/ui';
 import { DataPanel, Toolbar, SearchBar, FormFooter, ErrorState } from '../../components/ds';
@@ -28,7 +29,9 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [previewUser, setPreviewUser] = useState('');
 
-  const cols = roles.filter(r => r.is_active || r.code === 'admin');
+  // Audit des profils (R1) : seuls les modules actifs et les rôles disponibles pour la société.
+  const { moduleActive } = usePermissions();
+  const cols = roles.filter(r => (r.is_active || r.code === 'admin') && (r as { available?: boolean }).available !== false);
   const held = (role: string) => draft[role] ?? new Set(data?.byRole[role] ?? []);
   const changed = Object.keys(draft).filter(r => {
     const a = draft[r]; const b = new Set(data?.byRole[r] ?? []);
@@ -37,7 +40,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const keys = (data?.keys ?? []).filter(k => !q || k.key.includes(q) || k.label.toLowerCase().includes(q) || moduleLabel(k.module).toLowerCase().includes(q));
+    const keys = (data?.keys ?? []).filter(k => moduleActive(k.module as never)).filter(k => !q || k.key.includes(q) || k.label.toLowerCase().includes(q) || moduleLabel(k.module).toLowerCase().includes(q));
     const by = new Map<string, typeof keys>();
     for (const k of keys) { if (!by.has(k.module)) by.set(k.module, []); by.get(k.module)!.push(k); }
     return [...by.entries()].sort((a, b) => moduleLabel(a[0]).localeCompare(moduleLabel(b[0]), 'fr'));

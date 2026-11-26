@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -91,6 +92,8 @@ export default function AgedBalanceTab() {
   const t = data?.totals;
   const concord = data ? Math.abs(data.totals.total - data.ledger_balance) < 0.005 : true;
   const isCustomers = side === 'customers';
+  // Audit des profils (R1) : les tickets « à plus tard » n'existent qu'avec la caisse.
+  const posOn = usePermissions().moduleActive('pos');
 
   return (
     <>
@@ -112,7 +115,7 @@ export default function AgedBalanceTab() {
             Total {n(t.total)} {currencySymbol()}, solde comptable {n(data.ledger_balance)} {currencySymbol()}.
           </StatusBanner>
         )}
-        {isCustomers && (
+        {isCustomers && posOn && (
           <StatusBanner tone="neutral" icon={Info} title="Tickets de caisse impayés"
             actions={<Link to="/dunning" className="odoo-btn-secondary"><BellRing size={13} /> Relances</Link>}>
             Un ticket « à plus tard » n'entre au grand livre qu'à son encaissement : il figure dans Ventes › Créances, pas ici. Les relances partent de là.

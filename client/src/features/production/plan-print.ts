@@ -36,7 +36,7 @@ export function buildTicketHtml(plan: Record<string, any>, item: Record<string, 
   const cycleVie =
     saleType === 'dlv' ? (sld ? `DLC ${sld}j` : 'Multi-jours')
     : saleType === 'commande' ? 'Sur commande'
-    : 'Vente du jour';
+    : 'Sans date limite';
   const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
   return (`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
@@ -82,7 +82,7 @@ ${on('produced_by') ? `<div class="row">
 </div>` : ''}
 ${on('expiry') ? `<div class="row">
   <span class="label">Date d'expiration</span>
-  <span class="value">${dlcDate ? format(dlcDate, 'dd/MM/yyyy') : 'Vente du jour'}</span>
+  <span class="value">${dlcDate ? format(dlcDate, 'dd/MM/yyyy') : 'Sans date limite'}</span>
 </div>` : ''}
 ${on('plan_number') ? `<div class="row">
   <span class="label">N° Ordre</span>

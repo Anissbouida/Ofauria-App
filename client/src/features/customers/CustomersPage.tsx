@@ -113,6 +113,8 @@ const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd M
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
+  // Audit des profils (R1) : fidélité seulement avec la capacité Promotions et fidélité.
+  const loyaltyOn = usePermissions().hasFeature('promotions_fidelite');
   const confirm = useConfirm();
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -307,7 +309,7 @@ export default function CustomersPage() {
         )}
 
         <KpiGrid>
-          <KpiCard label="Clients" value={String(base.length)} sub={`${totalPoints.toLocaleString('fr-FR')} points de fidélité`} />
+          <KpiCard label="Clients" value={String(base.length)} sub={loyaltyOn ? `${totalPoints.toLocaleString('fr-FR')} points de fidélité` : undefined} />
           <KpiCard label="CA cumulé" value={money(totalCa)} sub="commandes et ventes en caisse" />
           <KpiCard label="Actifs" value={String(stageStats.active.count)} sub={money(stageStats.active.ca)} />
           <KpiCard label="Dormants" value={String(stageStats.dormant.count)} sub={`aucun achat depuis ${DORMANT_DAYS} j · ${money(stageStats.dormant.ca)}`} tone={stageStats.dormant.count ? 'orange' : undefined} />
@@ -322,7 +324,7 @@ export default function CustomersPage() {
           <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher un client"
             placeholder="Nom, société, téléphone, email, ville ou ICE…" busy={isFetching && !isLoading} />
           <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={typeOptions} />
-          <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />
+          {loyaltyOn && <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />}
           <SelectFilter label="Ville" icon={MapPin} value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="Toutes" />
           {hasFilters && (
             <button type="button" onClick={resetFilters} className="ds-btn-ghost ds-btn-sm"><X size={12} /> Effacer les filtres</button>
@@ -341,7 +343,7 @@ export default function CustomersPage() {
           hasFilters || stage
             ? <NoResultState onReset={() => { resetFilters(); setStage(''); }} text="Aucun client ne correspond aux filtres." />
             : <EmptyState icon={Users} title={archivedView ? 'Aucun client archivé' : 'Aucun client'}
-                text={archivedView ? undefined : 'Les fiches clients servent aux commandes, aux factures et à la fidélité.'}
+                text={archivedView ? undefined : 'Les fiches clients servent aux commandes et aux factures.'}
                 action={archivedView ? undefined : <button type="button" onClick={openNew} className="odoo-btn-secondary ds-btn-sm"><Plus size={13} /> Nouveau client</button>} />
         ) : (
           <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
@@ -358,7 +360,7 @@ export default function CustomersPage() {
                   <th style={{ minWidth: 170 }}>Situation</th>
                   {sortableTh('last_purchase', 'Dernier achat')}
                   {sortableTh('purchases', 'Achats', 'right')}
-                  {sortableTh('loyalty_points', 'Fidélité (pts)', 'right')}
+                  {loyaltyOn && sortableTh('loyalty_points', 'Fidélité (pts)', 'right')}
                   {sortableTh('total_spent', `CA cumulé (${currencySymbol()})`, 'right')}
                   {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
                   <th className="ds-actions">Actions</th>
@@ -410,10 +412,10 @@ export default function CustomersPage() {
                         {fmtDate(c.last_purchase_at) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
                       </td>
                       <td className="ds-num">{purchasesCount(c) || <span style={muted}>—</span>}</td>
-                      <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                      {loyaltyOn && <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                         {points > 0 ? points.toLocaleString('fr-FR') : <span style={muted}>—</span>}
                         {tier && <div><span className={`odoo-tag ${tier.tag}`}>{tier.label}</span></div>}
-                      </td>
+                      </td>}
                       <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                         {spent > 0 ? <span className="ds-strong">{n(spent)}</span> : <span style={muted}>—</span>}
                       </td>
@@ -458,6 +460,8 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   onSubmit: (data: Customer, cf: CfValues | null) => void;
   isPending: boolean;
 }) {
+  // Audit des profils (R1) : allergies seulement avec la capacité Allergènes.
+  const allergensOn = usePermissions().hasFeature('allergenes');
   const cf = useCustomFieldsForm('customer', editing?.custom_fields);
   // Type de client et conditions commerciales : direction seulement (O2C L0, G-CR-04).
   const { user } = useAuth();
@@ -718,7 +722,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
       )}
 
       <FormSection title="Préférences et notes">
-        {rules.personal_fields && (
+        {rules.personal_fields && allergensOn && (
           <FormField label="Allergies / restrictions" htmlFor="cf-allergies">
             <input id="cf-allergies" name="allergies" defaultValue={editing?.allergies} className="ds-input" placeholder="Gluten, lactose, fruits à coque…" />
           </FormField>

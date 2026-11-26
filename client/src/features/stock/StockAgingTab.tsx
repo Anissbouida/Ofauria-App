@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -20,6 +21,8 @@ import { DataPanel, EmptyState, ErrorState, KpiGrid, LoadingState, NoResultState
 const qty = (n: number, unit: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 
 export default function StockAgingTab() {
+  // Audit des profils (R1) : colonne DLC avec la capacité Dates limites.
+  const dlcOn = usePermissions().hasFeature('dlc_ddm');
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['stock-aging'], queryFn: inventoryApi.aging });
   const [search, setSearch] = useState('');
   const [oldOnly, setOldOnly] = useState(false);
@@ -75,7 +78,7 @@ export default function StockAgingTab() {
               <th className="ds-num">Quantité restante</th>
               <th className="ds-num">Ancienneté (j)</th>
               <th>Réception</th>
-              <th>DLC</th>
+              {dlcOn && <th>DLC</th>}
               <th className="ds-num">Valeur</th>
             </tr>
           </thead>
@@ -94,14 +97,14 @@ export default function StockAgingTab() {
                       title={dormant ? 'Stock dormant : plus de 90 jours' : undefined}>{l.days_in_stock}</span>
                   </td>
                   <td style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>{format(new Date(l.received_at), 'dd MMM yyyy', { locale: fr })}</td>
-                  <td style={{ fontSize: '0.85rem' }}>
+                  {dlcOn && <td style={{ fontSize: '0.85rem' }}>
                     {l.expiration_date ? (
                       <span style={{ color: dlcPast ? 'var(--ds-danger)' : dlcSoon ? 'var(--ds-warning)' : 'var(--ds-muted)', fontWeight: dlcPast || dlcSoon ? 600 : 400 }}>
                         {dlcPast && <AlertTriangle size={11} style={{ display: 'inline', marginRight: 3 }} />}
                         {format(new Date(l.expiration_date), 'dd MMM yyyy', { locale: fr })}
                       </span>
                     ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                  </td>
+                  </td>}
                   <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
                 </tr>
               );

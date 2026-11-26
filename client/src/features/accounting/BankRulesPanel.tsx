@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, ListChecks } from 'lucide-react';
@@ -52,6 +53,8 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
     entryLabel: x.entryLabel || 'Commission carte',
   }));
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(x => ({ ...x, [k]: v }));
+  // Audit des profils (R1) : encaissements carte de la caisse seulement avec le Point de vente.
+  const posOn = usePermissions().moduleActive('pos');
   const options = useMemo(() => (accounts as { id: string; code: string; label: string; is_active?: boolean }[])
     .filter(a => a.is_active !== false && /^\d{4,}$/.test(a.code))
     .map(a => ({ id: a.id, label: `${a.code} — ${a.label}` })), [accounts]);
@@ -111,9 +114,9 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
               <FormField label={`Versé en trop toléré (${currencySymbol()})`} htmlFor="r-fneg"><input id="r-fneg" className="ds-input" inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></FormField>
               <FormField label="Jours avant l'opération" htmlFor="r-fdays"><input id="r-fdays" className="ds-input" inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></FormField>
             </div>
-            <label htmlFor="r-card" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+            {posOn && <label htmlFor="r-card" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
               <input id="r-card" type="checkbox" checked={f.cardOnly} onChange={e => set('cardOnly', e.target.checked)} /> Encaissements carte uniquement (ventes carte, saisie du jour, écart carte de fermeture)
-            </label>
+            </label>}
           </>
         )}
         {generates ? (

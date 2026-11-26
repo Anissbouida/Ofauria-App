@@ -400,7 +400,7 @@ export default function PlanDetailPage() {
     const cycleLabel =
       saleType === 'dlv' ? (sld ? `DLC ${sld}j` : 'Multi-jours')
       : saleType === 'commande' ? 'Sur commande'
-      : 'Vente du jour';
+      : 'Sans date limite';
     return {
       productName: String(item.product_name || ''),
       lotNumber,
@@ -966,7 +966,7 @@ export default function PlanDetailPage() {
                     {isProduced ? (
                       saleType === 'dlv' ? <span className="odoo-tag odoo-tag-green">Multi-jours (DLC)</span>
                       : saleType === 'commande' ? <span className="odoo-tag odoo-tag-blue">Sur commande</span>
-                      : <span className="odoo-tag odoo-tag-orange">Vente du jour</span>
+                      : <span className="odoo-tag odoo-tag-orange">Sans date limite</span>
                     ) : empty}
                   </td>
                   <td><StatusTag tone={statusTag.tone} icon={statusTag.icon} label={statusTag.label} /></td>

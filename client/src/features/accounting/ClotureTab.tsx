@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { Fragment, useState } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -318,6 +319,10 @@ function PeriodChecks({ periodId }: { periodId: string }) {
  * produits finis (3151 / 7132). Relancer une opération remplace la précédente.
  */
 function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean }) {
+  // Audit des profils (R1) : la valorisation du stock de produits n'existe qu'avec stock et produits.
+  const { moduleActive } = usePermissions();
+  const fgOn = moduleActive('stock') && moduleActive('products');
+  const fgLabel = moduleActive('production') ? 'Stock de produits finis' : 'Stock de marchandises';
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { data } = useQuery({ queryKey: ['ledger-period-end', periodId], queryFn: () => fiscalPeriodsApi.endOperations(periodId) });
@@ -360,9 +365,10 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
             </button>
           )}
         </div>
+        {fgOn && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ flex: 1, minWidth: 260 }}>
-            <strong>Stock de produits finis</strong> — {fgOp
+            <strong>{fgLabel}</strong> — {fgOp
               ? <>valorisé à {money(fgOp.amount)} (variation {money(fgOp.detail?.delta ?? 0)}){fgOp.detail?.products_without_cost
                   ? <span style={{ color: 'var(--ds-warning)' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
               : 'non valorisé pour cette période'}
@@ -376,6 +382,7 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );

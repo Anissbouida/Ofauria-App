@@ -610,7 +610,7 @@ export default function ProductionLaunchModal({
       const shelfLifeDays = item.shelf_life_days as number | undefined;
       const dlc = shelfLifeDays
         ? format(addDays(new Date(producedAt), shelfLifeDays), 'dd/MM/yyyy', { locale: fr })
-        : 'Vente du jour';
+        : 'Sans date limite';
 
       return (
         <div
@@ -1747,7 +1747,7 @@ export default function ProductionLaunchModal({
     const shelfLifeDays = item.shelf_life_days as number | undefined;
     const dlc = shelfLifeDays
       ? format(addDays(new Date(producedAt), shelfLifeDays), 'dd/MM/yyyy', { locale: fr })
-      : 'Vente du jour';
+      : 'Sans date limite';
     const hasLoss = actual < planned;
     const isAlreadyStarted = (item.status as string) === 'in_progress';
 
@@ -2267,7 +2267,7 @@ export default function ProductionLaunchModal({
                   <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm">
                     <Package size={16} className="text-blue-600" />
                     <span className="text-blue-800">
-                      <strong>Quantité a produire : {planned}</strong> — {dlc !== 'Vente du jour' ? `DLC : ${dlc}` : 'Vente du jour'}
+                      <strong>Quantité a produire : {planned}</strong> — {dlc !== 'Sans date limite' ? `DLC : ${dlc}` : 'Sans date limite'}
                     </span>
                   </div>
 

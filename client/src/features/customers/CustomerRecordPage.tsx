@@ -194,7 +194,7 @@ export default function CustomerRecordPage() {
         )}
         {situation && <ListKpi label="Échu" value={`${money(situation.overdue, { decimals: 0 })}`} sub={situation.overdue > 0 ? `plus ancien retard ${situation.maxDaysLate} j` : 'rien d\'échu'} tone={situation.overdue > 0 ? 'red' : undefined} />}
         {situation && moral && <ListKpi label="Conditions de paiement" value={situation.paymentTermDays ? `${situation.paymentTermDays} j` : 'Comptant'} sub={c.billing_frequency === 'per_delivery' ? 'facture à chaque livraison' : 'facture mensuelle (BL regroupés)'} />}
-        <ListKpi label="Fidélité" value={`${n0(num(c.loyalty_points))} pts`} sub={loyalty?.tier ? `niveau ${loyalty.tier.label}${loyalty.value ? ` · ${money(loyalty.value, { decimals: 0 })} de remise` : ''}` : 'aucun niveau'} />
+        {hasFeature('promotions_fidelite') && <ListKpi label="Fidélité" value={`${n0(num(c.loyalty_points))} pts`} sub={loyalty?.tier ? `niveau ${loyalty.tier.label}${loyalty.value ? ` · ${money(loyalty.value, { decimals: 0 })} de remise` : ''}` : 'aucun niveau'} />}
       </section>
 
       <div className="prj-columns">
@@ -315,7 +315,7 @@ export default function CustomerRecordPage() {
               {c.remise_pct && <><dt>Remise</dt><dd>{num(c.remise_pct)} %</dd></>}
               {moral && <><dt>TVA</dt><dd>{c.tva_exonere ? 'Exonérée' : 'Assujettie'}</dd></>}
               {customerBehaviors(type).personal_fields && c.birthday && <><dt>Naissance</dt><dd>{day(c.birthday, 'd MMMM yyyy')}</dd></>}
-              {customerBehaviors(type).personal_fields && c.allergies && <><dt>Allergies</dt><dd>{c.allergies}</dd></>}
+              {customerBehaviors(type).personal_fields && hasFeature('allergenes') && c.allergies && <><dt>Allergies</dt><dd>{c.allergies}</dd></>}
             </dl>
           </section>
 

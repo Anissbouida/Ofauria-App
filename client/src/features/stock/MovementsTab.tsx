@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +34,9 @@ const qty = (n: number | null, unit: string | null) => (n === null ? '—' : `${
 const when = (d: string) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export default function MovementsTab() {
+  // Audit des profils (R1) : bons de sortie avec la production, écarts de pesée avec la pesée.
+  const { moduleActive, hasFeature } = usePermissions();
+  const bonsOn = moduleActive('production'), pesageOn = hasFeature('pesage');
   const navigate = useNavigate();
   const [type, setType] = useState('');
   const { data = [], isLoading, isError, error, refetch } = useQuery({
@@ -68,10 +72,10 @@ export default function MovementsTab() {
   return (
     <>
       <KpiGrid label="Chiffres clés des mouvements">
-        <KpiCard label="Bons de sortie à préparer" value={String(kpi.toPrepare)} sub="Demandes reçues et en pesée" tone={kpi.toPrepare ? 'orange' : undefined} onClick={() => setType('bon_sortie')} />
-        <KpiCard label="Prêts à remettre" value={String(kpi.ready)} sub="Attente du chef" onClick={() => setType('bon_sortie')} />
+        {bonsOn && <KpiCard label="Bons de sortie à préparer" value={String(kpi.toPrepare)} sub="Demandes reçues et en pesée" tone={kpi.toPrepare ? 'orange' : undefined} onClick={() => setType('bon_sortie')} />}
+        {bonsOn && <KpiCard label="Prêts à remettre" value={String(kpi.ready)} sub="Attente du chef" onClick={() => setType('bon_sortie')} />}
         <KpiCard label="Mouvements aujourd'hui" value={String(kpi.today)} sub={kpi.losses ? `dont ${kpi.losses} perte${kpi.losses > 1 ? 's' : ''}` : 'sur 30 jours affichés'} />
-        <KpiCard label="Écarts de pesée motivés" value={String(kpi.deviations)} sub="Sur les bons affichés" tone={kpi.deviations ? 'orange' : undefined} />
+        {bonsOn && pesageOn && <KpiCard label="Écarts de pesée motivés" value={String(kpi.deviations)} sub="Sur les bons affichés" tone={kpi.deviations ? 'orange' : undefined} />}
       </KpiGrid>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }} role="group" aria-label="Filtrer par type de mouvement">
         <button type="button" className={type === '' ? 'odoo-btn-primary ds-btn-sm' : 'odoo-btn-secondary ds-btn-sm'} aria-pressed={type === ''} onClick={() => setType('')}>Tous · {data.length}</button>

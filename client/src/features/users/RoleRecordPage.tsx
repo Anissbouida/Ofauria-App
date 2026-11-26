@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -460,6 +461,7 @@ function AssignRoleModal({ role, memberIds, onClose, onDone }: { role: RoleRow; 
 
 /* ── Contrôles et rattachements ── */
 function ControlsTab({ role }: { role: RoleRow }) {
+  const productionOn = usePermissions().moduleActive('production');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -534,11 +536,11 @@ function ControlsTab({ role }: { role: RoleRow }) {
                 <td>{profile.approvalSteps.length ? profile.approvalSteps.map(s => `${s.ruleLabel} (${docLabel(s.docType)}, étape ${s.stepOrder})${s.enabled ? '' : ' · désactivé'}`).join(' · ') : muted('Aucun')}</td>
                 <td className="ds-actions"><button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => navigate('/settings?page=approvals')}>Ouvrir <ExternalLink size={12} aria-hidden="true" /></button></td>
               </tr>
-              <tr>
+              {productionOn && <tr>
                 <td className="ds-strong">Ateliers de production</td>
                 <td>{profile.workshops.length ? profile.workshops.map(w => w.label).join(', ') : muted('Aucun')}</td>
                 <td className="ds-actions"><button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => navigate('/settings?page=production')}>Ouvrir <ExternalLink size={12} aria-hidden="true" /></button></td>
-              </tr>
+              </tr>}
               <tr>
                 <td className="ds-strong">Écrans personnalisés</td>
                 <td>{screens.length ? `${screens.join(', ')} (publié${screens.length > 1 ? 's' : ''} pour ce rôle)` : muted('Aucun')}</td>
@@ -574,7 +576,9 @@ function IdentityTab({ role, roles }: { role: RoleRow; roles: RoleRow[] }) {
   const [home, setHome] = useState(role.home_route ?? '');
   const [duplicating, setDuplicating] = useState(false);
   useEffect(() => { setLabel(role.label); setDescription(role.description ?? ''); setBaseRole(role.base_role); setHome(role.home_route ?? ''); }, [role]);
-  const homeChoices = NAV_ITEMS.filter(i => i.href !== '/').map(i => ({ href: i.href, label: navLabel(i) }))
+  // Audit des profils (R1) : pages d'accueil des seuls modules actifs.
+  const { moduleActive } = usePermissions();
+  const homeChoices = NAV_ITEMS.filter(i => i.href !== '/' && moduleActive(i.module)).map(i => ({ href: i.href, label: navLabel(i) }))
     .filter((x, i, a) => a.findIndex(y => y.href === x.href) === i).sort((a, b) => a.label.localeCompare(b.label));
   const dirty = label.trim() !== role.label || (description.trim() || null) !== (role.description ?? null)
     || (!role.is_system && baseRole !== role.base_role) || (home || null) !== (role.home_route ?? null);

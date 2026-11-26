@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Workflow } from 'lucide-react';
@@ -25,6 +26,7 @@ type Draft = ProductionOrderTypeInput & { id?: string };
 const yesNo = (v: boolean) => (v ? 'Oui' : 'Non');
 
 export default function ProductionOrderTypesPanel() {
+  const pesageOn = usePermissions().hasFeature('pesage');
   const qc = useQueryClient();
   const { user } = useAuth();
   const canEdit = !!user && ['admin', 'manager'].includes(user.role);
@@ -82,7 +84,8 @@ export default function ProductionOrderTypesPanel() {
       {canEdit && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button type="button" className="odoo-btn-primary" onClick={() => setDraft({
-            code: '', label: '', requiresBonSortie: true, requiresWeighing: true, requiresQualityCheck: false,
+            // Audit des profils (R1) : pesée exigée par défaut seulement avec la capacité Pesée.
+            code: '', label: '', requiresBonSortie: true, requiresWeighing: pesageOn, requiresQualityCheck: false,
             consumptionMode: 'au_bon_de_sortie', isActive: true, isDefault: false,
           })}>
             <Plus size={14} aria-hidden="true" /> Nouveau type
