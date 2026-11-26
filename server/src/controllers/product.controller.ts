@@ -196,7 +196,8 @@ export const productController = {
     // Cycle de vie (audit P1.1/P1.2) : le validator a coerce les types.
     // On applique la purge sur type=commande ici pour ne rien laisser fuir
     // en INSERT (les CHECKs mig 245 sont la ceinture DB).
-    const saleType = (body.saleType as string) || 'jour';
+    // Audit des profils (mig 733) : « Du jour » seulement avec la capacité DLC du jour.
+    const saleType = (body.saleType as string) || ((await sectorRepository.featureOn('dlc_jour')) ? 'jour' : 'stock');
     const isCommande = saleType === 'commande';
     const shelfLifeDays = isCommande ? null : (body.shelfLifeDays ?? null);
     const displayLifeHours = isCommande ? null : (body.displayLifeHours ?? null);

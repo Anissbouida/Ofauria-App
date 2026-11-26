@@ -703,7 +703,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const [pendingProfile, setPendingProfile] = useState<ProfileFormData | null>(null);
   const cf = useCustomFieldsForm('product', product?.custom_fields);
   // Audit des profils (L4) : sans module Production, un nouvel article est de revente par défaut.
-  const { moduleActive: moduleOn } = usePermissions();
+  const { moduleActive: moduleOn, hasFeature: capOn } = usePermissions();
   const [form, setForm] = useState({
     name: (product?.name as string) || '',
     categoryId: (product?.category_id as number) || categories[0]?.id || 1,
@@ -728,7 +728,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     trackingMode: ((product?.tracking_mode as string) || 'lot') as 'lot' | 'serial',
     // Audit P1.4 : plafond editable, defaut 1 quand reexposable.
     maxReexpositions: String((product?.max_reexpositions as number | undefined) ?? ''),
-    saleType: (product?.sale_type as string) || 'jour',
+    // Audit des profils : « Du jour » seulement avec la capacité DLC du jour (mig 733), sinon sur stock.
+    saleType: (product?.sale_type as string) || (capOn('dlc_jour') ? 'jour' : 'stock'),
     saleUnit: (product?.sale_unit as string) || 'unit',
     pricePerPerson: product?.price_per_person != null ? String(parseFloat(String(product.price_per_person))) : '',
     // Nature de l'article (mig 469) : pilote la fiche (recette, stock, prix).
