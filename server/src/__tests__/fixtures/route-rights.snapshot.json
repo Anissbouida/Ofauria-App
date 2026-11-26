@@ -1017,6 +1017,7 @@
   "admin",
   "manager"
  ],
+ "GET /inventory/movement-rules": null,
  "GET /inventory/movements": [
   "admin",
   "manager"

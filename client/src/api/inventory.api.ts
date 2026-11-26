@@ -2,6 +2,8 @@ import api from './client';
 import { customFieldsApi } from './custom-fields.api';
 
 export const inventoryApi = {
+  /** Règles effectives des mouvements (politique de la société OU type de mouvement, mig 724). */
+  movementRules: (): Promise<{ segregation: boolean; receptionQuarantine: boolean }> => api.get('/inventory/movement-rules').then(r => r.data.data),
   list: () => api.get('/inventory').then(r => r.data.data),
   alerts: () => api.get('/inventory/alerts').then(r => r.data.data),
   restock: (data: { ingredientId: string; quantity: number; note?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }) => api.post('/inventory/restock', data).then(r => r.data),

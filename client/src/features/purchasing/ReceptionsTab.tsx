@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PackageCheck, Truck, X, PackageSearch, FileText } from 'lucide-react';
+import { PackageCheck, Truck, X, PackageSearch, FileText, ShieldAlert } from 'lucide-react';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { inventoryApi } from '../../api/inventory.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orders.api';
@@ -72,6 +74,7 @@ export default function ReceptionsTab() {
   });
 
   // BC à réceptionner : étapes « sent » (envoyé, attente de livraison) et « partial » (reliquat attendu).
+  const { data: rules } = useQuery({ queryKey: ['movement-rules'], queryFn: inventoryApi.movementRules, staleTime: 300_000 });
   const { data: sentBoard, isLoading: loadingSent, error: sentError, refetch: refetchSent } = useQuery({
     queryKey: ['purchase-orders', 'board', 'reception-sent'],
     queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'sent', page: '1', pageSize: '500' }),
@@ -127,6 +130,12 @@ export default function ReceptionsTab() {
 
   return (
     <>
+      {/* Refonte Stock : réception en quarantaine (politique de la société ou type de mouvement). */}
+      {rules?.receptionQuarantine && (
+        <StatusBanner tone="info" icon={ShieldAlert} title="Réception en quarantaine">
+          Chaque lot reçu reste en quarantaine (ni consommé, ni vendu) jusqu'à un contrôle de réception conforme, dans Contrôle › Achats et réception.
+        </StatusBanner>
+      )}
       {layout !== 'split' && (
         <KpiGrid>
           <KpiCard label="À réceptionner" value={String(pending.length)} sub={`${money(sum(pending))} attendus`} />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { inventoryApi } from '../../api/inventory.api';
 import { StagePipeline, StageProgress, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { apiErrorMessage } from '../../api/errors';
@@ -227,6 +228,7 @@ export function WarehouseBonWorkspace({
   const queryClient = useQueryClient();
   const { ingredientsLc } = useProdTerms();
   const queueRow = queue.find(b => b.id === bonId);
+  const { data: rules } = useQuery({ queryKey: ['movement-rules'], queryFn: inventoryApi.movementRules, staleTime: 300_000 });
 
   // Le plan_id vient de la file ; si la demande en est sortie (remise au chef),
   // on le recupere via le detail du bon.
@@ -338,6 +340,10 @@ export function WarehouseBonWorkspace({
             <span className="ds-ref">{bon.numero as string}</span>
             {bon.generated_by_name && <> · demandé par <strong>{bon.generated_by_name as string}</strong></>}
             {lines.length > 0 && <> · {lines.length} ligne{lines.length > 1 ? 's' : ''}</>}
+          </div>
+          {/* Refonte Stock : règles du type « bon de sortie » (pesée, lot, séparation des tâches). */}
+          <div className="odoo-form-subtitle" style={{ marginTop: 2 }}>
+            Bon de sortie pesé · pesée et lot obligatoires · séparation des tâches {rules?.segregation ? <strong>exigée</strong> : 'non exigée'}
           </div>
         </div>
         <div style={{ flex: 1 }} />

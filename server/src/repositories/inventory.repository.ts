@@ -1,5 +1,6 @@
 import { db, withTransaction } from '../config/database.js';
-import { MOVEMENT_JOURNAL_MAP } from '@ofauria/shared';
+import { MOVEMENT_JOURNAL_MAP, stockMovementBehaviors } from '@ofauria/shared';
+import { resolvePolicy } from '../services/policies.js';
 import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import { recipeRepository } from './recipe.repository.js';
 import { capitalizeFirst } from '../utils/text.js';
@@ -347,6 +348,24 @@ export const inventoryRepository = {
        WHERE ($4::text IS NULL OR m.type = $4::text)
        ORDER BY m.moved_at DESC LIMIT ${limit}`, params);
     return r.rows.map(x => ({ ...x, quantity: x.quantity === null ? null : Number(x.quantity) }));
+  },
+
+  /**
+   * Règles effectives des mouvements pour l'établissement : chacune est active si la politique
+   * de la société l'impose OU si le type de mouvement l'exige (mig 724). Affichées à l'écran
+   * (bon de sortie, réceptions) ; appliquées par reception-voucher et bon-sortie.
+   */
+  async movementRules(storeId: string | null) {
+    const [seg, quar, types] = await Promise.all([
+      resolvePolicy<{ enabled?: boolean }>('production.segregation_of_duties', { storeId }),
+      resolvePolicy<{ enabled?: boolean }>('purchasing.reception_quarantine', { storeId }),
+      db.query(`SELECT code, metadata FROM ref_entries WHERE table_id = 'stock_movement_types' AND is_active AND code IN ('bon_sortie', 'reception')`),
+    ]);
+    const meta = (code: string) => stockMovementBehaviors(types.rows.find(r => r.code === code)?.metadata);
+    return {
+      segregation: seg.value.enabled === true || meta('bon_sortie').segregation,
+      receptionQuarantine: quar.value.enabled === true || meta('reception').control,
+    };
   },
 
   /** Réservations en cours, commandes et ordres de fabrication (mig 722), avec le disponible. */

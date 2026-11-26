@@ -39,6 +39,10 @@ router.get('/movements', authenticate, can('stock.inventory.view'), asyncHandler
     storeId: req.user!.role === 'admin' ? undefined : req.user!.storeId ?? undefined,
   }) });
 }));
+// Refonte Stock : règles effectives des mouvements (politique de la société OU type de mouvement).
+router.get('/movement-rules', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await inventoryRepository.movementRules(req.user!.storeId ?? null) });
+}));
 // Mig 722 : vue unique des réservations (commandes et ordres de fabrication) avec le disponible.
 router.get('/reservations', authenticate, can('stock.inventory.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await inventoryRepository.reservations(req.user!.role === 'admin' ? undefined : req.user!.storeId ?? undefined) });
