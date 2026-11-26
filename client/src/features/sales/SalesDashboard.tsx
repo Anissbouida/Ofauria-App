@@ -82,7 +82,9 @@ function Rings({ rings }: { rings: Array<{ pct: number | null; color: string }> 
 const pct1 = (v: number) => `${v.toFixed(1).replace('.', ',')} %`;
 
 export default function SalesDashboard() {
-  const { hasFeature } = usePermissions();
+  const { hasFeature, moduleActive } = usePermissions();
+  // Audit des profils (L2) : sans caisse ni commandes, leurs tâches et indicateurs disparaissent.
+  const posOn = moduleActive('pos'), ordersOn = moduleActive('orders');
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('30d');
   const r = rangeOf(period);
@@ -92,12 +94,12 @@ export default function SalesDashboard() {
   const { data: prevSales = [] } = useQuery({ queryKey: ['reports-sales', r.prevFrom, r.prevTo], queryFn: () => reportsApi.sales(r.prevFrom, r.prevTo) });
   const { data: products = [] } = useQuery({ queryKey: ['reports-products', r.from, r.to], queryFn: () => reportsApi.products(r.from, r.to) });
   const { data: cost } = useQuery({ queryKey: ['reports-cost-summary', r.from, r.to], queryFn: () => reportsApi.costSummary(r.from, r.to), retry: false });
-  const { data: ordersResp } = useQuery({ queryKey: ['orders', { all: true }], queryFn: () => ordersApi.list({ limit: '500' }) });
+  const { data: ordersResp } = useQuery({ queryKey: ['orders', { all: true }], queryFn: () => ordersApi.list({ limit: '500' }), enabled: ordersOn });
   const { data: qov } = useQuery({ queryKey: ['quotes', 'overview'], queryFn: quotesApi.overview, enabled: hasFeature('devis'), retry: false });
-  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), retry: false });
+  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), retry: false, enabled: ordersOn });
   const { data: rec } = useQuery({ queryKey: ['receivables'], queryFn: salesApi.receivables, retry: false });
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'dashboard'], queryFn: () => customersApi.list({ limit: '1000' }) });
-  const { data: sessionsResp } = useQuery({ queryKey: ['cash-register-sessions', { dateFrom: todayIso, dateTo: todayIso }], queryFn: () => cashRegisterApi.list({ dateFrom: todayIso, dateTo: todayIso }) });
+  const { data: sessionsResp } = useQuery({ queryKey: ['cash-register-sessions', { dateFrom: todayIso, dateTo: todayIso }], queryFn: () => cashRegisterApi.list({ dateFrom: todayIso, dateTo: todayIso }), enabled: posOn });
 
   /* ── Chiffres de la période ── */
   const sum = (rows: Row[], k: string) => rows.reduce((s, x) => s + num(x[k]), 0);
@@ -137,19 +139,19 @@ export default function SalesDashboard() {
   /* ── Où est votre argent : du devis signé à l'échu, une teinte de l'accent par étape, le retard en rouge ── */
   const overdue = t?.overdue ?? 0;
   // Feuille de route 7.3 : un indicateur rattaché à une capacité éteinte disparaît (cap).
-  const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean; cap?: string }> = [
+  const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean; cap?: string; mod?: string }> = [
     { label: 'Devis ouverts', amount: openQuotes.amount, sub: `${openQuotes.count} devis${followQuotes ? ` · ${followQuotes} à relancer` : ''}`,
       color: 'color-mix(in srgb, var(--ds-accent) 28%, var(--ds-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open', cap: 'devis' },
     { label: 'Commandes en cours', amount: sum(openOrders, 'total'), sub: `${openOrders.length} commande${openOrders.length > 1 ? 's' : ''}${lateOrders.length ? ` · ${lateOrders.length} en retard` : ''}`,
-      color: 'color-mix(in srgb, var(--ds-accent) 50%, var(--ds-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders' },
+      color: 'color-mix(in srgb, var(--ds-accent) 50%, var(--ds-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders', mod: 'orders' },
     { label: 'Livré, à facturer', amount: blAmount, sub: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison`,
-      color: 'color-mix(in srgb, var(--ds-accent) 78%, var(--ds-card))', href: '/delivery-notes' },
+      color: 'color-mix(in srgb, var(--ds-accent) 78%, var(--ds-card))', href: '/delivery-notes', mod: 'orders' },
     { label: 'Facturé, à encaisser', amount: Math.max(0, (t?.total ?? 0) - overdue), sub: `${t?.documents ?? 0} pièce${(t?.documents ?? 0) > 1 ? 's' : ''}`,
       color: 'var(--ds-accent-ink)', href: '/sales?tab=unpaid' },
     { label: 'En retard', amount: overdue, sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`,
       color: 'var(--ds-danger)', href: '/sales?tab=unpaid&filter=overdue', red: true },
   ];
-  const moneyShown = money.filter(m => !m.cap || hasFeature(m.cap));
+  const moneyShown = money.filter(m => (!m.cap || hasFeature(m.cap)) && (!m.mod || moduleActive(m.mod as never)));
   const moneyTotal = moneyShown.reduce((s, m) => s + m.amount, 0);
 
   /* ── Objectifs (anneaux) : transformation des devis, marge brute, créances à jour ── */
@@ -191,14 +193,14 @@ export default function SalesDashboard() {
             <button key={p.key} type="button" className={period === p.key ? 'active' : ''} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>
           ))}
         </div>
-        <button type="button" className="odoo-btn-primary" onClick={() => navigate('/orders')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle commande</button>
+        {ordersOn && <button type="button" className="odoo-btn-primary" onClick={() => navigate('/orders')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle commande</button>}
       </>}>
 
       <section className="kl-hero" aria-label="Chiffres de la période">
         <div className="kl-widget kl-wide">
           <div className="kl-wlabel"><span className="kl-sq"><TrendingUp size={13} /></span>Chiffre d'affaires · {PERIODS.find(p => p.key === period)?.label.toLowerCase()}</div>
           <div className="kl-big">{n0(revenue)}<small>{currencySymbol()}</small></div>
-          <div className="kl-sub"><Delta d={delta(revenue, prevRevenue)} /> {r.label} · {n0(tickets)} tickets · panier moyen {moneyFmt(basket)} <Delta d={delta(basket, prevBasket)} /></div>
+          <div className="kl-sub"><Delta d={delta(revenue, prevRevenue)} /> {r.label} · {n0(tickets)} {posOn ? 'tickets' : 'ventes'} · panier moyen {moneyFmt(basket)} <Delta d={delta(basket, prevBasket)} /></div>
           <div style={{ height: 190, marginTop: 14 }}>
             {chart.length ? (
               <ResponsiveContainer width="100%" height="100%">

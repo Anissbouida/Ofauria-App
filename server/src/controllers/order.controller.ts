@@ -1,4 +1,5 @@
 import { accountOrdersRestricted, findOrderType } from '../services/commercial-types.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 import type { Response } from 'express';
 import { defaultWorkshop, workshopForCategorySlug } from '../services/workshops.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -304,6 +305,11 @@ export const orderController = {
     const customer = await loadCustomer(customerId);
     if (customerId && !customer) { fail(res, 400, 'Client introuvable'); return; }
     const pro = isProCustomer(customer) ? customer : null;
+    // Audit des profils (L2) : sans caisse, un client se règle en compte (bon de livraison, facture) ;
+    // une commande réglée au comptoir n'aurait ni caisse pour l'avance ni pour le solde.
+    if (!pro && !(await sectorRepository.moduleOn('pos'))) {
+      fail(res, 409, 'Sans caisse, un client se règle en compte : choisissez un client « Particulier (facturé) » ou une société, la commande se livre sur bon de livraison et se facture.'); return;
+    }
     // Sans type choisi (ancien écran, API) : règle historique, la direction prend les commandes en compte.
     if (!kind && pro && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont prises par la direction'); return; }
     if (kind?.behaviors.party === 'customer' && kind.behaviors.settlement !== 'any' && (kind.behaviors.settlement === 'compte') !== !!pro) {
@@ -595,6 +601,10 @@ export const orderController = {
     if (order.status !== 'ready') { fail(res, 400, 'La commande doit etre prete pour etre livree'); return; }
     if (paymentMethod === 'deferred') { fail(res, 400, 'Le solde doit être réglé au retrait'); return; }
 
+    // Audit des profils (L2) : sans caisse, pas de remise réglée au comptoir.
+    if (!(await sectorRepository.moduleOn('pos'))) {
+      fail(res, 409, 'Sans caisse, la commande se livre sur bon de livraison et se facture'); return;
+    }
     // Require an open cash register session
     const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
     if (!activeSession) { fail(res, 400, 'Vous devez ouvrir la caisse avant de livrer une commande'); return; }

@@ -2,6 +2,8 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { unsoldDecisionRepository } from '../repositories/unsold-decision.repository.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
+import { getParameter } from '../services/module-parameters.service.js';
 import { printerService } from '../services/printer.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
@@ -112,8 +114,13 @@ export const cashRegisterController = {
     // Le client doit appeler GET /unsold-decisions/expired puis
     // POST /unsold-decisions/destroy-expired AVANT de pouvoir cloturer.
     const storeId = req.user!.storeId;
+    // Audit des profils (L2) : périmés seulement avec les dates limites ; invendus seulement
+    // avec le module Journée boutique ET le paramètre « inventaire des invendus à la clôture ».
+    const dlcOn = await sectorRepository.featureOn('dlc_ddm');
+    const unsoldOn = (await sectorRepository.moduleOn('unsold'))
+      && (await getParameter<{ require_unsold_inventory?: boolean }>('sales.closure'))?.require_unsold_inventory !== false;
     if (closeType === 'fin_journee' && storeId) {
-      const expired = await unsoldDecisionRepository.getExpiredItems(storeId);
+      const expired = dlcOn ? await unsoldDecisionRepository.getExpiredItems(storeId) : [];
       if (expired.length > 0) {
         res.status(409).json({
           success: false,
@@ -133,8 +140,9 @@ export const cashRegisterController = {
       // rattrapage possible (POST /unsold-decisions exige une session ouverte).
       // Le client doit POST /unsold-decisions (closeType fin_journee) AVANT de
       // cloturer. Une vitrine vide (tout vendu) ne bloque pas.
-      const { vitrineRemaining, decisionsCount } =
-        await unsoldDecisionRepository.vitrineRemainingAndDecisions(session.id, storeId);
+      const { vitrineRemaining, decisionsCount } = unsoldOn
+        ? await unsoldDecisionRepository.vitrineRemainingAndDecisions(session.id, storeId)
+        : { vitrineRemaining: 0, decisionsCount: 0 };
       if (vitrineRemaining > 0 && decisionsCount === 0) {
         res.status(409).json({
           success: false,

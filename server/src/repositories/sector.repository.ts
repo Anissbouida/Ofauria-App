@@ -2,7 +2,7 @@ import { policySnapshot, restorePolicies, type PolicyRow } from '../services/pol
 import type { PoolClient } from 'pg';
 import { db, inTransaction } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
-import {
+import { resolveModuleKeys,
   ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, STORE_SCOPED_MODULES, canonicalModule, effectiveModules,
   missingDependencies, modulesForUser, withRequirements, capabilityDefault,
   type AppModule, type ModuleOverrides, type ModulePilot, type ModuleRollout,
@@ -393,6 +393,12 @@ export const sectorRepository = {
   /** Option active pour la société (mig 507) : le code lit l'option, jamais le secteur. */
   async featureOn(key: string): Promise<boolean> {
     return (await this.activation()).features.has(key);
+  },
+
+  /** Module actif pour la société (audit des profils) : le code lit le module, jamais le secteur. */
+  async moduleOn(module: string): Promise<boolean> {
+    const active = (await this.activation()).modules;
+    return resolveModuleKeys(module).some(k => active.has(k as never));
   },
 
   /** Modules et options visibles par un utilisateur (pilotes et établissement compris). */

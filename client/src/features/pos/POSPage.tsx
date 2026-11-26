@@ -127,7 +127,7 @@ export default function POSPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { hasModule } = usePermissions();
+  const { hasModule, moduleActive } = usePermissions();
   const ws = useWorkshops(); // libellés des ateliers (mig 511)
   // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
   const [offlinePending, setOfflinePending] = useState(() => pendingCount());
@@ -546,7 +546,8 @@ export default function POSPage() {
   const { data: pendingTransfers = [] } = useQuery({
     queryKey: ['pending-transfers'],
     queryFn: replenishmentApi.pendingTransfers,
-    enabled: !!activeSession,
+    // Audit des profils (L2) : sans module Réapprovisionnement, rien à confirmer (et pas de 403 en boucle).
+    enabled: !!activeSession && hasModule('replenishment'),
     refetchInterval: 30000, // Auto-refresh every 30s
   });
 
@@ -641,7 +642,10 @@ export default function POSPage() {
       // getUnsoldWithSuggestions), closeType n'est propage que pour info :
       // chaque shift ne compte que son propre appro et son propre restant.
       let invItems: Record<string, any>[] = [];
-      try { invItems = await unsoldDecisionApi.suggestions(type) || []; } catch { /* no items */ }
+      // Audit des profils (L2) : l'inventaire des invendus n'existe qu'avec le module Journée boutique.
+      if (moduleActive('unsold')) {
+        try { invItems = await unsoldDecisionApi.suggestions(type) || []; } catch { /* no items */ }
+      }
       return { data, invItems, type };
     },
     onSuccess: async ({ data, invItems, type }) => {
@@ -1800,8 +1804,8 @@ export default function POSPage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
                   <div role="menu" className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-1.5">
-                    {item('Transferts à confirmer', Truck, () => setShowTransfers(true), { badge: transferCount })}
-                    {item('Approvisionnement vitrine', Package, () => setShowProductionForm(true))}
+                    {(hasModule('replenishment') || hasModule('production')) && item('Transferts à confirmer', Truck, () => setShowTransfers(true), { badge: transferCount })}
+                    {hasModule('replenishment') && item('Approvisionnement vitrine', Package, () => setShowProductionForm(true))}
                     {item('Déclarer une perte', Trash2, () => setShowLossModal(true), { tone: 'warn' })}
                     {item('Réclamation client', MessageSquareWarning, () => setShowComplaintModal(true), { tone: 'warn' })}
                     {lastReceipt && item('Réimprimer le dernier ticket', Printer, () => setReceiptData({ ...lastReceipt }))}

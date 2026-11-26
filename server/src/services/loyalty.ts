@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { sectorRepository } from '../repositories/sector.repository.js';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { persistEntry, postingAccount } from './journal-generator.service.js';
@@ -113,7 +114,8 @@ async function expiryDate(client: PoolClient, s: LoyaltySettings): Promise<strin
 /** Points que rapporte un montant payé, pour un client donné (niveau compris). */
 export async function pointsFor(amount: number, customerId: string, runner: Runner = db) {
   const s = await getSettings(runner);
-  if (!s.enabled || amount <= 0) return 0;
+  // Audit des profils (L2) : pas de points (ni d'écriture de dette de fidélité) sans la capacité.
+  if (!s.enabled || amount <= 0 || !(await sectorRepository.featureOn('promotions_fidelite'))) return 0;
   const { tier } = await tierFor(customerId, runner);
   const mult = tier ? Number(tier.earn_multiplier) : 1;
   return Math.floor(Math.floor(amount / Number(s.earn_per_amount)) * s.earn_points * mult);

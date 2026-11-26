@@ -23,6 +23,8 @@ vi.mock('../services/promotions.js', () => ({
 vi.mock('../services/module-parameters.service.js', () => ({ posAllowsNegativeStock: vi.fn(async () => false), getParameter: vi.fn(async () => ({})) }));
 vi.mock('../services/loyalty.js', () => ({ checkRedeem: vi.fn(async () => ({ error: 'Programme de fidélité non simulé' })) }));
 vi.mock('../repositories/product.repository.js', () => ({ productRepository: { findById: vi.fn() } }));
+// Audit des profils (L2) : société avec caisse (les commandes de particulier s'encaissent).
+vi.mock('../repositories/sector.repository.js', () => ({ sectorRepository: { moduleOn: vi.fn(async () => true), featureOn: vi.fn(async () => true) } }));
 vi.mock('../repositories/sales-channel.repository.js', () => ({ salesChannelRepository: { findDefault: vi.fn() } }));
 vi.mock('../repositories/employee.repository.js', () => ({
   employeeRepository: { findById: vi.fn() },
