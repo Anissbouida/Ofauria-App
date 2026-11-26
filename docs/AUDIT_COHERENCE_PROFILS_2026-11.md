@@ -123,3 +123,31 @@ Le principe : **un écran, un contenu, une tâche, un réglage déclarent ce don
 Ordre conseillé : L0 (il donne la règle et le test qui empêchent toute régression), puis L2 et L4 (données fausses et flux bloqués), L1 (marque d'un autre client sur les documents), L3, L5, L6, L7.
 
 Point d'attention pour Ofauria (production) : chaque lot doit laisser son menu, ses écrans et ses écritures inchangés ; le test des 18 profils inclut une comparaison du profil Boulangerie avant/après.
+
+
+---
+
+## 6. État de la correction (2026-11-26)
+
+Kalum est un ERP multisectoriel : Ofauria a été le point de départ, la boulangerie est désormais un profil parmi d'autres (aucun réglage n'est plus préservé pour un client).
+
+| Lot | État | Commits / migrations |
+|---|---|---|
+| L0 Règle unique et garde | Fait | registre `shared/screen-needs` (écrans, adresses, réglages), garde de route, points d'API de caisse fermés sans caisse, test des 18 profils (`ecrans-par-profil`) |
+| L1 Identité et marque | Fait | aucun logo ni en-tête de repli dans les documents, favicon Kalum, mig 730 (identité neutre : nom, sous-titre, secteur générique, logo d'origine retiré), `client-install.sh` |
+| L2 Caisse découplée | Fait | clôture (invendus avec Journée boutique et le paramètre, périmés avec DLC), réapprovisionnement, fidélité avec sa capacité, commandes sans caisse refusées proprement, mig 728 (particulier facturé) |
+| L3 Capacités dans Stock / Achats / Production / Contrôle | Fait | Réserve, fiche article, réception de BC, règles de réception serveur, vue d'ensemble et pertes du Contrôle, allergènes des nomenclatures |
+| L4 Règles métier et comptables | Fait | compte de ventes par profil (politique `accounting.default_revenue`, mig 729), contrôles de clôture, valorisation 3111/6114 sans production, pas de plan de production sans module, devis sans commandes, facture directe des services, rôles métier selon leur module |
+| L5 Catalogues transverses | Fait | tâches planifiées (`JOB_NEEDS`), réglages (`PARAM_NEEDS`), notifications, sources de rapports, imports, recherche, points de mise en service, coût matière de l'analyse |
+| L6-L7 Vocabulaire et textes | Fait | replis neutres + termes historiques portés par les profils (mig 731), assistant qui ne fige plus les replis, tuiles d'accueil |
+| R1 Écrans restants | Fait | compta (tickets impayés, stock de fin de période, règles carte), stock (mouvements, âge, emplacements), clients (fidélité, allergies), utilisateurs (matrice, ateliers, accueil, libellé du rôle), production (« Sans date limite », pesée par défaut) |
+| R2 Contenu par profil | Fait | mig 732 : postes horaires et centres de coût selon le métier |
+| R3 Serveur | Fait | API publique et portail gardés par module, tableau de bord sur factures sans caisse, devise des documents RH, notifications de production |
+| R4 Assistant | Fait | vocabulaire selon les modules retenus, parcours de production neutre, données de départ sans production si décochée |
+| R5 Projets et exemples | Fait | vocabulaire « Chantier / Contrat » dans tout le module, exemples de saisie neutres |
+
+**Restent (à décider ou mineurs)**
+
+- Données d'Ofauria semées par d'anciennes migrations figées (catalogue 128, salariés 070, fond de caisse 214, recettes 115-303) : retirées par `client-install.sh` (chemin officiel d'installation). Une purge automatique par migration supprimerait des données visibles sur une base sans ventes ni factures (dont une base d'essai) : à décider.
+- Référentiels sans secteur (types de vente « Du jour », types de perte, catégories de dépenses « Matériel POS ») : lus comme valeurs par défaut par le code, à traiter avec la fiche produit.
+- Canaux de vente par défaut (« Boutique ») ; fuseau `Africa/Casablanca` écrit en dur (la société a un fuseau) ; quelques textes P2 (« Client comptoir », libellés de paie « sortie de caisse », aperçus de modèles de documents).
