@@ -310,7 +310,7 @@ export const inventoryRepository = {
    */
   async movements(p: { type?: string; storeId?: string; days?: number; limit?: number }) {
     const days = Math.min(Math.max(p.days ?? 30, 1), 366);
-    const limit = Math.min(Math.max(p.limit ?? 200, 1), 1000);
+    const limit = Math.min(Math.max(p.limit ?? 500, 1), 1000);
     const journalTypes = Object.entries(MOVEMENT_JOURNAL_MAP).filter(([, t]) => t !== 'bon_sortie' && t !== 'reception').map(([j]) => j);
     const params: unknown[] = [days, journalTypes, p.storeId ?? null, p.type ?? null];
     const r = await db.query(
@@ -334,12 +334,15 @@ export const inventoryRepository = {
           WHERE rv.created_at >= now() - ($1::int * interval '1 day') AND ($3::uuid IS NULL OR rv.store_id = $3::uuid)
          UNION ALL
          SELECT CASE it.type WHEN 'production' THEN 'bon_sortie' WHEN 'restock' THEN 'reception' WHEN 'purchase_order' THEN 'reception' WHEN 'open_container' THEN 'ouverture' WHEN 'transfer' THEN 'transfert' WHEN 'waste' THEN 'perte' WHEN 'adjustment' THEN 'ajustement' WHEN 'inventory' THEN 'ajustement' WHEN 'correction' THEN 'ajustement' WHEN 'production_return' THEN 'retour' WHEN 'recycle' THEN 'retour' WHEN 'usage' THEN 'consommation' END,
-                it.id, l.lot_number, it.created_at, ing.name, 'done', 1, it.quantity_change, ing.unit, 0,
+                (array_agg(it.id ORDER BY it.created_at))[1], MIN(l.lot_number), MAX(it.created_at), ing.name, 'done',
+                COUNT(*)::int, SUM(it.quantity_change), ing.unit, 0,
                 NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), it.ingredient_id
            FROM inventory_transactions it JOIN ingredients ing ON ing.id = it.ingredient_id
            LEFT JOIN ingredient_lots l ON l.id = it.ingredient_lot_id LEFT JOIN users u ON u.id = it.performed_by
           WHERE it.type = ANY($2::text[]) AND it.created_at >= now() - ($1::int * interval '1 day')
             AND ($3::uuid IS NULL OR it.store_id = $3::uuid)
+          -- Une pièce par article, type et minute : une ouverture faite en plusieurs pesées reste un mouvement.
+          GROUP BY it.type, it.ingredient_id, ing.name, ing.unit, date_trunc('minute', it.created_at), u.first_name, u.last_name
        ) m
        WHERE ($4::text IS NULL OR m.type = $4::text)
        ORDER BY m.moved_at DESC LIMIT ${limit}`, params);
