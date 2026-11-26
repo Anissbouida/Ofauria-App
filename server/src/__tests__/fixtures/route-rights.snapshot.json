@@ -336,6 +336,9 @@
  "DELETE /users/:id/sessions/:jti": [
   "admin"
  ],
+ "DELETE /users/access-reviews/:id/items/:userId": [
+  "admin"
+ ],
  "DELETE /users/approval-limits/:id": [
   "admin"
  ],
@@ -2797,6 +2800,12 @@
  "GET /users/access-overview": [
   "admin"
  ],
+ "GET /users/access-reviews": [
+  "admin"
+ ],
+ "GET /users/access-reviews/:id": [
+  "admin"
+ ],
  "GET /users/approval-limits": [
   "admin"
  ],
@@ -4918,6 +4927,15 @@
  "POST /users/:id/unlock": [
   "admin"
  ],
+ "POST /users/access-reviews": [
+  "admin"
+ ],
+ "POST /users/access-reviews/:id/close": [
+  "admin"
+ ],
+ "POST /users/access-reviews/:id/confirm-clean": [
+  "admin"
+ ],
  "POST /users/approval-limits": [
   "admin"
  ],
@@ -5597,6 +5615,9 @@
   "admin"
  ],
  "PUT /users/:id/preferences": [
+  "admin"
+ ],
+ "PUT /users/access-reviews/:id/items/:userId": [
   "admin"
  ],
  "PUT /users/delegations/:kind/:id": [

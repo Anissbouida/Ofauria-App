@@ -181,7 +181,7 @@ export const governanceApi = {
 // ─── Politique de sécurité et sessions (refonte Utilisateurs, lot 8) ─────
 export interface SecurityPolicy {
   passwordMinLength: number; passwordMaxAgeDays: number; lockoutThreshold: number; lockoutMinutes: number;
-  mfaGraceDays: number; pinMinLength: number; idleMinutes: number;
+  mfaGraceDays: number; pinMinLength: number; idleMinutes: number; dormantDays: number;
 }
 export interface UserSession {
   jti: string; method: string | null; ip: string | null; userAgent: string | null; storeName: string | null;
@@ -230,6 +230,30 @@ export interface AccessHistoryEntry { at: string; actor: string | null; kind: st
 export interface AccessOverviewRow {
   userId: string; name: string; email: string; roles: string[]; hasCustomPerms: boolean; exceptionCount: number; conflictCount: number; isActive: boolean;
 }
+
+// ─── Revue des accès en campagnes (refonte Utilisateurs, lot 9) ─────────
+export type ReviewDecision = 'confirmed' | 'corrected' | 'deactivated';
+export interface ReviewSignals { conflicts: string[]; dormantDays: number | null; delegated: string[]; exceptions: number }
+export interface ReviewCampaign {
+  id: string; label: string; status: 'open' | 'closed'; due_on: string | null; opened_at: string; closed_at: string | null;
+  opened_by_name: string | null; closed_by_name: string | null; total: number; confirmed: number; corrected: number;
+}
+export interface ReviewItem {
+  userId: string; name: string; email: string; isActive: boolean;
+  roles: { code: string; label: string; delegated: boolean }[]; stores: string[]; signals: ReviewSignals; lastLoginAt: string | null;
+  snapshot: { roles?: { code: string; label: string; delegated: boolean }[]; stores?: string[]; signals?: ReviewSignals; lastLoginAt?: string | null };
+  decision: ReviewDecision | null; comment: string | null; decidedAt: string | null; decidedBy: string | null;
+}
+export const reviewsApi = {
+  list: () => api.get('/users/access-reviews').then(r => r.data.data as ReviewCampaign[]),
+  open: (label: string, dueOn: string | null) => api.post('/users/access-reviews', { label, dueOn }).then(r => r.data.data as { id: string }),
+  get: (id: string) => api.get(`/users/access-reviews/${id}`).then(r => r.data.data as { campaign: ReviewCampaign; dormantThreshold: number; items: ReviewItem[] }),
+  decide: (id: string, userId: string, decision: ReviewDecision, comment?: string | null) =>
+    api.put(`/users/access-reviews/${id}/items/${userId}`, { decision, comment: comment ?? null }).then(r => r.data),
+  reset: (id: string, userId: string) => api.delete(`/users/access-reviews/${id}/items/${userId}`).then(r => r.data),
+  confirmClean: (id: string) => api.post(`/users/access-reviews/${id}/confirm-clean`, {}).then(r => r.data.data as { confirmed: number }),
+  close: (id: string) => api.post(`/users/access-reviews/${id}/close`, {}).then(r => r.data),
+};
 
 export const accessReviewApi = {
   review: (id: string) => api.get(`/users/${id}/access-review`).then(r => r.data.data) as Promise<AccessReviewData>,

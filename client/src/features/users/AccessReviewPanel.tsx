@@ -1,16 +1,16 @@
 import { currencySymbol } from '../../utils/money';
 import { FilterChips } from '../sales/ListTemplate';
-import { StatusTag } from '../../components/ui/StatusTag';
+import ReviewCampaigns from './ReviewCampaigns';
 import { LoadingPanel, Segmented } from '../employees/ui';
 import { useState } from 'react';
-import { DataPanel, TableFooter, EmptyState, ErrorState, Modal } from '../../components/ds';
+import { DataPanel, ErrorState, Modal } from '../../components/ds';
 import { useQuery } from '@tanstack/react-query';
 import { ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
 import {
   MODULE_LABELS, LEGACY_MODULE_KEYS, CAPABILITY_LABELS, DATA_SCOPE_LABELS, BUSINESS_VERB_LABELS, APPROVAL_DOCUMENT_LABELS,
   type AppModule, type Capability, type DataScope, type BusinessVerb, type ApprovalDocumentType,
 } from '@ofauria/shared';
-import { accessReviewApi, rolesApi, type AccessOverviewRow } from '../../api/users.api';
+import { accessReviewApi } from '../../api/users.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
 /**
@@ -191,48 +191,7 @@ function summarizeDetail(d: Record<string, unknown>): string {
 }
 
 /* ============ ONGLET REVUE DES ACCÈS ============ */
+/** Revue des accès en campagnes (lot 9) : remplace le tableau de consultation sans décision. */
 export default function AccessReviewTab() {
-  const { data: overview = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-overview'], queryFn: accessReviewApi.overview });
-  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
-  const [review, setReview] = useState<{ id: string; name: string } | null>(null);
-  const roleLabel = (code: string) => roles.find(r => r.code === code)?.label ?? code;
-
-  const conflicts = overview.filter(u => u.conflictCount > 0).length;
-
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <StatusBanner tone={conflicts ? 'warning' : 'info'} icon={conflicts ? ShieldAlert : ScanSearch}
-        title={conflicts ? `${conflicts} compte(s) en conflit de séparation des tâches` : 'Revue des accès de tous les comptes'}>
-        Vérifiez qui a quoi, repérez les exceptions individuelles et les conflits. Cliquez « Analyser » pour voir les droits résolus et l'historique d'un compte.
-      </StatusBanner>
-      {isLoading ? <LoadingPanel /> : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
-        : !overview.length ? <EmptyState icon={ScanSearch} title="Aucun compte à passer en revue" /> : (
-        <DataPanel label="Revue des accès" footer={<TableFooter note={`${overview.length} compte${overview.length > 1 ? 's' : ''}`} />}>
-          <table className="odoo-table">
-            <thead><tr><th>Utilisateur</th><th>Rôles</th><th className="ds-num">Exceptions</th><th>Conflits de séparation des tâches</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
-            <tbody>
-              {(overview as AccessOverviewRow[]).map(u => (
-                <tr key={u.userId}>
-                  <td><div className="ds-strong">{u.name}</div><div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{u.email}</div></td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                      {u.roles.map(c => <span key={c} className="odoo-tag odoo-tag-purple">{roleLabel(c)}</span>)}
-                    </div>
-                  </td>
-                  <td className="ds-num">{u.exceptionCount > 0 ? <StatusTag tone="todo" label={String(u.exceptionCount)} /> : '—'}</td>
-                  <td>{u.conflictCount > 0 ? <StatusTag tone="blocked" label={String(u.conflictCount)} /> : <StatusTag tone="done" label="0" />}</td>
-                  <td className="ds-actions">
-                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setReview({ id: u.userId, name: u.name })}>
-                      <ScanSearch size={13} aria-hidden="true" /> Analyser
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataPanel>
-      )}
-      {review && <AccessReviewModal userId={review.id} name={review.name} onClose={() => setReview(null)} />}
-    </div>
-  );
+  return <ReviewCampaigns />;
 }

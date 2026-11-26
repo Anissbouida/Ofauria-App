@@ -18,11 +18,13 @@ export interface SecurityPolicy {
   mfaGraceDays: number;
   pinMinLength: number;
   idleMinutes: number;
+  /** Compte dormant au-delà de N jours sans connexion (revue des accès, lot 9). */
+  dormantDays: number;
 }
 
 export const POLICY_DEFAULTS: SecurityPolicy = {
   passwordMinLength: 12, passwordMaxAgeDays: 0, lockoutThreshold: 5, lockoutMinutes: 15,
-  mfaGraceDays: 0, pinMinLength: 6, idleMinutes: 15,
+  mfaGraceDays: 0, pinMinLength: 6, idleMinutes: 15, dormantDays: 60,
 };
 
 /** Valeurs admises : intervalle [min, max] ou liste fermée. */
@@ -34,6 +36,7 @@ export const POLICY_LIMITS: Record<keyof SecurityPolicy, { min: number; max: num
   mfaGraceDays: [0, 3, 7, 14, 30],
   pinMinLength: [4, 6],
   idleMinutes: [15, 60, 480, 1440],
+  dormantDays: [30, 60, 90, 180],
 };
 
 const TTL_MS = 30_000;

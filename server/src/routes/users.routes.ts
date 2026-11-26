@@ -29,8 +29,11 @@ const emptySchema = z.object({}).strict();
 const securityPolicySchema = z.object({
   passwordMinLength: z.number().int().optional(), passwordMaxAgeDays: z.number().int().optional(),
   lockoutThreshold: z.number().int().optional(), lockoutMinutes: z.number().int().optional(),
-  mfaGraceDays: z.number().int().optional(), pinMinLength: z.number().int().optional(), idleMinutes: z.number().int().optional(),
+  mfaGraceDays: z.number().int().optional(), pinMinLength: z.number().int().optional(), idleMinutes: z.number().int().optional(), dormantDays: z.number().int().optional(),
 }).strict();
+/** Revue des accès (lot 9). */
+const openReviewSchema = z.object({ label: z.string().trim().min(3).max(120), dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish() }).strict();
+const reviewDecisionSchema = z.object({ decision: z.enum(['confirmed', 'corrected', 'deactivated']), comment: z.string().max(500).nullish() }).strict();
 const mfaPolicySchema = z.object({ requiredRoles: z.array(z.string().min(1).max(60)).max(100) }).strict();
 
 const router = Router();
@@ -130,6 +133,14 @@ router.delete('/:id/exceptions/:kind/:ref', authenticate, validateUuidParams('id
 // Lien espace employe : fiches salariees disponibles pour le selecteur.
 router.get('/employees-link', authenticate, can('users.view'), asyncHandler(userController.employeesForLink));
 
+// Revue des accès en campagnes (lot 9, mig 709) : décisions datées et signées, clôture.
+router.get('/access-reviews', authenticate, can('users.view'), asyncHandler(accessReviewController.campaigns));
+router.post('/access-reviews', authenticate, can('users.edit'), validate(openReviewSchema), asyncHandler(accessReviewController.openCampaign));
+router.get('/access-reviews/:id', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(accessReviewController.campaign));
+router.put('/access-reviews/:id/items/:userId', authenticate, validateUuidParams('id', 'userId'), can('users.edit'), validate(reviewDecisionSchema), asyncHandler(accessReviewController.decide));
+router.delete('/access-reviews/:id/items/:userId', authenticate, validateUuidParams('id', 'userId'), can('users.edit'), asyncHandler(accessReviewController.resetDecision));
+router.post('/access-reviews/:id/confirm-clean', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(accessReviewController.confirmClean));
+router.post('/access-reviews/:id/close', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(accessReviewController.closeCampaign));
 // Revue des acces (Phase 3, outils admin, lecture seule).
 router.get('/access-overview', authenticate, can('users.view'), asyncHandler(accessReviewController.overview));
 router.get('/:id/access-review', authenticate, can('users.view'), asyncHandler(accessReviewController.review));

@@ -7,7 +7,7 @@ import { usersApi, type SecurityPolicy } from '../../api/users.api';
  */
 export const POLICY_DEFAULTS: SecurityPolicy = {
   passwordMinLength: 12, passwordMaxAgeDays: 0, lockoutThreshold: 5, lockoutMinutes: 15,
-  mfaGraceDays: 0, pinMinLength: 6, idleMinutes: 15,
+  mfaGraceDays: 0, pinMinLength: 6, idleMinutes: 15, dormantDays: 60,
 };
 
 export function useSecurityPolicy(): SecurityPolicy {

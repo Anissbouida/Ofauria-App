@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useSecurityPolicy } from './securityPolicy';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, KeyRound, Lock, ShieldAlert, ShieldCheck, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
 import { usersApi, rolesApi, governanceApi } from '../../api/users.api';
@@ -17,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const DAY = 86_400_000;
 /** Sans connexion depuis ce nombre de jours, un compte actif est signalé « dormant ». */
+/** Seuil par défaut ; la valeur appliquée vient de la politique de sécurité (lot 9). */
 export const DORMANT_DAYS = 60;
 const DATE = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 export const fmtDate = (d: string | Date | null | undefined) => (d ? DATE.format(new Date(d)) : '—');
@@ -42,6 +44,8 @@ export default function UsersOverview({ onOpenAccount, onGo }: {
 }) {
   const { user: me } = useAuth();
   const { run } = useAccountActions();
+  // Seuil des comptes dormants : politique de sécurité (lot 9), 60 jours par défaut.
+  const policy = useSecurityPolicy();
   const usersQ = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false });
   const { data: violations = [] } = useQuery({ queryKey: ['sod-violations'], queryFn: governanceApi.sodViolations, retry: false });
@@ -92,7 +96,7 @@ export default function UsersOverview({ onOpenAccount, onGo }: {
         action: { label: 'Ouvrir', onClick: () => onOpenAccount(u) },
       });
       const idle = daysSince(u.lastLoginAt);
-      if (u.id !== me?.id && idle !== null && idle >= DORMANT_DAYS) t.push({
+      if (u.id !== me?.id && idle !== null && idle >= policy.dormantDays) t.push({
         key: `idle-${u.id}`, tone: 'draft', icon: Clock, situation: 'Compte dormant', who: name,
         detail: `Aucune connexion depuis ${idle} jours`, since: fmtDate(u.lastLoginAt),
         action: { label: 'Désactiver', onClick: () => void run('deactivate', u) },
@@ -123,7 +127,7 @@ export default function UsersOverview({ onOpenAccount, onGo }: {
     }
     return t;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users, roles, violations, delegations, me?.id]);
+  }, [users, roles, violations, delegations, me?.id, policy.dormantDays]);
 
   if (usersQ.isLoading) return <LoadingState />;
   if (usersQ.isError) return <ErrorState error={usersQ.error} onRetry={() => void usersQ.refetch()} />;

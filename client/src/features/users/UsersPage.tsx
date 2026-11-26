@@ -245,6 +245,12 @@ function SecurityPolicy({ roles }: { roles: { code: string; label: string; user_
             </select>
           </div>
           <div className="usr-row">
+            <div><b>Compte dormant</b><p>Sans connexion depuis ce délai, le compte est signalé dans la vue d'ensemble et dans la revue des accès.</p></div>
+            <select className="ds-input sm" style={{ width: 'auto' }} aria-label="Compte dormant après" value={draft.dormantDays} onChange={e => set('dormantDays', Number(e.target.value))}>
+              {list('dormantDays').map(n => <option key={n} value={n}>Après {n} jours</option>)}
+            </select>
+          </div>
+          <div className="usr-row">
             <div><b>Inscription libre</b><p>Un compte se crée seulement depuis Utilisateurs, par une personne qui en a le droit.</p></div>
             <span className="kl-tag x">Désactivée</span>
           </div>
