@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -47,8 +48,11 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
   const { data: pr } = useQuery({ queryKey: ['p2p-flow', 'pr-count'], queryFn: purchaseRequestsApi.count, ...quiet });
   const { data: apprCount } = useQuery({ queryKey: ['approvals', 'count'], queryFn: approvalsApi.count, ...quiet });
   const { data: inbox = [] } = useQuery({ queryKey: ['approvals', 'inbox'], queryFn: approvalsApi.inbox, ...quiet });
-  const { data: rfq } = useQuery({ queryKey: ['rfqs', 'workbench'], queryFn: () => rfqApi.list({ page: '1', pageSize: '20', status: 'quoted' }), ...quiet });
-  const { data: rfqAll } = useQuery({ queryKey: ['p2p-flow', 'rfq'], queryFn: () => rfqApi.list({ page: '1', pageSize: '1' }), ...quiet });
+  // Feuille de route 7.3 : demandes de prix lues seulement si la capacité est active.
+  const { hasFeature } = usePermissions();
+  const rfqOn = hasFeature('appels_offres');
+  const { data: rfq } = useQuery({ queryKey: ['rfqs', 'workbench'], queryFn: () => rfqApi.list({ page: '1', pageSize: '20', status: 'quoted' }), ...quiet, enabled: rfqOn });
+  const { data: rfqAll } = useQuery({ queryKey: ['p2p-flow', 'rfq'], queryFn: () => rfqApi.list({ page: '1', pageSize: '1' }), ...quiet, enabled: rfqOn });
   const { data: pipe, isLoading } = useQuery({ queryKey: ['purchase-orders', 'pipeline'], queryFn: purchaseOrdersApi.pipeline, ...quiet });
   const { data: drafts } = useQuery({ queryKey: ['purchase-orders', 'board', 'workbench-draft'], queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'draft', page: '1', pageSize: '10' }), ...quiet });
   const { data: invPipe } = useQuery({ queryKey: ['invoices', 'received-pipeline'], queryFn: invoicesApi.receivedPipeline, ...quiet });
@@ -134,7 +138,7 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
         <div className="kl-sec"><h2>Circuit d’achat</h2><small>Cliquez une étape pour ouvrir ses pièces</small></div>
         <div className="kl-widget">
           <ol className="pur-circuit">
-            {stages.map(s => (
+            {stages.filter(s => s.n !== 3 || rfqOn).map(s => (
               <li key={s.n}>
                 <button type="button" className={`pur-stage ${s.tone ?? ''}`} onClick={s.go}>
                   <span className="pur-stage-head">{s.label}</span>

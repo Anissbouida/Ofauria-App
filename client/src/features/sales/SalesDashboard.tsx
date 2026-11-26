@@ -136,9 +136,10 @@ export default function SalesDashboard() {
 
   /* ── Où est votre argent : du devis signé à l'échu, une teinte de l'accent par étape, le retard en rouge ── */
   const overdue = t?.overdue ?? 0;
-  const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean }> = [
+  // Feuille de route 7.3 : un indicateur rattaché à une capacité éteinte disparaît (cap).
+  const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean; cap?: string }> = [
     { label: 'Devis ouverts', amount: openQuotes.amount, sub: `${openQuotes.count} devis${followQuotes ? ` · ${followQuotes} à relancer` : ''}`,
-      color: 'color-mix(in srgb, var(--ds-accent) 28%, var(--ds-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open' },
+      color: 'color-mix(in srgb, var(--ds-accent) 28%, var(--ds-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open', cap: 'devis' },
     { label: 'Commandes en cours', amount: sum(openOrders, 'total'), sub: `${openOrders.length} commande${openOrders.length > 1 ? 's' : ''}${lateOrders.length ? ` · ${lateOrders.length} en retard` : ''}`,
       color: 'color-mix(in srgb, var(--ds-accent) 50%, var(--ds-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders' },
     { label: 'Livré, à facturer', amount: blAmount, sub: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison`,
@@ -148,7 +149,8 @@ export default function SalesDashboard() {
     { label: 'En retard', amount: overdue, sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`,
       color: 'var(--ds-danger)', href: '/sales?tab=unpaid&filter=overdue', red: true },
   ];
-  const moneyTotal = money.reduce((s, m) => s + m.amount, 0);
+  const moneyShown = money.filter(m => !m.cap || hasFeature(m.cap));
+  const moneyTotal = moneyShown.reduce((s, m) => s + m.amount, 0);
 
   /* ── Objectifs (anneaux) : transformation des devis, marge brute, créances à jour ── */
   const conv = qov?.conversion.rate ?? null;
@@ -175,7 +177,7 @@ export default function SalesDashboard() {
   const topDebtors = (rec?.customers ?? []).slice().sort((a, b) => b.total - a.total).slice(0, 5);
 
   const rings = [
-    { pct: conv, color: 'var(--ds-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' },
+    ...(hasFeature('devis') ? [{ pct: conv, color: 'var(--ds-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' }] : []),
     { pct: margin?.pct ?? null, color: 'var(--ds-success)', label: 'Marge brute', value: margin ? pct1(margin.pct) : '—', small: margin ? `coût matière ${pct1(margin.food)}` : 'coûts non disponibles' },
     { pct: onTime, color: 'var(--ds-warning)', label: 'Créances à jour', value: onTime != null ? `${Math.round(onTime)} %` : '—', small: 'non échues' },
   ];
@@ -231,10 +233,10 @@ export default function SalesDashboard() {
         <div className="kl-sec"><h2>Où est votre argent</h2><small><b style={{ color: 'var(--kl-ink)' }}>{moneyFmt(moneyTotal, { decimals: 0 })}</b> en circulation</small></div>
         <div className="kl-widget">
           <div className="kl-store" aria-hidden="true">
-            {money.filter(m => m.amount > 0).map(m => <span key={m.label} style={{ width: `${moneyTotal ? m.amount / moneyTotal * 100 : 0}%`, background: m.color }} />)}
+            {moneyShown.filter(m => m.amount > 0).map(m => <span key={m.label} style={{ width: `${moneyTotal ? m.amount / moneyTotal * 100 : 0}%`, background: m.color }} />)}
           </div>
           <div className="kl-legend">
-            {money.map(m => (
+            {moneyShown.map(m => (
               <button key={m.label} type="button" className={m.red && m.amount > 0 ? 'red' : ''} onClick={() => navigate(m.href)}>
                 <span className="l"><i style={{ background: m.color }} />{m.label}</span>
                 <b>{n0(m.amount)}</b>
