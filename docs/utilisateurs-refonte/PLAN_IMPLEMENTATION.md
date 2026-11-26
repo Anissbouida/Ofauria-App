@@ -22,7 +22,7 @@ est fixé au moment du commit, après vérification de `main`.
 | 7 | Plusieurs établissements par compte, établissement par défaut, portée « Son établissement » sur l'ensemble | oui | 707 user_stores |
 | 8 | Sécurité et connexions : politique paramétrable (longueur du mot de passe, renouvellement, verrouillage, délai 2FA, inactivité, écran PIN), sessions et appareils, inscription libre supprimée | oui | 708 user_sessions |
 | 9 | Revue des accès en campagnes (décisions datées, rapport), comptes dormants | oui | 709 |
-| 10 | Administration déléguée (gérer les comptes de sa portée) et approbation des changements sensibles (circuit « Changement de configuration ») | oui | à numéroter |
+| 10 | Administration déléguée (gérer les comptes de sa portée) et approbation des changements sensibles (circuit « Changement de configuration ») | oui | 710 |
 
 ## Décisions prises
 
@@ -45,6 +45,15 @@ est fixé au moment du commit, après vérification de `main`.
   une photo de leurs droits ; décision datée et signée par compte (confirmé, corrigé avec ce qui a
   changé, désactivé) ; clôture seulement quand tout est décidé ; rapport CSV. Seuil des comptes
   dormants dans la politique de sécurité (dormantDays, 60 jours par défaut).
+- **Administration déléguée et approbations (lot 10)** : les droits « Utilisateurs » se donnent par
+  rôle ; hors administrateur, une personne ne gère que les comptes de ses établissements, ni
+  administrateur ni autre gestionnaire ni son propre compte, et n'attribue ni le rôle Administrateur
+  ni un rôle de gestion des comptes (services/account-scope.ts, garde sur toutes les routes
+  /users/:id). Changements sensibles : pièce « Changement d'accès sensible » (access_change) du
+  moteur d'approbation, toujours soumise au circuit même pour un administrateur ; cases dans
+  Sécurité et connexions, toutes décochées, impossibles à cocher avec un seul administrateur actif.
+  Création d'un compte avec un rôle soumis à approbation refusée (l'attribuer ensuite depuis sa
+  fiche). Non fait : portée « son atelier » pour le responsable de production.
 - **Exceptions individuelles (lot 6)** : une exception de module remplace les droits des rôles pour
   ce module seulement ; une exception d'action accorde ou retire une permission précise. Motif
   obligatoire, date de fin facultative (incluse), expirée = ignorée mais affichée. Refusée si elle ne
@@ -71,4 +80,4 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 7 — établissements par compte, établissement actif (mig 707), contrôlé à l'écran
 - [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708), contrôlé à l'écran
 - [x] Lot 9 — revue des accès en campagnes, comptes dormants (mig 709), contrôlé à l'écran (ouverture et liste ; décisions couvertes par les tests)
-- [ ] Lot 10
+- [x] Lot 10 — administration déléguée, approbation des changements sensibles (mig 710)
