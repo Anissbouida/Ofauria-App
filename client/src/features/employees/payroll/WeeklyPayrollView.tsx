@@ -139,7 +139,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
       queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
       queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
       queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
-      notify.success('Paiement annulé : sortie de caisse supprimée et retenues re-créditées');
+      notify.success('Paiement annulé : décaissement supprimé et retenues re-créditées');
     },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -332,7 +332,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
                             <RowMenu label={`Plus d'actions pour la paie de ${who}`} items={[{
                               label: 'Annuler le paiement', icon: RotateCcw, danger: true,
                               onSelect: async () => {
-                                if (!(await confirm(`Annuler le paiement de ${who} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
+                                if (!(await confirm(`Annuler le paiement de ${who} ?\n\nLe décaissement lié sera supprimé (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
                                   { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
                                 unpayMutation.mutate(r.payroll_id as string);
                               },

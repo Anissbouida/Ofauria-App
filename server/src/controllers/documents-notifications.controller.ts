@@ -78,8 +78,8 @@ export const documentsNotificationsController = {
       pdf = await generateInvoicePdf({
         invoiceNumber: 'FE-EXEMPLE', invoiceDate: today, customerName: 'Client exemple SARL', customerICE: '000000000000000',
         items: [
-          { description: 'Plateau de mignardises (exemple)', quantity: 2, unit_price: 350, subtotal: 700 },
-          { description: 'Gâteau d\'anniversaire 12 parts (exemple)', quantity: 1, unit_price: 420, subtotal: 420 },
+          { description: 'Prestation de service (exemple)', quantity: 2, unit_price: 350, subtotal: 700 },
+          { description: 'Article vendu (exemple)', quantity: 1, unit_price: 420, subtotal: 420 },
         ],
         totalHT: 1120, tvaRate: 20, totalTVA: 224, totalTTC: 1344, ...company,
       });
@@ -87,8 +87,8 @@ export const documentsNotificationsController = {
       pdf = await generatePurchaseOrderPdf({
         orderNumber: 'BC-EXEMPLE', orderDate: today, supplierName: 'Fournisseur exemple',
         items: [
-          { ingredientName: 'Farine T55 (exemple)', unit: 'kg', quantity: 50, unitPrice: 6.5, subtotal: 325 },
-          { ingredientName: 'Beurre doux (exemple)', unit: 'kg', quantity: 10, unitPrice: 95, subtotal: 950 },
+          { ingredientName: 'Article A (exemple)', unit: 'kg', quantity: 50, unitPrice: 6.5, subtotal: 325 },
+          { ingredientName: 'Article B (exemple)', unit: 'kg', quantity: 10, unitPrice: 95, subtotal: 950 },
         ],
         totalHT: 1275, ...company,
       } as Parameters<typeof generatePurchaseOrderPdf>[0]);

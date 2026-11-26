@@ -12,12 +12,13 @@ import { currencySymbol } from './currency.js';
  * factures et les bons de commande.
  */
 
-const BROWN = '#8E4A1F';
-const BEIGE = '#F5F0E8';
-const CREAM = '#FDFAF4';
-const TEXT_DARK = '#3B2F2F';
-const TEXT_MUTED = '#7A7168';
-const BORDER = '#D6CFC4';
+// Audit des profils : palette neutre de Kalum (l'ancienne charte marron et beige était celle d'Ofauria).
+const BROWN = '#1E3A5F';
+const BEIGE = '#EEF2F7';
+const CREAM = '#F8FAFC';
+const TEXT_DARK = '#1F2937';
+const TEXT_MUTED = '#6B7280';
+const BORDER = '#D1D5DB';
 const WHITE = '#FFFFFF';
 
 // Helvetica (PDFKit) n'a pas les espaces fines de fr-FR : remplacées par une espace simple.

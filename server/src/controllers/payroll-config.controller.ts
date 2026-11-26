@@ -289,7 +289,7 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
     }
   }
   if (num(p.holiday_premium) > 0) rows.push({ label: 'Indemnité jour férié travaillé', base: `${num(p.holiday_worked_days)} j`, rate: fmt(daily), gain: num(p.holiday_premium) });
-  if (num(p.extra_shift_amount) > 0) rows.push({ label: 'Doubles services', base: `${num(p.extra_shift_days)} j`, rate: fmt(daily), gain: num(p.extra_shift_amount) });
+  if (num(p.extra_shift_amount) > 0) rows.push({ label: 'Journées supplémentaires', base: `${num(p.extra_shift_days)} j`, rate: fmt(daily), gain: num(p.extra_shift_amount) });
   for (const l of lines.filter((x: Record<string, any>) => x.kind === 'gain')) {
     rows.push({ label: l.label, gain: num(l.amount), note: num(l.exempt_amount) > 0 ? `dont ${fmt(num(l.exempt_amount))} exonérés` : undefined });
   }

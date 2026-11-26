@@ -544,7 +544,7 @@ function DettesTab() {
   const tierName = (inv: DebtInvoice): string => {
     if (isReceivable) {
       const full = [inv.customer_first_name, inv.customer_last_name].filter(Boolean).join(' ').trim();
-      return full || 'Client comptoir';
+      return full || 'Client non renseigné';
     }
     return inv.supplier_name || 'Sans fournisseur';
   };
@@ -827,7 +827,7 @@ function DettesTab() {
       {payingInvoice && (() => {
         const remaining = parseFloat(payingInvoice.remaining_amount) || 0;
         const partyName = isReceivable
-          ? ([payingInvoice.customer_first_name, payingInvoice.customer_last_name].filter(Boolean).join(' ').trim() || 'Client comptoir')
+          ? ([payingInvoice.customer_first_name, payingInvoice.customer_last_name].filter(Boolean).join(' ').trim() || 'Client non renseigné')
           : (payingInvoice.supplier_name || 'Fournisseur');
         return (
           <Modal title={isReceivable ? 'Encaisser un règlement' : 'Payer une facture'} subtitle={`${payingInvoice.invoice_number} · ${partyName}`}

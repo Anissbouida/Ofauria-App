@@ -18,11 +18,12 @@ export type DunningLetter = {
   legalContext?: LegalContext;
 };
 
-const BROWN = '#8E4A1F';
-const BEIGE = '#F5F0E8';
-const TEXT = '#3B2F2F';
-const MUTED = '#7A7168';
-const BORDER = '#D6CFC4';
+// Audit des profils : palette neutre de Kalum (l'ancienne charte marron et beige était celle d'Ofauria).
+const BROWN = '#1E3A5F';
+const BEIGE = '#EEF2F7';
+const TEXT = '#1F2937';
+const MUTED = '#6B7280';
+const BORDER = '#D1D5DB';
 
 function defaultLogo(): string | null {
   // Audit des profils (L1) : aucun logo de repli (c'était celui d'un client) ; sans logo, le nom de la société.

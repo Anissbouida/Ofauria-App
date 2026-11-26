@@ -53,7 +53,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
       queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
-      notify.success('Avance enregistrée (le décaissement apparaît en Caisse)');
+      notify.success('Avance enregistrée (le décaissement apparaît en trésorerie)');
       setShowForm(false);
     },
     onError: (err: unknown) => {
