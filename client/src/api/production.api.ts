@@ -157,6 +157,8 @@ export const productionApi = {
     api.get(`/production/order-types/${id}/impact`).then(r => r.data.data),
   policyImpact: (scopeType: string, scopeId: string): Promise<{ draft: number; underway: number }> =>
     api.get('/production/policies/impact', { params: { scopeType, scopeId } }).then(r => r.data.data),
+  /** Dossier de lot : matières, pesées, étapes, relevés, contrôles, libération (feuille de route 4.2). */
+  batchRecord: (id: string): Promise<Record<string, any>> => api.get(`/production/${id}/batch-record`).then(r => r.data.data),
   /** Synthèse chiffrée de l'ordre, calculée au serveur (M8-05). */
   summary: (id: string): Promise<PlanSummary> => api.get(`/production/${id}/summary`).then(r => r.data.data),
   /** Gabarits d'impression résolus pour un type d'ordre (M8-04). */

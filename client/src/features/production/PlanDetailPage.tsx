@@ -31,7 +31,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { EquipmentLoadPanel, MaterialReturnPanel } from './PlanFlowPanels';
 import { planStatusTag, bonStatusTag } from './status';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
+import { buildTicketHtml, buildBsiHtml, buildFicheHtml, buildBatchRecordHtml } from './plan-print';
 import { PlanJournal } from './plan-sections';
 import './production.css';
 import '../projects/projects.css';
@@ -1081,6 +1081,11 @@ export default function PlanDetailPage() {
       {plan.status === 'completed' && docOn('fiche_suivi') && (
         <button onClick={() => printFicheProduction()} className="odoo-btn-secondary">
           <Printer size={13} /> Fiche de production
+        </button>
+      )}
+      {['in_progress', 'completed'].includes(plan.status as string) && (
+        <button onClick={() => { productionApi.batchRecord(plan.id as string).then(d => setPrintHtml(buildBatchRecordHtml(d, settings))).catch(e => notify.error(apiErrorMessage(e))); }} className="odoo-btn-secondary">
+          <Printer size={13} /> Dossier de lot
         </button>
       )}
     </>

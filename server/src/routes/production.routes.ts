@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { batchRecordRepository } from '../repositories/batch-record.repository.js';
 import { z } from 'zod';
 import { productionConsumptionRepository } from '../repositories/production-consumption.repository.js';
 
@@ -165,6 +166,12 @@ router.get('/:id/progress', authenticate, id, can('production.view'), asyncHandl
   res.json({ success: true, data });
 }));
 router.get('/:id', authenticate, id, asyncHandler(productionController.getById));
+// Feuille de route 4.2 : dossier de lot (matières, pesées, étapes, relevés, contrôles, libération).
+router.get('/:id/batch-record', authenticate, id, asyncHandler(async (req, res) => {
+  const data = await batchRecordRepository.forPlan(String(req.params.id));
+  if (!data) { res.status(404).json({ success: false, error: { message: 'Ordre introuvable' } }); return; }
+  res.json({ success: true, data });
+}));
 router.post('/', authenticate, can('production.create'), validate(createPlanSchema), asyncHandler(productionController.create));
 router.put('/:id/header', authenticate, id, can('production.header'), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
 router.put('/:id/items/:itemId/recipe', authenticate, validateUuidParams('id', 'itemId'), can('production.items'), validate(itemRecipeSchema), asyncHandler(productionController.setItemRecipe));

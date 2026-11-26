@@ -437,3 +437,48 @@ ${settings.companyName} - ${esc(tpl.title)} - Imprime le ${now}${tpl.footer ? `<
 
 </body></html>`);
 }
+
+/**
+ * Dossier de lot (feuille de route 4.2) : document de revue avant libération, à partir des
+ * données saisies (serveur, GET /production/:id/batch-record). Signatures de revue en pied.
+ */
+export function buildBatchRecordHtml(d: Record<string, any>, settings: PrintSettings): string {
+  const dt = (v: unknown) => (v ? format(new Date(v as string), 'dd/MM/yyyy HH:mm') : '—');
+  const day = (v: unknown) => (v ? format(new Date(v as string), 'dd/MM/yyyy') : '—');
+  const n = (v: unknown) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 }));
+  const yes = (v: unknown) => (v === true ? 'Conforme' : v === false ? '<b style="color:#B91C1C">Non conforme</b>' : '—');
+  const p = d.plan ?? {};
+  const table = (head: string[], rows: string[][]) => rows.length
+    ? `<table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+    : '<p class="empty">Aucune donnée enregistrée.</p>';
+  const steps = (d.steps ?? []) as Record<string, any>[];
+  return `<!DOCTYPE html><html><head><title>Dossier de lot ${esc(p.of_number ?? '')}</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0F172A;font-size:11px;margin:24px}
+h1{font-size:18px;margin:0}h2{font-size:13px;margin:18px 0 6px;border-bottom:1px solid #CBD5E1;padding-bottom:3px}
+.head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}.muted{color:#475569}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #CBD5E1;padding:4px 6px;text-align:left;vertical-align:top}
+th{background:#F1F5F9;font-weight:600}.empty{color:#64748B;font-style:italic}
+.alerts{border:1px solid #F59E0B;background:#FFFBEB;padding:8px 10px;margin:10px 0}.alerts li{margin:2px 0}
+.sign{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}.sign div{border-top:1px solid #0F172A;padding-top:4px;min-height:48px}
+</style></head><body>
+<div class="head"><div><h1>Dossier de lot — ${esc(p.of_number ?? '')}</h1>
+<div class="muted">${esc(settings.companyName)}${settings.subtitle ? ` · ${esc(settings.subtitle)}` : ''}</div></div>
+<div class="muted" style="text-align:right">Type : ${esc(p.order_type ?? '—')}<br>Date de l'ordre : ${day(p.plan_date)}<br>Édité le ${dt(d.generated_at)}</div></div>
+${(d.alerts ?? []).length ? `<div class="alerts"><b>Points à examiner avant libération</b><ul>${(d.alerts as string[]).map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>` : '<p><b>Aucun écart relevé</b> sur les pesées, relevés, contrôles et libérations.</p>'}
+<h2>Articles fabriqués</h2>
+${table(['Article', 'Prévu', 'Produit', 'Statut'], (d.items ?? []).map((i: any) => [esc(i.product_name), n(i.planned_quantity), n(i.actual_quantity), esc(i.status)]))}
+<h2>Matières consommées</h2>
+${table(['Matière', 'Lot interne', 'Lot fournisseur', 'Péremption', 'Quantité'], (d.materials ?? []).map((m: any) => [esc(m.ingredient_name), esc(m.lot_number ?? '—'), esc(m.supplier_lot_number ?? '—'), day(m.expiration_date), `${n(m.quantity)} ${esc(m.unit ?? '')}`]))}
+<h2>Pesées</h2>
+${table(['Bon', 'Matière', 'Prévu', 'Pesé', 'Écart', 'Pesé par', 'Le', 'Réceptionné par'], (d.weighings ?? []).map((w: any) => [esc(w.bon_number), esc(w.ingredient_name), n(w.needed_quantity), n(w.actual_quantity), w.ecart_quantity ? `${n(w.ecart_quantity)}${w.ecart_reason ? ` (${esc(w.ecart_reason)})` : ''}` : '—', esc(w.weighed_by_name ?? '—'), dt(w.weighed_at), esc(w.received_by_name ?? '—')]))}
+<h2>Étapes et relevés de procédé</h2>
+${steps.length ? steps.map(s => `<p><b>${esc(s.product_name ?? '')} — ${esc(s.ordre)}. ${esc(s.nom)}</b> <span class="muted">· début ${dt(s.started_at)} (${esc(s.started_by_name ?? '—')}) · fin ${dt(s.completed_at)} (${esc(s.completed_by_name ?? '—')})</span></p>
+${(s.readings ?? []).length ? table(['Paramètre', 'Consigne', 'Tolérance', 'Mesure', 'Résultat', 'Par', 'Le'], s.readings.map((r: any) => [esc(r.parametre) + (r.est_ccp ? ' (CCP)' : ''), esc(r.consigne ?? '—'), esc(r.tolerance ?? '—'), esc(r.mesure ?? '—'), yes(r.conforme), esc(r.measured_by_name ?? '—'), dt(r.mesure_a)])) : ''}`).join('') : '<p class="empty">Aucune étape enregistrée.</p>'}
+<h2>Contrôles qualité</h2>
+${table(['Contrôle', 'Stade', 'Date', 'Résultat', 'Par', 'Observations'], (d.inspections ?? []).map((q: any) => [esc(q.title ?? q.template_name ?? '—'), esc(q.control_stage ?? '—'), day(q.inspected_on), yes(q.conformity), esc(q.inspected_by_name ?? '—'), esc(q.notes ?? '')]))}
+<h2>Lots produits et libération</h2>
+${table(['Lot', 'Article', 'Quantité', 'Fabriqué le', 'Date limite', 'Statut', 'Libéré par', 'Le', 'Note'], (d.lots ?? []).map((l: any) => [esc(l.lot_number), esc(l.product_name), n(l.quantity_total), dt(l.produced_at), day(l.expires_at), esc(l.status), esc(l.released_by_name ?? '—'), dt(l.released_at), esc(l.release_note ?? '')]))}
+<div class="sign"><div>Production — nom, date, visa</div><div>Contrôle qualité — nom, date, visa</div><div>Libération — nom, date, visa</div></div>
+</body></html>`;
+}

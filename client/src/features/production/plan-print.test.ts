@@ -37,3 +37,19 @@ describe('Impressions paramétrables (M8-04)', () => {
     expect(ticket).not.toContain('Produit par');
   });
 });
+
+describe('Dossier de lot (feuille de route 4.2)', () => {
+  it('signale les écarts, échappe le texte et prévoit les visas de revue', async () => {
+    const { buildBatchRecordHtml } = await import('./plan-print');
+    const html = buildBatchRecordHtml({
+      plan: { of_number: 'OF-1', plan_date: '2026-11-20', order_type: 'Ordre de lot' },
+      items: [{ product_name: 'Sirop <test>', planned_quantity: 100, actual_quantity: 98, status: 'completed' }],
+      materials: [], weighings: [{ bon_number: 'BS-1', ingredient_name: 'Principe actif', needed_quantity: 2, actual_quantity: 2.01, weighed_by_name: 'A. B.' }],
+      steps: [], inspections: [], lots: [], alerts: ['Relevé non conforme : pH = 9'], generated_at: '2026-11-20T10:00:00Z',
+    }, { companyName: 'Labo' });
+    expect(html).toContain('Dossier de lot — OF-1');
+    expect(html).toContain('Sirop &lt;test&gt;');
+    expect(html).toContain('Relevé non conforme : pH = 9');
+    expect(html).toContain('Libération — nom, date, visa');
+  });
+});
