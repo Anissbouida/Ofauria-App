@@ -313,3 +313,6 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 2.4 Lieux typés | Fait | Rôles « chantier » (lien `project_id`) et « quai » ; emplacements de départ des profils BTP et transport |
 | 2.5 Stock déposant | Fait (modèle) | `ingredient_lots.owner_customer_id`, capacité `stock_deposant` (profil transport), exclu de la valorisation et de l'âge du stock. Reste : écran de réception pour compte de client (maquette Stock-Transport-Mouvement) |
 | 2.2, 2.6, 2.7 | Reporté | Fiche par blocs, vue unique des réservations, écran de mouvement par type : refonte d'écrans existants, à faire sur maquette |
+| 3.1 Audit Ventes | Fait | Existant : devis par sections (lots), `order_items.qty_delivered` (reste à livrer), preuve de livraison sur le bon de livraison (signature, réserves) |
+| 3.2 Devis structuré | Existant | Sections du devis = lots ; lignes = ouvrages |
+| 3.3 Situations de travaux | Fait | Mig 713 ; écran Ventes › Situations de travaux ; calcul partagé ; contrôlé à l'écran sur un marché de démonstration (supprimé ensuite). À valider par le métier : TVA calculée sur le net après retenue et avance (règle de la maquette) |
