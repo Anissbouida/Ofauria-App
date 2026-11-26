@@ -1705,6 +1705,7 @@
  "GET /production-markup": null,
  "GET /production/:id": null,
  "GET /production/:id/activities": null,
+ "GET /production/:id/batch-record": null,
  "GET /production/:id/consumption-variance": null,
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
