@@ -49,3 +49,10 @@ export const freightGridSchema = body({
   brackets: z.array(z.object({ upTo: numish, unitPrice: numish, flatPrice: numish })).max(200).nullish(),
 });
 export const freightPriceSchema = body({ ...freightBase, quantity: numish, date: txt(10) });
+
+/* Stock des déposants (mig 719) — deposit-stock.routes. */
+export const depositArticleSchema = body({ customerId: ref, code: txt(60), label: txt(200), unit: txt(20) });
+export const depositMoveSchema = body({
+  reference: txt(120), note: txt(2000), locationId: ref,
+  lines: z.array(z.object({ articleId: z.string().uuid(), quantity: numish, lotNumber: txt(80), expirationDate: txt(10) })).max(500).nullish(),
+});

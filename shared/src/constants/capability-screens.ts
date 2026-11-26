@@ -61,6 +61,10 @@ export const CAPABILITY_SCREENS: CapabilityScreenDef[] = [
   { key: 'promotions_fidelite', module: 'pos', label: 'Promotions et fidélité',
     description: 'Promotions, codes de réduction et points de fidélité à la caisse.',
     screens: ['sales:promotions'], api: ['/promotions', '/loyalty'], routes: ['/promotions'] },
+  // ── Stock ── (capacité inscrite par la mig 712)
+  { key: 'stock_deposant', module: 'stock', label: 'Stock pour le compte de clients',
+    description: 'Marchandise détenue pour un client (entrepôt logistique), hors stock et valeur de la société.',
+    screens: ['stock:deposants'], api: ['/deposit-stock'] },
   // ── Achats ──
   { key: 'appels_offres', module: 'purchasing', label: 'Demandes de prix',
     description: 'Consultation de plusieurs fournisseurs et comparaison des offres.',

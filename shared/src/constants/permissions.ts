@@ -614,6 +614,8 @@ export const PERMISSIONS = {
   "settings.printers.system.view": { module: "settings", label: "Printers › system : consulter", defaultRoles: ["admin", "manager"] },
   "settings.printers.test": { module: "settings", label: "Printers : test", defaultRoles: ["admin", "manager"] },
   "settings.printers.view": { module: "settings", label: "Printers : consulter", defaultRoles: ["admin", "cashier", "manager", "saleswoman"] },
+  "stock.deposit.move": { module: "stock", label: "Stock des déposants : réceptionner et expédier", defaultRoles: ["admin", "manager", "magasinier"] },
+  "stock.deposit.view": { module: "stock", label: "Stock des déposants : consulter", defaultRoles: ["admin", "manager", "magasinier"] },
   "stock.bons_sortie.accept_reception": { module: "stock", label: "Bons sortie : accept réception", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "stock.bons_sortie.cancel": { module: "stock", label: "Bons sortie : annuler", defaultRoles: ["admin", "baker", "beldi_sale", "magasinier", "manager", "pastry_chef", "viennoiserie"] },
   "stock.bons_sortie.return": { module: "stock", label: "Bons sortie : retour de matière au magasin", defaultRoles: ["admin", "baker", "beldi_sale", "magasinier", "manager", "pastry_chef", "viennoiserie"] },

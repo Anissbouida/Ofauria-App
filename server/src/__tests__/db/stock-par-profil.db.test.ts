@@ -60,6 +60,24 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     expect(mine?.value).toBe(50);
   });
 
+  it('stock des déposants : registre séparé, sortie bornée au stock du lot (mig 719)', async () => {
+    const { depositStockRepository: d } = await import('../../repositories/deposit-stock.repository.js');
+    const ctx = { userId: fx.userId, storeId: fx.storeId };
+    const art = await d.createArticle({ customerId, code: `PAL-${RUN}`, label: 'Palette de jus', unit: 'colis' }, fx.userId);
+    await expect(d.createArticle({ customerId, code: `PAL-${RUN}`, label: 'Doublon' }, fx.userId)).rejects.toThrow(/existe/);
+    const invBefore = Number((await testPool().query(`SELECT COALESCE(SUM(current_quantity), 0) AS q FROM inventory`)).rows[0].q);
+    await d.move('in', { reference: 'CMR-1', lines: [{ articleId: art.id, quantity: 120, lotNumber: 'L1', expirationDate: '2027-01-31' }] }, ctx);
+    await expect(d.move('out', { lines: [{ articleId: art.id, quantity: 130, lotNumber: 'L1' }] }, ctx)).rejects.toThrow(/insuffisant/);
+    await d.move('out', { reference: 'BL-1', lines: [{ articleId: art.id, quantity: 45, lotNumber: 'L1' }] }, ctx);
+    const st = (await d.stock(customerId)).find((x: { article_id: string }) => x.article_id === art.id);
+    expect(st.quantity).toBe(75);
+    expect((await d.movements(customerId)).length).toBe(2);
+    const invAfter = Number((await testPool().query(`SELECT COALESCE(SUM(current_quantity), 0) AS q FROM inventory`)).rows[0].q);
+    expect(invAfter).toBe(invBefore);
+    await testPool().query(`DELETE FROM deposit_movements WHERE article_id = $1`, [art.id]);
+    await testPool().query(`DELETE FROM deposit_articles WHERE id = $1`, [art.id]);
+  });
+
   it('promotions éteintes : la caisse calcule sans promotion', async () => {
     const p = testPool();
     await p.query(`INSERT INTO company_feature_settings (feature_key, enabled) VALUES ('promotions_fidelite', false)

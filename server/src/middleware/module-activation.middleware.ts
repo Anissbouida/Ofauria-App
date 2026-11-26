@@ -61,6 +61,7 @@ const EXTRA_RULES: GuardRule[] = [
   { prefix: '/complaints', modules: ['controle', 'sales'] },
   { prefix: '/progress-billings', modules: ['sales'] },
   { prefix: '/freight-rates', modules: ['sales'] },
+  { prefix: '/deposit-stock', modules: ['stock'] },
   // Achats
   { prefix: '/rfqs', modules: ['purchasing'] },
   { prefix: '/landed-costs', modules: ['purchasing'] },

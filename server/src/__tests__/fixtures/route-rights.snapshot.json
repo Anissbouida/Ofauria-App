@@ -750,6 +750,21 @@
   "manager",
   "saleswoman"
  ],
+ "GET /deposit-stock/articles": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /deposit-stock/movements": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /deposit-stock/stock": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
  "GET /dunning": [
   "admin",
   "manager"
@@ -3275,6 +3290,21 @@
   "cashier",
   "manager",
   "saleswoman"
+ ],
+ "POST /deposit-stock/articles": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /deposit-stock/receive": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /deposit-stock/ship": [
+  "admin",
+  "magasinier",
+  "manager"
  ],
  "POST /dunning/:id/cancel": [
   "admin",
