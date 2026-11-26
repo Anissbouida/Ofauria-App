@@ -20,6 +20,7 @@ import SalesContractsPage from './features/sales/SalesContractsPage';
 import SalesTargetsPage from './features/sales/SalesTargetsPage';
 import RebatesPage from './features/sales/RebatesPage';
 import ProgressBillingsPage from './features/sales/ProgressBillingsPage';
+import FreightRatesPage from './features/sales/FreightRatesPage';
 import POSPage from './features/pos/POSPage';
 import CustomersPage from './features/customers/CustomersPage';
 import StockPage from './features/stock/StockPage';
@@ -119,6 +120,7 @@ export default function App() {
                 <Route path="/sales-targets" element={<SalesTargetsPage />} />
                 <Route path="/rebates" element={<RebatesPage />} />
                 <Route path="/progress-billings" element={<ProgressBillingsPage />} />
+                <Route path="/freight-rates" element={<FreightRatesPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/customers/:id" element={<CustomerRecordPage />} />

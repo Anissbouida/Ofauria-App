@@ -98,6 +98,10 @@
   "admin",
   "manager"
  ],
+ "DELETE /freight-rates/:id": [
+  "admin",
+  "manager"
+ ],
  "DELETE /gestion/budget/:id": [
   "admin",
   "manager"
@@ -844,6 +848,11 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "GET /freight-rates": [
+  "admin",
+  "manager",
+  "saleswoman"
  ],
  "GET /gestion/accounts": [
   "admin",
@@ -3338,6 +3347,15 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "POST /freight-rates": [
+  "admin",
+  "manager"
+ ],
+ "POST /freight-rates/price": [
+  "admin",
+  "manager",
+  "saleswoman"
+ ],
  "POST /gestion/budget": [
   "admin",
   "manager"
@@ -5106,6 +5124,10 @@
   "manager"
  ],
  "PUT /forecast/override": [
+  "admin",
+  "manager"
+ ],
+ "PUT /freight-rates/:id": [
   "admin",
   "manager"
  ],

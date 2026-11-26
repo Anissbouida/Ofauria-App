@@ -64,6 +64,8 @@ export default function SalesLayout() {
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },
     { key: 'products', label: 'Produits', icon: ShoppingBag, section: 'setup', href: '/products', hidden: !hasModule('products') },
     { key: 'price-lists', label: 'Listes de prix', icon: Tag, section: 'setup', href: '/price-lists', hidden: !hasModule('sales') || !isDirection },
+    // Mig 714 : grilles tarifaires du transport (capacité grille_transport).
+    { key: 'freight-rates', label: 'Grilles tarifaires', icon: Truck, section: 'setup', href: '/freight-rates', hidden: !hasModule('sales') || !isDirection },
     { key: 'promotions', label: 'Promotions et fidélité', icon: BadgePercent, section: 'setup', href: '/promotions', hidden: !hasModule('sales') },
     // Canaux de vente : écran intégré au module Ventes (route /sales-channels sous SalesLayout),
     // plus de renvoi vers Paramètres. Configuration réservée à la direction.

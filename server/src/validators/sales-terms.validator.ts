@@ -41,3 +41,11 @@ export const progressBillingDraftSchema = body({
   lines: z.array(z.object({ quoteItemId: z.string().uuid(), pctCumulative: numish })).max(2000).nullish(),
 });
 export const progressBillingActionSchema = emptyBody;
+
+/* Grilles tarifaires du transport (mig 714) — freight-rates.routes. */
+const freightBase = { basis: txt(10), customerId: ref, originZone: txt(80), destinationZone: txt(80) };
+export const freightGridSchema = body({
+  ...freightBase, name: txt(120), minimumCharge: numish, tvaRate: numish, validFrom: txt(10), validTo: txt(10), isActive: z.boolean().nullish(),
+  brackets: z.array(z.object({ upTo: numish, unitPrice: numish, flatPrice: numish })).max(200).nullish(),
+});
+export const freightPriceSchema = body({ ...freightBase, quantity: numish, date: txt(10) });

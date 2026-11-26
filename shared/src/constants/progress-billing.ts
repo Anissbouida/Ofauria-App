@@ -60,3 +60,20 @@ export function computeProgressBilling(lines: ProgressLineInput[], s: ProgressSe
 export function progressRegressions(lines: { label: string; pctCumulative: number; previousPct: number }[]): string[] {
   return lines.filter(l => Number(l.pctCumulative) + 1e-9 < Number(l.previousPct)).map(l => l.label);
 }
+
+/**
+ * Prix d'une prestation de transport selon une grille par tranches (mig 714).
+ * La tranche qui contient la quantité (première borne haute ≥ quantité, ou la tranche ouverte)
+ * donne le prix unitaire et le forfait ; le minimum de facturation s'applique en dernier.
+ */
+export interface FreightBracket { upTo: number | null; unitPrice: number; flatPrice: number }
+
+export function computeFreightPrice(brackets: FreightBracket[], quantity: number, minimumCharge = 0):
+  { bracket: FreightBracket | null; amount: number; minimumApplied: boolean } {
+  const q = Number(quantity) || 0;
+  const sorted = [...brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+  const bracket = sorted.find(b => b.upTo === null || q <= b.upTo) ?? null;
+  const raw = bracket ? r2(q * Number(bracket.unitPrice) + Number(bracket.flatPrice)) : 0;
+  const min = Number(minimumCharge) || 0;
+  return { bracket, amount: Math.max(raw, min), minimumApplied: min > raw };
+}

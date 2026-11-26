@@ -96,6 +96,7 @@ import { promotionsRouter, loyaltyRouter } from './promotions.routes.js';
 import { posParkedRouter } from './pos-parked.routes.js';
 import filesRoutes from './files.routes.js';
 import progressBillingsRoutes from './progress-billings.routes.js';
+import freightRatesRoutes from './freight-rates.routes.js';
 
 const router = Router();
 
@@ -222,5 +223,7 @@ router.use('/loyalty', loyaltyRouter);
 router.use('/pos/parked', posParkedRouter);
 // Mig 713 : facturation à l'avancement (situations de travaux).
 router.use('/progress-billings', progressBillingsRoutes);
+// Mig 714 : grilles tarifaires du transport.
+router.use('/freight-rates', freightRatesRoutes);
 
 export default router;

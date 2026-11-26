@@ -35,3 +35,25 @@ export const progressBillingsApi = {
   validate: (id: string): Promise<ProgressBilling> => api.put(`/progress-billings/${id}/validate`).then(r => r.data.data),
   cancel: (id: string) => api.put(`/progress-billings/${id}/cancel`).then(r => r.data),
 };
+
+/** Grilles tarifaires du transport (mig 714). */
+export interface FreightBracketRow { id?: string; upTo: number | null; unitPrice: number; flatPrice: number }
+export interface FreightGrid {
+  id: string; name: string; customer_id: string | null; customer_name: string | null; basis: 'weight' | 'pallet' | 'distance';
+  origin_zone: string | null; destination_zone: string | null; minimum_charge: string; tva_rate: string;
+  valid_from: string | null; valid_to: string | null; is_active: boolean; brackets: FreightBracketRow[];
+}
+export interface FreightGridInput {
+  name: string; customerId?: string | null; basis: string; originZone?: string | null; destinationZone?: string | null;
+  minimumCharge: number; tvaRate: number; validFrom?: string | null; validTo?: string | null; isActive: boolean;
+  brackets: { upTo: number | null; unitPrice: number; flatPrice: number }[];
+}
+export const freightRatesApi = {
+  list: (): Promise<FreightGrid[]> => api.get('/freight-rates').then(r => r.data.data),
+  create: (g: FreightGridInput) => api.post('/freight-rates', g).then(r => r.data.data),
+  update: (id: string, g: FreightGridInput) => api.put(`/freight-rates/${id}`, g).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/freight-rates/${id}`).then(r => r.data),
+  price: (q: { basis: string; quantity: number; customerId?: string | null; originZone?: string | null; destinationZone?: string | null }):
+    Promise<{ gridName: string; amount: number; minimumApplied: boolean; taxAmount: number; totalTtc: number }> =>
+    api.post('/freight-rates/price', q).then(r => r.data.data),
+};
