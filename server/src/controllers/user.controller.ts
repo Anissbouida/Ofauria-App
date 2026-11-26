@@ -3,6 +3,8 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { listExceptions, setModuleException, setActionException, removeException, ExceptionError } from '../services/user-exceptions.js';
 import { userSessionRepository } from '../repositories/user-session.repository.js';
+import { isAdminUser, accountsInScope, assertAssignable, ScopeError } from '../services/account-scope.js';
+import { approvalKinds, setApprovalKinds, deferIfSensitive, listAccessChanges, AccessChangeError, type AccessChangeKind } from '../services/access-changes.js';
 import { securityPolicy, passwordPolicyError, pinPolicyError, POLICY_LIMITS, validatePolicy, setSecurityPolicy } from '../services/security-policy.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
@@ -78,6 +80,16 @@ async function guardAccountLoss(req: AuthRequest, res: Response, targetId: strin
   return true;
 }
 
+/** Types de changement sensible portés par l'ajout de ces rôles (lot 10). */
+async function sensitiveRoleKinds(codes: string[]): Promise<AccessChangeKind[]> {
+  if (!codes.length) return [];
+  const kinds: AccessChangeKind[] = [];
+  if (await roleRepository.anyAdminBase(codes)) kinds.push('grant_admin');
+  const mfaRoles = await mfaRepository.requiredRoles();
+  if (codes.some(c => mfaRoles.includes(c))) kinds.push('grant_mfa_role');
+  return kinds;
+}
+
 /**
  * Établissements choisis pour un compte (lot 7). `raw` absent : rien à changer (null). Sinon liste
  * dédoublonnée d'établissements existants et actifs ; le défaut est `wanted` s'il en fait partie,
@@ -133,6 +145,8 @@ export const userController = {
       userRepository.storeIdsByUser(),
     ]);
     const policy = await securityPolicy();
+    // Lot 10 : hors administrateur, seulement les comptes de ses établissements (et le sien).
+    const scope = (await isAdminUser(_req.user!.userId)) ? null : await accountsInScope(_req.user!.userId);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
       const arr = rolesByUser.get(r.user_id) ?? [];
@@ -140,7 +154,7 @@ export const userController = {
       rolesByUser.set(r.user_id, arr);
     }
     const now = Date.now();
-    const safe = users.map(u => {
+    const safe = users.filter(u => !scope || scope.has(u.id) || u.id === _req.user!.userId).map(u => {
       const roles = rolesByUser.get(u.id) ?? (u.role ? [u.role] : []);
       const mfaRequiredByRole = mfaRoles.some(r => roles.includes(r));
       const mfaRequiredForUser = !!(u as { mfa_required?: boolean }).mfa_required;
@@ -215,6 +229,18 @@ export const userController = {
     // Lot 7 : plusieurs établissements ; `storeId` = établissement par défaut (sinon le premier).
     const stores = await storeSelection(req.body.storeIds, storeId ?? null, null);
     if (typeof stores === 'string') { res.status(400).json({ success: false, error: { message: stores } }); return; }
+    // Lot 10 : administration déléguée (rôles et établissements attribuables), puis changement sensible.
+    try {
+      await assertAssignable(req.user!.userId, roleCodes, stores ? stores.ids : (storeId ? [String(storeId)] : []));
+    } catch (e) {
+      if (e instanceof ScopeError) { res.status(e.status).json({ success: false, error: { message: e.message } }); return; }
+      throw e;
+    }
+    const createKinds = await sensitiveRoleKinds(roleCodes);
+    if (createKinds.length && (await approvalKinds()).some(k => createKinds.includes(k))) {
+      res.status(409).json({ success: false, error: { message: 'Ce rôle passe par une approbation : créez le compte avec un autre rôle, puis attribuez-le depuis sa fiche.' } });
+      return;
+    }
     const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId: stores ? stores.defaultId : storeId }, req.user?.userId);
     if (stores) await userRepository.setStores(user.id, stores.ids, stores.defaultId, req.user?.userId);
     if (pinCode) {
@@ -264,12 +290,14 @@ export const userController = {
     // La route doit egalement etre protegee par authorize('admin'),
     // mais on re-verifie ici contre le token pour eviter toute escalade.
     const storeIdsInput: unknown = req.body.storeIds;
-    if (req.user?.role !== 'admin' && (role !== undefined || rolesInput !== undefined || storeId !== undefined || storeIdsInput !== undefined)) {
-      res.status(403).json({
-        success: false,
-        error: { message: 'Modification de rôle ou magasin réservée aux administrateurs' },
-      });
-      return;
+    // Lot 10 : hors administrateur, administration déléguée (rôles et établissements attribuables).
+    try {
+      await assertAssignable(req.user!.userId,
+        rolesInput ?? (role !== undefined ? [String(role)] : undefined),
+        Array.isArray(storeIdsInput) ? (storeIdsInput as unknown[]).map(String) : storeId !== undefined ? (storeId ? [String(storeId)] : []) : undefined);
+    } catch (e) {
+      if (e instanceof ScopeError) { res.status(e.status).json({ success: false, error: { message: e.message } }); return; }
+      throw e;
     }
 
     if (email !== undefined) updateData.email = email;
@@ -340,6 +368,23 @@ export const userController = {
     if (isActive === false && !(await guardAccountLoss(req, res, req.params.id, 'deactivate'))) return;
     if (newPrimaryRole !== undefined && newPrimaryRole !== 'admin' && !(await guardAccountLoss(req, res, req.params.id, 'demote'))) return;
 
+    // Lot 10 : rôle Administrateur ou rôle à 2FA exigée ajouté → en attente d'approbation si la
+    // politique le demande ; le reste de la modification s'applique tout de suite.
+    let pendingApproval: { id: string; label: string } | null = null;
+    let rolesToApply = rolesInput;
+    if (rolesInput !== undefined && newPrimaryRole) {
+      const before = await userRepository.getRoleCodes(req.params.id);
+      const added = rolesInput.filter(c => !before.includes(c));
+      const kinds = await sensitiveRoleKinds(added);
+      if (kinds.length) {
+        const target = await userRepository.findById(req.params.id);
+        pendingApproval = await deferIfSensitive(kinds,
+          `Rôles de ${[target?.first_name, target?.last_name].filter(Boolean).join(' ') || target?.email} : ajout de ${added.join(', ')}`,
+          { type: 'user_roles', userId: req.params.id, roles: rolesInput, primaryRole: newPrimaryRole }, req.user!.userId);
+        if (pendingApproval) rolesToApply = undefined;
+      }
+    }
+
     // Snapshot de l'ancien role pour detecter un changement de role
     const oldUser = await userRepository.findById(req.params.id);
     const oldRole = (oldUser as { role?: string } | null)?.role;
@@ -348,8 +393,8 @@ export const userController = {
     if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
 
     // Rôles multiples : synchronise user_roles et users.role (= principal).
-    if (rolesInput !== undefined && newPrimaryRole) {
-      await userRepository.setRoleCodes(user.id, rolesInput, newPrimaryRole, req.user?.userId);
+    if (rolesToApply !== undefined && newPrimaryRole) {
+      await userRepository.setRoleCodes(user.id, rolesToApply, newPrimaryRole, req.user?.userId);
     }
     // Lien espace employé (employees.user_id) — réservé à l'administrateur (route admin).
     if (req.body.employeeId !== undefined) {
@@ -387,7 +432,8 @@ export const userController = {
     res.json({
       success: true, data: {
         id: user.id, email: user.email, firstName: user.first_name, lastName: user.last_name,
-        role: newPrimaryRole ?? user.role, roles, isActive: user.is_active, hasPin: !!user.pin_code, storeId: user.store_id,
+        role: pendingApproval ? user.role : newPrimaryRole ?? user.role, roles, isActive: user.is_active, hasPin: !!user.pin_code, storeId: user.store_id,
+        ...(pendingApproval ? { pendingApproval } : {}),
       },
     });
   },
@@ -530,11 +576,36 @@ export const userController = {
         return;
       }
     }
+    // Lot 10 : retirer la double authentification d'un rôle peut passer par une approbation.
+    const removed = (await mfaRepository.requiredRoles()).filter(c => !roles.includes(c));
+    if (removed.length) {
+      const pending = await deferIfSensitive(['mfa_role_removed'], `Double authentification retirée : ${removed.join(', ')}`, { type: 'mfa_roles', roles }, req.user!.userId);
+      if (pending) { res.status(202).json({ success: true, data: { requiredRoles: await mfaRepository.requiredRoles(), pendingApproval: pending } }); return; }
+    }
     await mfaRepository.setRequiredRoles(roles, req.user!.userId);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'mfa_requirement_changed', userId: req.user?.userId, success: true, details: { requiredRoles: roles },
     });
     res.json({ success: true, data: { requiredRoles: roles } });
+  },
+
+  /** Changements d'accès soumis à approbation (lot 10) et demandes récentes. */
+  async accessApprovals(_req: AuthRequest, res: Response) {
+    const [kinds, activeAdmins, changes] = await Promise.all([approvalKinds(), userRepository.countActiveAdmins(), listAccessChanges()]);
+    res.json({ success: true, data: { kinds, activeAdmins, changes } });
+  },
+
+  async setAccessApprovals(req: AuthRequest, res: Response) {
+    try {
+      const kinds = await setApprovalKinds(req.body.kinds as string[], req.user!.userId);
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'security_policy_changed', userId: req.user?.userId, success: true, details: { approvals: kinds },
+      });
+      res.json({ success: true, data: { kinds } });
+    } catch (e) {
+      if (e instanceof AccessChangeError) { res.status(e.status).json({ success: false, error: { message: e.message } }); return; }
+      throw e;
+    }
   },
 
   /** Politique de sécurité (lot 8) et valeurs admises. */

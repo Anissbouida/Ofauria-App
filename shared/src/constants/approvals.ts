@@ -187,6 +187,21 @@ export const APPROVAL_DOC_TYPES = {
       lines: { label: 'Nombre de lignes en écart', kind: 'number' },
     },
   },
+  access_change: {
+    label: "Changement d'accès sensible",
+    effect: "Le changement demandé dans Utilisateurs est appliqué (rôle attribué, droits d'un rôle, double authentification).",
+    fields: {
+      kind: {
+        label: 'Type de changement', kind: 'enum',
+        options: [
+          { value: 'grant_admin', label: 'Attribuer le rôle Administrateur' },
+          { value: 'grant_mfa_role', label: 'Attribuer un rôle à double authentification exigée' },
+          { value: 'role_rights', label: "Modifier les droits d'un rôle" },
+          { value: 'mfa_role_removed', label: "Retirer la double authentification d'un rôle" },
+        ],
+      },
+    },
+  },
   config_change: {
     label: 'Changement de configuration',
     effect: 'La configuration préparée dans l\'assistant est activée.',

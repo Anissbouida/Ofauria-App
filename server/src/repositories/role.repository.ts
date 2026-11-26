@@ -213,4 +213,11 @@ export const roleRepository = {
     );
     return r.rows;
   },
+
+  /** Vrai si l'un de ces rôles a pour base Administrateur (lot 10). */
+  async anyAdminBase(codes: string[]): Promise<boolean> {
+    if (!codes.length) return false;
+    return (await db.query(`SELECT 1 FROM roles WHERE code = ANY($1::varchar[]) AND base_role = 'admin' LIMIT 1`, [codes])).rows.length > 0
+      || codes.includes('admin');
+  },
 };

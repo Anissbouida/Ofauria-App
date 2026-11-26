@@ -16,7 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { AccessRightsView, AccessHistoryView } from './AccessReviewPanel';
 import { SecuritySection, MfaTag, errorMessage, fullName, formatLastLogin, formatDateTime, generatePassword, type UserRow } from './AccountSecurity';
 import { ExceptionsPanel } from './ExceptionsPanel';
-import { StoresField } from './StoresField';
+import { StoresField, useDelegatedChoices } from './StoresField';
 import { useSecurityPolicy, strongPasswordOk, passwordRule, pinOk, deviceLabel, METHOD_LABELS } from './securityPolicy';
 import { fmtDate } from './UsersOverview';
 import { InvitationSentModal } from './NewUserWizard';
@@ -265,13 +265,16 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
   useEffect(() => setForm(initial), [initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const label = (c: string) => roles.find(r => r.code === c)?.label ?? c;
-  const addable = roles.filter(r => r.is_active && r.available !== false && !form.roles.includes(r.code));
+  const delegated = useDelegatedChoices();
+  const addable = delegated.roles(roles.filter(r => r.is_active && r.available !== false && !form.roles.includes(r.code)));
 
   const save = useMutation({
     mutationFn: () => usersApi.update(u.id, { roles: form.roles, primaryRole: form.primary, storeId: form.storeId || null, storeIds: form.storeIds }),
-    onSuccess: () => {
-      notify.success('Rôles et périmètre enregistrés');
-      ['users', 'roles', 'access-review', 'user-profile', 'sod-violations'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+    onSuccess: (data: { pendingApproval?: { label: string } }) => {
+      // Lot 10 : rôle sensible ajouté → en attente de l'approbation d'un autre administrateur.
+      if (data?.pendingApproval) notify.warning('Enregistré ; l\'ajout du rôle attend l\'approbation d\'un autre administrateur (Approbations).');
+      else notify.success('Rôles et périmètre enregistrés');
+      ['users', 'roles', 'access-review', 'user-profile', 'sod-violations', 'access-approvals'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
     },
     onError: err => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
@@ -329,7 +332,7 @@ function RolesTab({ u, limits }: { u: UserRow; limits: { documentType: string; c
           <fieldset className="ds-fieldset"><legend>Périmètre</legend>
             <div className="ds-form-grid">
               <FormField label="Établissements" hint="La portée « Son établissement » se lit sur l'établissement actif : celui par défaut à la connexion, puis celui choisi dans la barre du haut.">
-                <StoresField idPrefix="u-store" stores={stores.map(s => ({ id: s.id as string, name: s.name as string }))}
+                <StoresField idPrefix="u-store" stores={delegated.stores(stores.map(s => ({ id: s.id as string, name: s.name as string })))}
                   ids={form.storeIds} defaultId={form.storeId} onChange={(ids, def) => setForm(f => ({ ...f, storeIds: ids, storeId: def }))} />
               </FormField>
               <FormField label="Plafonds d'approbation" hint="Viennent des rôles ; ils se règlent dans Contrôles internes.">

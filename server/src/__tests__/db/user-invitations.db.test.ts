@@ -21,7 +21,9 @@ describe.skipIf(!hasTestDb)('Invitations de comptes (refonte Utilisateurs, lot 3
     const { userController } = await import('../../controllers/user.controller.js');
     const { invitationController } = await import('../../controllers/invitation.controller.js');
     actorId = (await p().query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active) VALUES ($1, 'x', 'Act', 'Eur', 'manager', true) RETURNING id`,
+      // Administrateur en base comme dans le jeton : hors administrateur, la création est limitée à
+      // ses établissements (administration déléguée, lot 10).
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active) VALUES ($1, 'x', 'Act', 'Eur', 'admin', true) RETURNING id`,
       [`invite-actor-${RUN}@test.local`])).rows[0].id;
     app = express(); app.use(express.json());
     app.use((req, _res, next) => { (req as never as { user: unknown }).user = { userId: actorId, role: 'admin' }; next(); });

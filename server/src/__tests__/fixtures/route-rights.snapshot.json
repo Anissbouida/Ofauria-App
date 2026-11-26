@@ -2836,6 +2836,9 @@
  "GET /users/security": [
   "admin"
  ],
+ "GET /users/security/approvals": [
+  "admin"
+ ],
  "GET /users/security/mfa-policy": [
   "admin"
  ],
@@ -5635,6 +5638,9 @@
   "admin"
  ],
  "PUT /users/security": [
+  "admin"
+ ],
+ "PUT /users/security/approvals": [
   "admin"
  ],
  "PUT /users/security/mfa-policy": [

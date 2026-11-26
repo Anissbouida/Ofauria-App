@@ -265,10 +265,12 @@ export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
   const current = known(selected ?? policy?.requiredRoles ?? []);
   const save = useMutation({
     mutationFn: () => usersApi.setMfaPolicy(current),
-    onSuccess: () => {
+    onSuccess: (data: { pendingApproval?: unknown }) => {
       queryClient.invalidateQueries({ queryKey: ['mfa-policy'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      notify.success('Politique de double authentification enregistrée');
+      queryClient.invalidateQueries({ queryKey: ['access-approvals'] });
+      if (data?.pendingApproval) notify.warning('Retrait de la double authentification : en attente de l\'approbation d\'un autre administrateur.');
+      else notify.success('Politique de double authentification enregistrée');
       onClose();
     },
     onError: err => notify.error(errorMessage(err, 'Enregistrement refusé')),

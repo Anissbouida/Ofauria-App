@@ -1,3 +1,23 @@
+import { useQuery } from '@tanstack/react-query';
+import { authApi } from '../../api/auth.api';
+import { useAuth } from '../../context/AuthContext';
+
+/**
+ * Administration déléguée (lot 10) : hors administrateur, on ne rattache un compte qu'à ses propres
+ * établissements et on n'attribue pas un rôle de base Administrateur (le serveur le vérifie aussi).
+ */
+export function useDelegatedChoices() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const { data } = useQuery({ queryKey: ['my-stores', user?.id], queryFn: authApi.myStores, enabled: !!user && !isAdmin, staleTime: 60_000 });
+  const mine = new Set((data?.stores ?? []).map(s => s.id));
+  return {
+    isAdmin,
+    stores: <T extends { id: string }>(list: T[]) => (isAdmin ? list : list.filter(s => mine.has(s.id))),
+    roles: <T extends { base_role: string }>(list: T[]) => (isAdmin ? list : list.filter(r => r.base_role !== 'admin')),
+  };
+}
+
 /**
  * Établissements d'un compte (refonte Utilisateurs, lot 7, mig 707) : cases à cocher et un
  * établissement par défaut, celui de la connexion. La portée « Son établissement » se lit sur

@@ -85,11 +85,14 @@ export default function RoleRecordPage() {
 
   const save = useMutation({
     mutationFn: () => rolesApi.setPermissions(code, Object.values(perms!).filter(p => p.canView), keys ?? undefined),
-    onSuccess: () => {
+    onSuccess: (data: { pendingApproval?: unknown } | unknown[]) => {
       queryClient.invalidateQueries({ queryKey: ['role-permissions', code] });
       queryClient.invalidateQueries({ queryKey: ['role-profile', code] });
       queryClient.invalidateQueries({ queryKey: ['roles'] });
-      notify.success(`Droits du rôle « ${role?.label ?? code} » enregistrés`);
+      queryClient.invalidateQueries({ queryKey: ['access-approvals'] });
+      // Lot 10 : modification des droits soumise à l'approbation d'un autre administrateur.
+      if (data && !Array.isArray(data) && data.pendingApproval) notify.warning(`Droits du rôle « ${role?.label ?? code} » : en attente de l'approbation d'un autre administrateur.`);
+      else notify.success(`Droits du rôle « ${role?.label ?? code} » enregistrés`);
     },
     onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });

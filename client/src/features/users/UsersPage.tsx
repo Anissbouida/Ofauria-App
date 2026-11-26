@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { usersApi, rolesApi, governanceApi, type SecurityPolicy as SecurityPolicyValues } from '../../api/users.api';
+import { usersApi, rolesApi, governanceApi, type SecurityPolicy as SecurityPolicyValues, type AccessChangeKind, type AccessChangeRow } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
 import ControlsPanel, { DelegationsPanel } from './ControlsPanel';
 import RoleActionMatrix from './RoleActionMatrix';
@@ -259,8 +259,89 @@ function SecurityPolicy({ roles }: { roles: { code: string; label: string; user_
 
       <FormFooter dirty={dirty} busy={save.isPending} disabled={!dirty || outOfRange}
         onCancel={() => setDraft(loaded.policy)} onSubmit={() => save.mutate(draft)} />
+      <SensitiveChanges />
       {open && <MfaPolicyModal onClose={() => setOpen(false)} />}
     </div>
+  );
+}
+
+const ACCESS_KINDS: { key: AccessChangeKind; label: string }[] = [
+  { key: 'grant_admin', label: 'Attribuer le rôle Administrateur' },
+  { key: 'grant_mfa_role', label: 'Attribuer un rôle à double authentification exigée' },
+  { key: 'role_rights', label: 'Modifier les droits d\'un rôle' },
+  { key: 'mfa_role_removed', label: 'Retirer la double authentification d\'un rôle' },
+];
+const CHANGE_STATUS: Record<AccessChangeRow['status'], { tone: 'todo' | 'done' | 'cancelled' | 'blocked'; label: string }> = {
+  pending: { tone: 'todo', label: 'En attente' }, applied: { tone: 'done', label: 'Appliqué' },
+  rejected: { tone: 'cancelled', label: 'Refusé' }, failed: { tone: 'blocked', label: 'Échec' },
+};
+
+/**
+ * Comptes et changements sensibles (refonte Utilisateurs, lot 10) : administration déléguée
+ * (expliquée, réglée par les droits des rôles) et changements soumis à l'approbation d'un second
+ * administrateur, avec les demandes récentes.
+ */
+function SensitiveChanges() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { data, isError, error, refetch } = useQuery({ queryKey: ['access-approvals'], queryFn: usersApi.accessApprovals, retry: false });
+  const [kinds, setKinds] = useState<AccessChangeKind[] | null>(null);
+  useEffect(() => { if (data) setKinds(data.kinds); }, [data]);
+  const save = useMutation({
+    mutationFn: (k: AccessChangeKind[]) => usersApi.setAccessApprovals(k),
+    onSuccess: () => { notify.success('Changements soumis à approbation enregistrés'); queryClient.invalidateQueries({ queryKey: ['access-approvals'] }); },
+    onError: err => notify.error(errorMessage(err, 'Enregistrement refusé')),
+  });
+  if (isError) return <ErrorState error={error} title="Les changements sensibles n'ont pas pu être chargés" onRetry={() => void refetch()} />;
+  if (!data || !kinds) return <LoadingState />;
+  const single = data.activeAdmins < 2;
+  const dirty = JSON.stringify([...kinds].sort()) !== JSON.stringify([...data.kinds].sort());
+  const toggle = (k: AccessChangeKind) => setKinds(c => (c ?? []).includes(k) ? (c ?? []).filter(x => x !== k) : [...(c ?? []), k]);
+  return (
+    <section style={{ display: 'grid', gap: 12 }}>
+      <SectionHeader title="Comptes et changements sensibles" />
+      <DataPanel label="Comptes et changements sensibles">
+        <div className="usr-row">
+          <div><b>Qui peut gérer des comptes</b><p>Donnez les droits « Utilisateurs » (consulter, créer, modifier) à un rôle depuis sa fiche. Ses titulaires gèrent les comptes de leurs établissements, sans attribuer le rôle Administrateur ni modifier un administrateur ou un autre gestionnaire.</p></div>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/users?tab=roles')}>Rôles</button>
+        </div>
+        <div className="usr-row" style={{ alignItems: 'flex-start' }}>
+          <div><b>Changements soumis à approbation</b><p>Mis en attente, puis appliqués quand un autre administrateur les approuve (circuit « Changement d'accès sensible », relance après 48 h).</p></div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {ACCESS_KINDS.map(k => (
+              <label key={k.key} style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 14, color: single ? 'var(--ds-muted)' : undefined }}>
+                <input type="checkbox" disabled={single} checked={kinds.includes(k.key)} onChange={() => toggle(k.key)} /> {k.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        {single && (
+          <div style={{ padding: '0 20px 16px' }}>
+            <Alert tone="info">Il faut au moins deux administrateurs actifs : personne ne peut approuver sa propre demande. Votre société en a {data.activeAdmins}.</Alert>
+          </div>
+        )}
+      </DataPanel>
+      {!single && <FormFooter dirty={dirty} busy={save.isPending} disabled={!dirty} onCancel={() => setKinds(data.kinds)} onSubmit={() => save.mutate(kinds)} />}
+      {data.changes.length > 0 && (
+        <DataPanel label="Demandes de changement">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Changement</th><th>Statut</th><th>Demandé par</th><th>Le</th><th>Décidé par</th><th className="ds-actions"><span className="sr-only">Ouvrir</span></th></tr></thead>
+            <tbody>
+              {data.changes.map(c => (
+                <tr key={c.id}>
+                  <td className="ds-strong">{c.label}{c.error && <div style={{ fontSize: 12, color: 'var(--ds-danger)' }}>{c.error}</div>}</td>
+                  <td><StatusTag tone={CHANGE_STATUS[c.status].tone} label={CHANGE_STATUS[c.status].label} /></td>
+                  <td>{c.requested_by_name ?? '—'}</td>
+                  <td>{formatDateTime(c.requested_at)}</td>
+                  <td>{c.decided_by_name ?? '—'}</td>
+                  <td className="ds-actions">{c.status === 'pending' && <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => navigate('/approvals')}>Approbations</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DataPanel>
+      )}
+    </section>
   );
 }
 

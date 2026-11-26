@@ -120,6 +120,18 @@ registerApprovalHandler('nonconformity', {
 
 // Lot 15 (assistant de configuration) : changement sensible approuvé → la configuration
 // préparée est activée par l'approbateur ; refusé → le jeu de changements est écarté.
+// Lot 10 (refonte Utilisateurs) : changement d'accès sensible approuvé par un autre administrateur
+// → appliqué ; refusé → abandonné.
+registerApprovalHandler('access_change', {
+  async onApproved(request, actorId) {
+    const { applyPendingAccessChange } = await import('./access-changes.js');
+    await applyPendingAccessChange(request.doc_id, actorId);
+  },
+  async onRejected(request, actorId) {
+    const { rejectPendingAccessChange } = await import('./access-changes.js');
+    await rejectPendingAccessChange(request.doc_id, actorId);
+  },
+});
 registerApprovalHandler('config_change', {
   async onApproved(request, actorId) { await applyApprovedChangeSet(request.doc_id, actorId); },
   async onRejected(request) { await rejectChangeSet(request.doc_id); },

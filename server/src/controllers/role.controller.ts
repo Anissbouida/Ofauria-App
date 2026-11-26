@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { deferIfSensitive } from '../services/access-changes.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { roleRepository } from '../repositories/role.repository.js';
 import { invalidateEnforcementMode, invalidateRolesCache } from '../services/access-rights.js';
@@ -164,6 +165,9 @@ export const roleController = {
       const unknown = keys.filter(k => !DEFS[k]);
       if (unknown.length) { bad(res, `Permission(s) inconnue(s) : ${unknown.slice(0, 5).join(', ')}`); return; }
     }
+    // Lot 10 : modifier les droits d'un rôle peut passer par une approbation.
+    const pending = await deferIfSensitive(['role_rights'], `Droits du rôle ${role.label}`, { type: 'role_rights', code: role.code, perms, keys }, req.user!.userId);
+    if (pending) { res.status(202).json({ success: true, data: { pendingApproval: pending } }); return; }
     await roleRepository.setPermissions(role.code, perms, req.user?.userId);
     if (keys) await setRolePermissions(role.code, keys, req.user!.userId);
     const rows = await roleRepository.permissions(role.code);
@@ -188,6 +192,8 @@ export const roleController = {
       return;
     }
     try {
+      const pending = await deferIfSensitive(['role_rights'], `Permissions détaillées du rôle ${code}`, { type: 'role_rights', code, perms: null, keys: req.body.keys as string[] }, req.user!.userId);
+      if (pending) { res.status(202).json({ success: true, data: { pendingApproval: pending } }); return; }
       res.json({ success: true, data: await setRolePermissions(code, req.body.keys as string[], req.user!.userId) });
     } catch (err) {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });

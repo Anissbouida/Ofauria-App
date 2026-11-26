@@ -23,7 +23,10 @@ export const usersApi = {
   setPreferences: (id: string, data: { locale?: 'fr' | 'ar' | 'en' | null; workspace?: string | null }) =>
     api.put(`/users/${id}/preferences`, data).then(r => r.data.data),
   mfaPolicy: () => api.get('/users/security/mfa-policy').then(r => r.data.data as { requiredRoles: string[] }),
-  setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[] }),
+  setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[]; pendingApproval?: { id: string; label: string } }),
+  /** Changements d'accès soumis à approbation (lot 10). */
+  accessApprovals: () => api.get('/users/security/approvals').then(r => r.data.data as { kinds: AccessChangeKind[]; activeAdmins: number; changes: AccessChangeRow[] }),
+  setAccessApprovals: (kinds: AccessChangeKind[]) => api.put('/users/security/approvals', { kinds }).then(r => r.data.data as { kinds: AccessChangeKind[] }),
   /** Politique de sécurité (lot 8) et valeurs admises. */
   securityPolicy: () => api.get('/users/security/policy').then(r => r.data.data as { policy: SecurityPolicy; limits: Record<keyof SecurityPolicy, { min: number; max: number } | number[]> }),
   setSecurityPolicy: (policy: Partial<SecurityPolicy>) => api.put('/users/security/policy', policy).then(r => r.data.data as { policy: SecurityPolicy }),
@@ -177,6 +180,14 @@ export const governanceApi = {
   setDocumentSodMode: (mode: DocumentSodMode) => api.put('/users/sod/documents/mode', { mode }).then(r => r.data.data),
   setDocumentSodRule: (code: string, isActive: boolean) => api.put(`/users/sod/documents/rules/${code}`, { isActive }).then(r => r.data.data),
 };
+
+// ─── Changements d'accès sensibles (refonte Utilisateurs, lot 10) ────────
+export type AccessChangeKind = 'grant_admin' | 'grant_mfa_role' | 'role_rights' | 'mfa_role_removed';
+export interface AccessChangeRow {
+  id: string; kind: AccessChangeKind; label: string; status: 'pending' | 'applied' | 'rejected' | 'failed';
+  requested_at: string; decided_at: string | null; error: string | null;
+  requested_by_name: string | null; decided_by_name: string | null;
+}
 
 // ─── Politique de sécurité et sessions (refonte Utilisateurs, lot 8) ─────
 export interface SecurityPolicy {

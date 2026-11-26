@@ -6,6 +6,7 @@ import { roleController } from '../controllers/role.controller.js';
 import { governanceController } from '../controllers/governance.controller.js';
 import { accessReviewController } from '../controllers/access-review.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { accountScope } from '../services/account-scope.js';
 import { permissionsOfUser } from '../services/permissions.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
@@ -57,12 +58,15 @@ router.get('/me/action-permissions', authenticate, asyncHandler(async (req, res)
   const user = (req as AuthRequest).user!;
   res.json({ success: true, data: { keys: await permissionsOfUser(user.userId) } });
 }));
-router.get('/:id/action-permissions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(roleController.userActionPermissions));
+router.get('/:id/action-permissions', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(roleController.userActionPermissions));
 router.get('/security', authenticate, can('users.view'), asyncHandler(roleController.security));
 router.put('/security', authenticate, can('users.edit'), validate(enforcementModeSchema), asyncHandler(roleController.setSecurityMode));
 // Politique de double authentification par rôle (paramètre security.mfa).
 router.get('/security/mfa-policy', authenticate, can('users.view'), asyncHandler(userController.mfaPolicy));
 router.put('/security/mfa-policy', authenticate, can('users.edit'), validate(mfaPolicySchema), asyncHandler(userController.setMfaPolicy));
+// Changements d'accès soumis à approbation (lot 10, mig 710).
+router.get('/security/approvals', authenticate, can('users.view'), asyncHandler(userController.accessApprovals));
+router.put('/security/approvals', authenticate, can('users.edit'), validate(z.object({ kinds: z.array(z.string().max(30)).max(10) }).strict()), asyncHandler(userController.setAccessApprovals));
 // Politique de sécurité (lot 8, mig 708) : mot de passe, verrouillage, délai 2FA, PIN, inactivité.
 router.get('/security/policy', authenticate, can('users.view'), asyncHandler(userController.securityPolicy));
 router.put('/security/policy', authenticate, can('users.edit'), validate(securityPolicySchema), asyncHandler(userController.setSecurityPolicy));
@@ -95,22 +99,22 @@ router.get('/', authenticate, can('users.view'), userController.list);
 router.post('/', authenticate, can('users.create'), validate(createUserSchema), userController.create);
 // Vérification des rôles d'un futur compte (lot 3) : conflits de séparation des tâches, sans écriture.
 router.post('/sod-check', authenticate, can('users.view'), validate(z.object({ roles: z.array(z.string().max(40)).max(50) }).strict()), asyncHandler(userController.sodCheck));
-router.put('/:id', authenticate, can('users.edit'), validate(updateUserSchema), asyncHandler(userController.update));
-router.delete('/:id', authenticate, can('users.delete'), asyncHandler(userController.remove));
+router.put('/:id', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(updateUserSchema), asyncHandler(userController.update));
+router.delete('/:id', authenticate, validateUuidParams('id'), can('users.delete'), accountScope('write'), asyncHandler(userController.remove));
 // Sécurité d'un compte : 2FA, verrouillage, sessions, mot de passe, suppression définitive.
-router.put('/:id/mfa-required', authenticate, validateUuidParams('id'), can('users.edit'), validate(requiredFlagSchema), asyncHandler(userController.setMfaRequired));
-router.post('/:id/mfa-reset', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.resetMfa));
-router.post('/:id/unlock', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.unlock));
+router.put('/:id/mfa-required', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(requiredFlagSchema), asyncHandler(userController.setMfaRequired));
+router.post('/:id/mfa-reset', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(emptySchema), asyncHandler(userController.resetMfa));
+router.post('/:id/unlock', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(emptySchema), asyncHandler(userController.unlock));
 // Sessions et appareils (lot 8) : liste des sessions actives, fermeture d'une session.
-router.get('/:id/sessions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.sessions));
-router.delete('/:id/sessions/:jti', authenticate, validateUuidParams('id', 'jti'), can('users.edit'), asyncHandler(userController.closeSession));
-router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.revokeSessions));
-router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
-router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), asyncHandler(userController.hardDelete));
+router.get('/:id/sessions', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(userController.sessions));
+router.delete('/:id/sessions/:jti', authenticate, validateUuidParams('id', 'jti'), can('users.edit'), accountScope('write'), asyncHandler(userController.closeSession));
+router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(emptySchema), asyncHandler(userController.revokeSessions));
+router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
+router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), accountScope('write'), asyncHandler(userController.hardDelete));
 // Fiche du compte (refonte Utilisateurs, lot 2) : rattachements et préférences réglées par l'administrateur.
-router.post('/:id/invitations', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.invite));
-router.get('/:id/profile', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.profile));
-router.put('/:id/preferences', authenticate, validateUuidParams('id'), can('users.edit'), validate(userPreferencesSchema), asyncHandler(userController.setPreferences));
+router.post('/:id/invitations', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(emptySchema), asyncHandler(userController.invite));
+router.get('/:id/profile', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(userController.profile));
+router.put('/:id/preferences', authenticate, validateUuidParams('id'), can('users.edit'), accountScope('write'), validate(userPreferencesSchema), asyncHandler(userController.setPreferences));
 
 // Profil de l'utilisateur connecté — aucune clé de droit : chacun règle sa propre langue (G6-05).
 router.put('/me/locale', authenticate, validate(setLocaleSchema), asyncHandler(userController.setMyLocale));
@@ -125,10 +129,10 @@ router.put('/me/interface-preferences',authenticate,validate(interfacePreference
 // Permissions
 router.get('/me/permissions', authenticate, userController.myPermissions);
 // Exceptions individuelles (lot 6, mig 706) : s'ajoutent aux rôles, motif et date de fin.
-router.get('/:id/exceptions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.exceptions));
-router.put('/:id/exceptions/modules/:module', authenticate, validateUuidParams('id'), can('users.permissions'), validate(moduleExceptionSchema), asyncHandler(userController.setModuleException));
-router.put('/:id/exceptions/actions/:key', authenticate, validateUuidParams('id'), can('users.permissions'), validate(actionExceptionSchema), asyncHandler(userController.setActionException));
-router.delete('/:id/exceptions/:kind/:ref', authenticate, validateUuidParams('id'), can('users.permissions'), asyncHandler(userController.removeException));
+router.get('/:id/exceptions', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(userController.exceptions));
+router.put('/:id/exceptions/modules/:module', authenticate, validateUuidParams('id'), can('users.permissions'), accountScope('write'), validate(moduleExceptionSchema), asyncHandler(userController.setModuleException));
+router.put('/:id/exceptions/actions/:key', authenticate, validateUuidParams('id'), can('users.permissions'), accountScope('write'), validate(actionExceptionSchema), asyncHandler(userController.setActionException));
+router.delete('/:id/exceptions/:kind/:ref', authenticate, validateUuidParams('id'), can('users.permissions'), accountScope('write'), asyncHandler(userController.removeException));
 
 // Lien espace employe : fiches salariees disponibles pour le selecteur.
 router.get('/employees-link', authenticate, can('users.view'), asyncHandler(userController.employeesForLink));
@@ -143,7 +147,7 @@ router.post('/access-reviews/:id/confirm-clean', authenticate, validateUuidParam
 router.post('/access-reviews/:id/close', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(accessReviewController.closeCampaign));
 // Revue des acces (Phase 3, outils admin, lecture seule).
 router.get('/access-overview', authenticate, can('users.view'), asyncHandler(accessReviewController.overview));
-router.get('/:id/access-review', authenticate, can('users.view'), asyncHandler(accessReviewController.review));
-router.get('/:id/access-history', authenticate, can('users.view'), asyncHandler(accessReviewController.history));
+router.get('/:id/access-review', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(accessReviewController.review));
+router.get('/:id/access-history', authenticate, validateUuidParams('id'), can('users.view'), accountScope('read'), asyncHandler(accessReviewController.history));
 
 export default router;

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, Mail, ShieldCheck, TriangleAlert, Wand2 } from 'lucide-react';
 import { usersApi, rolesApi, type InvitationResult } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
-import { StoresField } from './StoresField';
+import { StoresField, useDelegatedChoices } from './StoresField';
 import { useSecurityPolicy, strongPasswordOk, passwordRule, pinOk } from './securityPolicy';
 import { Modal, FormField, Alert } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
@@ -45,7 +45,8 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(x => ({ ...x, [k]: v }));
   const [created, setCreated] = useState<Created | null>(null);
 
-  const choices = roles.filter(r => r.is_active && r.available !== false);
+  const delegated = useDelegatedChoices();
+  const choices = delegated.roles(roles.filter(r => r.is_active && r.available !== false));
   const label = (c: string) => roles.find(r => r.code === c)?.label ?? c;
   const requiredByRole = f.roles.some(c => mfaPolicy?.requiredRoles?.includes(c));
   const { data: sod } = useQuery({
@@ -221,7 +222,7 @@ export default function NewUserWizard({ onClose, onOpen }: { onClose: () => void
       {step === 'scope' && (
         <div className="ds-form-grid">
           <FormField label="Établissements" hint="Celui par défaut est ouvert à la connexion ; la personne passe aux autres depuis la barre du haut. Aucun coché : compte qui travaille sur tous les établissements (direction).">
-            <StoresField idPrefix="nu-store" stores={stores.map(s => ({ id: s.id as string, name: s.name as string }))}
+            <StoresField idPrefix="nu-store" stores={delegated.stores(stores.map(s => ({ id: s.id as string, name: s.name as string })))}
               ids={f.storeIds} defaultId={f.storeId} onChange={(ids, def) => setF(x => ({ ...x, storeIds: ids, storeId: def }))} />
           </FormField>
         </div>
