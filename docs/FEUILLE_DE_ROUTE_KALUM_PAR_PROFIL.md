@@ -319,3 +319,7 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 3.4 Grille tarifaire | Fait | Mig 714 ; écran Ventes › Paramétrage › Grilles tarifaires avec simulateur ; contrôlé à l'écran (400 kg × 1,50 = 600 HT), grille de contrôle supprimée ensuite. Preuve de livraison : existante |
 | 3.5 Reste à livrer | Existant | `order_items.qty_delivered`, livraisons partielles par bon de livraison |
 | 3.6 Documents | Reporté | Mentions par profil sur les modèles d'impression : à faire avec la phase 7 (modèles par profil) |
+| 4.1 Types d'ordre par profil | Fait | Audit : moteur complet (types d'ordre et exigences, étapes et relevés, semi-finis multi-niveaux, gammes, sous-traitance, séries, libération). Mig 715 : types d'ordre des profils Santé, Textile, Restauration, Agriculture |
+| 4.2 Dossier de lot | Fait (règles) | Profil Santé : pesée et contrôle qualité obligatoires, étapes imposées, libération manuelle, séparation des tâches (qui a pesé ne réceptionne pas), quarantaine à la réception. Reste : document « dossier de lot » imprimable signé |
+| 4.3 Nomenclature et gamme | Existant | Semi-finis (multi-niveaux), versions et nomenclatures alternatives, gammes et postes (`/routings`) |
+| 4.4 Boulangerie | Inchangée | Aucun écran modifié pour Ofauria |

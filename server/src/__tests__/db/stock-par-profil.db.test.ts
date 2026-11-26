@@ -74,6 +74,20 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     sectorRepository.invalidate();
   });
 
+  it('le contenu de production des profils (mig 715) passe le nettoyage de l’activation sans perte', async () => {
+    const { cleanLayers } = await import('../../services/industry-profile.js');
+    const { sectorRepository } = await import('../../repositories/sector.repository.js');
+    for (const code of ['sante', 'textile', 'restauration', 'agriculture', 'btp', 'transport']) {
+      const warnings: string[] = [];
+      const layers = cleanLayers(await sectorRepository.resolvedProfile(code), warnings);
+      expect(warnings, code).toEqual([]);
+      if (code === 'sante') {
+        expect(layers.order_types.find(t => t.code === 'ORDRE_LOT')).toMatchObject({ requires_weighing: true, requires_quality_check: true });
+        expect(layers.policies.map(p => p.key)).toEqual(expect.arrayContaining(['production.segregation_of_duties', 'quality.auto_release', 'purchasing.reception_quarantine']));
+      }
+    }
+  });
+
   it('un profil éteint une capacité du socle, la société peut la rallumer', async () => {
     const { capabilityDefault } = await import('@ofauria/shared');
     const def = { key: 'abonnements', module_key: 'sales', label: 'Abonnements', default_on: true };
