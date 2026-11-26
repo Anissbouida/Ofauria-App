@@ -37,10 +37,6 @@ function resolveLogo(logoUrl?: string | null): string | Buffer | null {
   const candidates = [
     logoUrl ? resolve(process.cwd(), 'uploads', logoUrl) : '',
     logoUrl ? resolve(process.cwd(), '..', 'uploads', logoUrl) : '',
-    resolve(process.cwd(), 'assets', 'company-logo.png'),
-    resolve(process.cwd(), 'server', 'assets', 'company-logo.png'),
-    resolve(process.cwd(), '..', 'client', 'public', 'images', 'logo-horizontal.png'),
-    resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png'),
   ].filter(Boolean);
   return candidates.find(c => existsSync(c)) ?? null;
 }

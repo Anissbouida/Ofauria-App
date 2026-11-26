@@ -751,7 +751,7 @@ function PrintTab() {
   };
 
   // Resolve logo source — /uploads paths are proxied to the API server
-  const logoSrc = logoUrl || '/images/logo-horizontal.png';
+  const logoSrc = logoUrl || '';
 
   const nowStr = format(new Date(), "dd MMMM yyyy 'a' HH:mm", { locale: fr });
 
@@ -881,7 +881,7 @@ function PrintTab() {
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, overflow: 'hidden', maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>
               <div style={{ fontFamily: "'Courier New', monospace", fontSize: `${Math.max(receiptFontSize - 2, 8)}px`, color: '#000', lineHeight: 1.4 }}>
                 {/* Logo */}
-                {receiptShowLogo && (
+                {receiptShowLogo && !!logoSrc && (
                   <div style={{ textAlign: 'center', marginBottom: '6px' }}>
                     <img src={logoSrc} alt="Logo"
                       style={{ height: `${receiptLogoSize * 0.6}px`, margin: '0 auto', display: 'block' }}

@@ -138,8 +138,8 @@ function resolveLogoInput(logoPath?: string): string | Buffer | null {
       return logoPath;
     }
   }
-  const fallback = resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png');
-  return existsSync(fallback) ? fallback : null;
+  // Audit des profils (L1) : aucun logo de repli.
+  return null;
 }
 
 /**

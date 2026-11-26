@@ -740,8 +740,6 @@ export const purchaseOrderController = {
         const logoCandidates = [
           logoUrl ? resolve(projectRoot, 'uploads', logoUrl) : '',
           logoUrl ? resolve(projectRoot, logoUrl) : '',
-          resolve(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
-          resolve(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
         ].filter(Boolean);
         for (const candidate of logoCandidates) {
           if (existsSync(candidate)) { logoPath = candidate; break; }

@@ -49,7 +49,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
         </button>
         <button onClick={() => navigate('/', { state: { launcher: true } })}
           className="text-base font-bold tracking-wide hover:opacity-80 transition-opacity px-1">
-          {settings.companyName}
+          {settings.companyName || 'Kalum'}
         </button>
         {currentModule && currentPath !== '/' && (
           <>

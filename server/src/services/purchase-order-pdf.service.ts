@@ -7,12 +7,7 @@ import type { LegalContext } from './legal-entity.js';
 
 // Resolve logo
 function findDefaultLogo(): string {
-  const candidates = [
-    resolve(process.cwd(), 'server', 'assets', 'company-logo.png'),
-    resolve(process.cwd(), 'assets', 'company-logo.png'),
-    resolve(process.cwd(), '..', 'server', 'assets', 'company-logo.png'),
-    resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png'),
-    resolve(process.cwd(), '..', 'client', 'public', 'images', 'logo-horizontal.png'),
+  const candidates: string[] = [
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
@@ -138,16 +133,14 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
       y += 96;
     } catch {
       doc.font('Helvetica-Bold').fontSize(20).fillColor(BROWN);
-      txt(doc, '\u00D4FAURIA', M, y);
+      txt(doc, data.companyName || '', M, y);
       doc.font('Helvetica').fontSize(7).fillColor(GOLD);
-      txt(doc, 'B O U L A N G E R I E  \u2022  P \u00C2 T I S S E R I E', M, y + 24);
       y += 42;
     }
   } else {
     doc.font('Helvetica-Bold').fontSize(20).fillColor(BROWN);
-    txt(doc, '\u00D4FAURIA', M, y);
+    txt(doc, data.companyName || '', M, y);
     doc.font('Helvetica').fontSize(7).fillColor(GOLD);
-    txt(doc, 'B O U L A N G E R I E  \u2022  P \u00C2 T I S S E R I E', M, y + 24);
     y += 42;
   }
 

@@ -230,7 +230,7 @@ export default function LoginPage() {
         <LanguageSelect className="absolute top-4 end-4" />
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)' }}>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName}</h1>
+            <h1 className="text-3xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName || 'Kalum'}</h1>
             <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
           </div>
 
@@ -307,7 +307,7 @@ export default function LoginPage() {
     <div className="kl-ds relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
       <LanguageSelect className="absolute top-4 end-4" />
       <div className="text-center mb-10">
-        <h1 className="text-5xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName}</h1>
+        <h1 className="text-5xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName || 'Kalum'}</h1>
         <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
       </div>
 

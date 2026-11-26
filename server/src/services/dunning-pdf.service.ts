@@ -25,10 +25,7 @@ const MUTED = '#7A7168';
 const BORDER = '#D6CFC4';
 
 function defaultLogo(): string | null {
-  for (const c of [resolve(process.cwd(), 'server', 'assets', 'company-logo.png'), resolve(process.cwd(), 'assets', 'company-logo.png'),
-    resolve(process.cwd(), '..', 'client', 'public', 'images', 'logo-horizontal.png'), resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png')]) {
-    if (existsSync(c)) return c;
-  }
+  // Audit des profils (L1) : aucun logo de repli (c'était celui d'un client) ; sans logo, le nom de la société.
   return null;
 }
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ');

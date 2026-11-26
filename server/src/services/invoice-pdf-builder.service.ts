@@ -114,8 +114,6 @@ export async function invoicePdfById(
     const logoCandidates = [
       logoUrl ? pathMod.join(projectRoot, 'uploads', logoUrl) : '',
       logoUrl ? pathMod.join(projectRoot, logoUrl) : '',
-      pathMod.join(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
-      pathMod.join(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
     ].filter(Boolean);
     for (const candidate of logoCandidates) {
       if (fsMod.existsSync(candidate)) { logoPath = candidate; break; }

@@ -77,6 +77,10 @@ DELETE FROM employee_salary_history;
 DELETE FROM employees;
 DELETE FROM products;
 DELETE FROM categories;
+-- Audit des profils (L1) : identité à blanc (la migration 013 sème celle d'Ofauria) ; fidélité
+-- éteinte jusqu'à ce que la société active la capacité.
+UPDATE company_settings SET company_name = '', subtitle = '', logo_url = NULL WHERE id = 1;
+UPDATE loyalty_settings SET enabled = false;
 DELETE FROM production_workshops;
 DELETE FROM stock_locations;
 DELETE FROM production_equipements;

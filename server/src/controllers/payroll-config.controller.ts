@@ -75,7 +75,6 @@ function resolveLogo(logoUrl?: string | null): string | Buffer | null {
   const candidates = [
     logoUrl ? resolve(root, 'uploads', logoUrl) : '',
     logoUrl ? resolve(root, logoUrl) : '',
-    resolve(root, 'client', 'public', 'images', 'logo-horizontal.png'),
   ].filter(Boolean);
   return candidates.find(c => existsSync(c)) ?? null;
 }

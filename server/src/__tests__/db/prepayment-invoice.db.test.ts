@@ -22,6 +22,10 @@ describe.skipIf(!hasTestDb)('Facture d\'acompte — émission et reprise', () =>
   let orderId: string;
 
   beforeAll(async () => {
+    // Compte de ventes par défaut (audit des profils, L4) : 7111 ici, quel que soit le profil
+    // appliqué par un test précédent.
+    await p().query(`DELETE FROM policy_values WHERE key = 'accounting.default_revenue'`);
+    (await import('../../services/policies.js')).invalidatePolicies();
     storeId = (await p().query(`INSERT INTO stores (name, city) VALUES ($1, 'Test') RETURNING id`, [`Mag Ac ${RUN}`])).rows[0].id;
     userId = (await p().query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, store_id)

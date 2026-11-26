@@ -12,7 +12,7 @@ const CACHE_KEY = 'ofauria_theme';
 
 const defaults: CompanySettings = {
   companyName: 'Kalum',
-  subtitle: 'Boulangerie - Patisserie',
+  subtitle: '',
   primaryColor: '#714B67',
   secondaryColor: '#5f3d57',
   logoUrl: null,

@@ -66,7 +66,8 @@ export const configLayersRepository = {
     }
     if (Array.isArray(layers.company_context) && layers.company_context.length===1) {
       const c=layers.company_context[0] as {legal_name:string|null;legal_form:string|null;default_locale:string;timezone:string;company_size:string|null};
-      await runner.query(`UPDATE company_settings SET legal_name=$1,legal_form=$2,default_locale=$3,timezone=$4,company_size=$5,updated_at=now() WHERE id=1`,[c.legal_name,c.legal_form,c.default_locale,c.timezone,c.company_size]);
+      // Audit des profils (L1) : une installation neuve n'a pas de nom affiché ; la raison sociale saisie dans l'assistant le devient.
+      await runner.query(`UPDATE company_settings SET legal_name=$1,legal_form=$2,default_locale=$3,timezone=$4,company_size=$5,company_name=CASE WHEN COALESCE(btrim(company_name),'')='' AND $6::text IS NOT NULL THEN $6::text ELSE company_name END,updated_at=now() WHERE id=1`,[c.legal_name,c.legal_form,c.default_locale,c.timezone,c.company_size,c.legal_name]);
     }
     if (Array.isArray(layers.labels)) {
       const wanted = new Map((layers.labels as { key: string; value: string }[]).map(l => [l.key, l.value]));

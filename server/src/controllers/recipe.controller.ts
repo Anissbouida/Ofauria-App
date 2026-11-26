@@ -37,7 +37,6 @@ async function resolveLogo(): Promise<string | undefined> {
   const candidates = [
     logoUrl ? resolve(projectRoot, 'uploads', logoUrl) : '',
     logoUrl ? resolve(projectRoot, logoUrl) : '',
-    resolve(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
   ].filter(Boolean);
   return candidates.find(c => existsSync(c));
 }

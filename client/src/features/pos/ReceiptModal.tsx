@@ -108,7 +108,8 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
   const effectiveAutoPrint = resolveTriState(terminal.autoPrint, !!settings.receiptAutoPrint);
   const effectiveOpenDrawer = resolveTriState(terminal.openDrawer, !!settings.receiptOpenDrawer);
 
-  const logoSrc = settings.logoUrl || '/images/logo-horizontal.png';
+  // Audit des profils (L1) : pas de logo de repli (c'était celui d'un client).
+  const logoSrc = settings.logoUrl || '';
   const logoBase64 = useLogoBase64(logoSrc, settings.receiptShowLogo);
 
   // Use base64 for display too (ensures it works everywhere)
@@ -243,7 +244,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
             <div ref={receiptRef}>
               {/* Header */}
               <div className="receipt-header" style={{ textAlign: 'center', marginBottom: '8px' }}>
-                {settings.receiptShowLogo && (
+                {settings.receiptShowLogo && !!displayLogo && (
                   <img src={displayLogo} alt={settings.companyName}
                     style={{ height: `${logoSize}px`, margin: '0 auto 4px', display: 'block' }} />
                 )}
