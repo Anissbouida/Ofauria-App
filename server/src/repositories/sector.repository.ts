@@ -304,6 +304,7 @@ export const sectorRepository = {
       print_templates: mergeBy('print_templates', 'doc_type'),
       work_centers: mergeBy('work_centers', 'name'),
       locations: mergeBy('locations', 'code'),
+      entry_templates: mergeBy('entry_templates', 'name'),
       control_plans: [...new Map(layers.flatMap(l => Array.isArray(l.control_plans)
         ? (l.control_plans as Record<string, unknown>[]).map(item => [JSON.stringify([item.category, item.stage, item.characteristic].map(v => String(v ?? '').toLowerCase())), item] as const)
         : [])).values()],

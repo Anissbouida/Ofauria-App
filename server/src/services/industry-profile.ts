@@ -32,6 +32,16 @@ export interface ProfileLayers {
    * existe et n'a pas déjà cette caractéristique à cette étape.
    */
   control_plans?: ProfileControlLine[];
+  /**
+   * Feuille de route 7.2 : modèles d'écritures du métier (carburant, location d'engins…),
+   * comptes repérés par leur CODE. Ajoutés s'ils manquent (même nom) et si tous leurs comptes
+   * existent ; montants à zéro par défaut, saisis à l'utilisation.
+   */
+  entry_templates?: ProfileEntryTemplate[];
+}
+export interface ProfileEntryTemplate {
+  name: string; journal_code: string; description: string | null;
+  lines: { account_code: string; side: 'debit' | 'credit'; amount: number; label: string | null }[];
 }
 export interface ProfileControlLine {
   category: string; stage: 'en_cours' | 'final' | 'avant_transfert' | 'avant_livraison'; characteristic: string;
@@ -77,7 +87,17 @@ export async function exportLayers(runner: Runner = db): Promise<ProfileLayers> 
        FROM quality_control_plan_lines l JOIN categories c ON c.id = l.product_category_id
       WHERE l.is_active AND l.product_id IS NULL AND l.step_type_code IS NULL AND l.stage <> 'reception'
       ORDER BY c.name, l.stage, l.created_at`)).rows;
-  return { order_types: types, policies, print_templates: prints, work_centers: centers, locations, control_plans };
+  const tplRows = (await runner.query(
+    `SELECT t.name, t.journal_code, t.description, a.code AS account_code, l.side, l.amount::float8 AS amount, l.label
+       FROM journal_entry_templates t JOIN journal_entry_template_lines l ON l.template_id = t.id JOIN accounts a ON a.id = l.account_id
+      WHERE t.is_active ORDER BY t.name, l.line_order`)).rows;
+  const byName = new Map<string, ProfileEntryTemplate>();
+  for (const r of tplRows) {
+    const t: ProfileEntryTemplate = byName.get(r.name) ?? { name: r.name, journal_code: r.journal_code, description: r.description, lines: [] };
+    t.lines.push({ account_code: r.account_code, side: r.side, amount: Number(r.amount), label: r.label });
+    byName.set(r.name, t);
+  }
+  return { order_types: types, policies, print_templates: prints, work_centers: centers, locations, control_plans, entry_templates: [...byName.values()] };
 }
 
 /** Valide des couches venues d'un fichier (donnée non fiable) ; avertissements lisibles. */
@@ -170,7 +190,23 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
       sample_size: sample && sample > 0 ? Math.min(10000, Math.round(sample)) : 1, is_blocking: c.is_blocking === true,
     });
   }
-  return { order_types, policies, print_templates, work_centers, locations, control_plans };
+  const entry_templates: ProfileEntryTemplate[] = [];
+  const seenTpl = new Set<string>();
+  for (const t of Array.isArray(raw.entry_templates) ? raw.entry_templates.slice(0, 100) : []) {
+    if (!isObj(t)) continue;
+    const name = str(t.name, 120); const journal = String(t.journal_code ?? '').toUpperCase();
+    const lines = (Array.isArray(t.lines) ? t.lines.slice(0, 20) : []).filter(isObj).map(l => ({
+      account_code: String(l.account_code ?? '').trim(), side: String(l.side ?? '') as 'debit' | 'credit',
+      amount: numOrNull(l.amount) ?? 0, label: str(l.label, 200),
+    }));
+    const ok = name && /^[A-Z]{2,6}$/.test(journal) && !seenTpl.has(name.toLowerCase()) && lines.length >= 2
+      && lines.every(l => /^\d{3,10}$/.test(l.account_code) && ['debit', 'credit'].includes(l.side) && l.amount >= 0)
+      && lines.some(l => l.side === 'debit') && lines.some(l => l.side === 'credit');
+    if (!ok) { warnings.push(`Modèle d'écriture ignoré : ${String(t.name ?? '?')}`); continue; }
+    seenTpl.add(name.toLowerCase());
+    entry_templates.push({ name, journal_code: journal, description: str(t.description, 500), lines });
+  }
+  return { order_types, policies, print_templates, work_centers, locations, control_plans, entry_templates };
 }
 
 /**
@@ -178,7 +214,7 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
  * seulement si le type par défaut actuel n'a encore aucun ordre (société qui démarre).
  */
 export async function applyLayers(client: Runner, layers: ProfileLayers, userId?: string | null) {
-  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0, controlPlans: 0 };
+  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0, controlPlans: 0, entryTemplates: 0, entryTemplatesSkipped: [] as string[] };
   for (const t of layers.order_types) {
     const r = await client.query(
       `INSERT INTO production_order_types (code, label, description, requires_bon_sortie, requires_weighing, requires_quality_check,
@@ -241,6 +277,22 @@ export async function applyLayers(client: Runner, layers: ProfileLayers, userId?
       [c.category, c.stage, c.characteristic, c.char_type, c.min_value, c.max_value, c.unit, c.frequency, c.frequency_n, c.sample_size, c.is_blocking, userId ?? null]);
     out.controlPlans += r.rows.length;
   }
+  for (const t of layers.entry_templates ?? []) {
+    if ((await client.query(`SELECT 1 FROM journal_entry_templates WHERE lower(name) = lower($1)`, [t.name])).rows.length) continue;
+    const codes = [...new Set(t.lines.map(l => l.account_code))];
+    const accounts = new Map((await client.query(`SELECT code, id FROM accounts WHERE code = ANY($1::text[]) AND is_active`, [codes])).rows.map(r => [r.code as string, r.id as string]));
+    const journal = (await client.query(`SELECT 1 FROM journals WHERE code = $1`, [t.journal_code])).rows.length;
+    // Un compte ou un journal absent du plan de la société : le modèle n'est pas créé (signalé).
+    if (!journal || codes.some(c => !accounts.has(c))) { out.entryTemplatesSkipped.push(t.name); continue; }
+    const tpl = (await client.query(
+      `INSERT INTO journal_entry_templates (name, journal_code, description, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [t.name, t.journal_code, t.description, userId ?? null])).rows[0];
+    for (const [i, l] of t.lines.entries()) {
+      await client.query(`INSERT INTO journal_entry_template_lines (template_id, line_order, account_id, side, amount, label) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tpl.id, i + 1, accounts.get(l.account_code), l.side, l.amount, l.label]);
+    }
+    out.entryTemplates++;
+  }
   return out;
 }
 
@@ -253,5 +305,6 @@ export function describeLayers(l: ProfileLayers): string[] {
   if (l.work_centers?.length) items.push(`Postes de charge : ${l.work_centers.map(w => w.name).join(', ')} (ajoutés s'ils manquent)`);
   if (l.control_plans?.length) items.push(`Plans de contrôle : ${l.control_plans.length} ligne(s) sur ${new Set(l.control_plans.map(c => c.category)).size} famille(s) (ajoutées si la famille existe)`);
   if (l.locations?.length) items.push(`Emplacements : ${l.locations.map(x => x.name).join(', ')} (dans chaque établissement qui ne les a pas)`);
+  if (l.entry_templates?.length) items.push(`Modèles d'écritures : ${l.entry_templates.map(t => t.name).join(', ')} (ajoutés si leurs comptes existent)`);
   return items;
 }

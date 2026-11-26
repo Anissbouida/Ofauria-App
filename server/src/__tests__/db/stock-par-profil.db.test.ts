@@ -106,6 +106,29 @@ describe.skipIf(!hasTestDb)('Stock selon le profil', () => {
     }
   });
 
+  it('les modèles d’écritures du profil transport sont créés à l’activation (mig 720)', async () => {
+    const { cleanLayers, applyLayers } = await import('../../services/industry-profile.js');
+    const { sectorRepository } = await import('../../repositories/sector.repository.js');
+    const warnings: string[] = [];
+    const layers = cleanLayers(await sectorRepository.resolvedProfile('transport'), warnings);
+    expect(warnings).toEqual([]);
+    expect(layers.entry_templates?.map(t => t.name)).toEqual(['Carburant du mois', 'Péages et autoroutes', 'Entretien des véhicules']);
+    const client = await testPool().connect();
+    try {
+      await client.query('BEGIN');
+      const out = await applyLayers(client, { order_types: [], policies: [], print_templates: [], entry_templates: layers.entry_templates });
+      expect(out.entryTemplates + out.entryTemplatesSkipped.length).toBe(3);
+      const n = Number((await client.query(`SELECT COUNT(*) FROM journal_entry_template_lines l JOIN journal_entry_templates t ON t.id = l.template_id WHERE t.name = 'Carburant du mois'`)).rows[0].count);
+      expect(n).toBe(out.entryTemplatesSkipped.includes('Carburant du mois') ? 0 : 2);
+      // Rejouer n'ajoute rien (même nom).
+      const again = await applyLayers(client, { order_types: [], policies: [], print_templates: [], entry_templates: layers.entry_templates });
+      expect(again.entryTemplates).toBe(0);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
   it('un profil enregistré depuis la configuration garde les capacités éteintes (off_features)', async () => {
     const { exportCurrentConfig, saveModelAsSector, deleteCustomSector } = await import('../../services/config-templates.js');
     const model = await exportCurrentConfig(`Profil test ${RUN}`) as { features: string[]; modules: string[] };
