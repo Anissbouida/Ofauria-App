@@ -156,8 +156,12 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
 }) {
   const { moduleActive, hasFeature } = usePermissions();
   const coldOn = hasFeature('haccp') || hasFeature('releves_temperature');
-  const roleOn = (k: string) => k === 'quarantaine' ? hasFeature('quarantaine') : k === 'en_cours_ouvert' ? hasFeature('pesage')
-    : k === 'atelier' ? moduleActive('production') : k === 'chantier' ? moduleActive('projects') : k === 'quai' ? hasFeature('stock_deposant') : true;
+  // Rôle d'emplacement → ce dont il dépend (un rôle absent de la table est toujours proposé).
+  const ROLE_NEEDS: Record<string, () => boolean> = {
+    quarantaine: () => hasFeature('quarantaine'), en_cours_ouvert: () => hasFeature('pesage'),
+    atelier: () => moduleActive('production'), chantier: () => moduleActive('projects'), quai: () => hasFeature('stock_deposant'),
+  };
+  const roleOn = (k: string) => ROLE_NEEDS[k]?.() ?? true;
   const [f, setF] = useState<StockLocationInput>(initial ? {
     code: initial.code, name: initial.name, type: initial.type, role: initial.role, roleDefault: initial.role_default,
     parentId: initial.parent_id, equipementId: initial.equipement_id,

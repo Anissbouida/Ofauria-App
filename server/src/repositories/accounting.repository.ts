@@ -571,6 +571,18 @@ export const familyRevenueAccountRepository = {
 
 /* ═══ Invoices ═══ */
 export const invoiceRepository = {
+  /** Factures émises du jour (validées, hors avoirs) : chiffre du jour d'une société sans caisse (audit des profils, R3). */
+  async emittedTodayStats(tz: string, storeId: string | null) {
+    const r = await db.query(
+      `SELECT COUNT(*) AS total_sales, COALESCE(SUM(total_amount), 0) AS total_revenue, COALESCE(AVG(total_amount), 0) AS avg_sale_value
+         FROM invoices
+        WHERE invoice_type = 'emitted' AND COALESCE(kind, 'invoice') <> 'credit_note'
+          AND COALESCE(validation_status, 'validated') <> 'cancelled'
+          AND invoice_date = (NOW() AT TIME ZONE $1)::date
+          AND ($2::uuid IS NULL OR store_id = $2)`, [tz, storeId]);
+    return r.rows[0];
+  },
+
   async findAll(params: { supplierId?: string; customerId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; invoiceType?: string }) {
     const conditions: string[] = []; const values: unknown[] = []; let i = 1;
     const invoiceType = params.invoiceType || 'received';

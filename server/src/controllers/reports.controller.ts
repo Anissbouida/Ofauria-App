@@ -1,3 +1,5 @@
+import { invoiceRepository } from '../repositories/accounting.repository.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 import type { Response } from 'express';
 import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -60,6 +62,12 @@ export const reportsController = {
       WHERE payment_status IS DISTINCT FROM 'unpaid'
         AND (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
     `, storeValues);
+
+    // Audit des profils (R3) : sans caisse, le chiffre du jour vient des factures émises (validées,
+    // hors avoirs) — sinon le tableau de bord affichait 0 à une entreprise de services ou de BTP.
+    if (!(await sectorRepository.moduleOn('pos'))) {
+      todaySales.rows[0] = await invoiceRepository.emittedTodayStats(tz, storeId ?? null);
+    }
 
     const totalItems = await db.query(`
       SELECT COALESCE(SUM(si.quantity), 0) as total_items

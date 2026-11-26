@@ -1,3 +1,4 @@
+import { sectorRepository } from './sector.repository.js';
 import { db } from '../config/database.js';
 import { currencySymbol } from '../services/currency.js';
 import { logger } from '../utils/logger.js';
@@ -116,6 +117,8 @@ export const notificationRepository = {
    */
   async syncProductionNotifications(role: string, storeId?: string) {
     try {
+      // Audit des profils (R3) : pas de notifications de production sans le module.
+      if (!(await sectorRepository.moduleOn('production'))) return;
       // Find production plans targeting this role that are in actionable statuses
       // and don't already have a notification
       const conditions = [

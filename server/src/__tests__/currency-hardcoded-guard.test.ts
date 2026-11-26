@@ -16,6 +16,8 @@ const HARD = /(?<![A-Za-z0-9_])(DH|MAD)(?![A-Za-z0-9_])/;
 const ALLOWED: Record<string, RegExp> = {
   // Table des mots de chaque devise, indexée par code ISO (montant en lettres).
   'services/invoice-pdf.service.ts': /^\s*MAD: \['dirhams', 'centimes'\]/,
+  // Montant en lettres des documents RH : mots de chaque devise, indexés par code ISO.
+  'services/hr-documents-pdf.service.ts': /MAD: \['dirham', 'centime'\]/,
   // Lecture de relevés bancaires : retire le suffixe de devise écrit par la banque.
   'services/bank-statement-import.service.ts': /\(MAD\|DH\|DHS\|EUR\|€\)/,
 };

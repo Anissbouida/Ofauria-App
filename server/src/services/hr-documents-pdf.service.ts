@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { currencySymbol } from './currency.js';
+import { currencySymbol, baseCurrencyCode } from './currency.js';
 
 /**
  * Documents RH en PDF.
@@ -54,7 +54,9 @@ export function numberToFrench(n: number): string {
 export function amountInWords(v: number): string {
   const dh = Math.floor(v + 1e-9);
   const cts = Math.round((v - dh) * 100);
-  return `${numberToFrench(dh)} dirham${dh > 1 ? 's' : ''}${cts ? ` et ${numberToFrench(cts)} centime${cts > 1 ? 's' : ''}` : ''}`;
+  // Audit des profils (R3) : unité de la devise de la société (plus « dirham » en dur).
+  const [unit, sub] = ({ MAD: ['dirham', 'centime'], EUR: ['euro', 'centime'], USD: ['dollar', 'cent'], XOF: ['franc CFA', 'centime'], TND: ['dinar', 'millime'], DZD: ['dinar', 'centime'] } as Record<string, [string, string]>)[baseCurrencyCode()] ?? [baseCurrencyCode(), 'centième'];
+  return `${numberToFrench(dh)} ${unit}${dh > 1 ? 's' : ''}${cts ? ` et ${numberToFrench(cts)} ${sub}${cts > 1 ? 's' : ''}` : ''}`;
 }
 
 function header(doc: PDFKit.PDFDocument, company: Company, title: string, M: number, CW: number) {
@@ -97,7 +99,7 @@ export async function generateSettlementReceiptPdf(d: ReceiptData): Promise<Buff
 
   doc.font('Helvetica').fontSize(10).fillColor(TEXT);
   const who = `Je soussigné(e) ${d.employee.name}${d.employee.cin ? `, CIN ${d.employee.cin}` : ''}${d.employee.cnss ? `, immatriculé(e) à la CNSS sous le n° ${d.employee.cnss}` : ''}, `
-    + `reconnais avoir reçu de ${d.company.name} la somme nette de ${money(d.netAmount).replace(/ /g, '\u00A0')}\u00A0DH (${amountInWords(d.netAmount)}), `
+    + `reconnais avoir reçu de ${d.company.name} la somme nette de ${money(d.netAmount).replace(/ /g, '\u00A0')}\u00A0${currencySymbol()} (${amountInWords(d.netAmount)}), `
     + `pour solde de tout compte, en paiement des salaires, accessoires du salaire et indemnités qui me sont dus au titre de l'exécution `
     + `et de la cessation de mon contrat de travail (${d.reasonLabel.toLowerCase()}, sortie le ${d.exitDate}).`;
   doc.text(who, M, y, { width: CW, align: 'justify', lineGap: 3 });

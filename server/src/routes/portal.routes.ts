@@ -1,3 +1,4 @@
+import { requireModule } from '../middleware/module-required.middleware.js';
 import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePortalToken } from '../middleware/portal.middleware.js';
@@ -10,7 +11,7 @@ import { portalController as c } from '../controllers/portal.controller.js';
 const router = Router();
 
 router.get('/me', requirePortalToken, asyncHandler(c.me));
-router.get('/orders', requirePortalToken, asyncHandler(c.orders));
+router.get('/orders', requirePortalToken, requireModule('orders'), asyncHandler(c.orders));
 router.get('/invoices', requirePortalToken, asyncHandler(c.invoices));
 router.get('/invoices/:id/pdf', requirePortalToken, asyncHandler(c.invoicePdf));
 router.get('/statement', requirePortalToken, asyncHandler(c.statement));

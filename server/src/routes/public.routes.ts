@@ -1,3 +1,4 @@
+import { requireModule } from '../middleware/module-required.middleware.js';
 import { Router } from 'express';
 import { buildOpenApi, renderDocsHtml } from '../services/openapi.js';
 import express from 'express';
@@ -23,8 +24,8 @@ router.get('/openapi.json', validateQuery(publicEmptyQuerySchema), (_req, res) =
 router.get('/docs', validateQuery(publicEmptyQuerySchema), (_req, res) => { res.type('html').send(renderDocsHtml(buildOpenApi())); });
 router.get('/v1/ping', requireApiKey(), validateQuery(publicEmptyQuerySchema), asyncHandler(c.ping));
 // Catalogue des articles vendables.
-router.get('/v1/products', requireApiKey('products:read'), validateQuery(publicEmptyQuerySchema), asyncHandler(c.listProducts));
+router.get('/v1/products', requireApiKey('products:read'), requireModule('products'), validateQuery(publicEmptyQuerySchema), asyncHandler(c.listProducts));
 // Création d'une commande par un site marchand.
-router.post('/v1/orders', jsonParser, requireApiKey('orders:create'), validate(publicOrderSchema), asyncHandler(c.createOrder));
+router.post('/v1/orders', jsonParser, requireApiKey('orders:create'), requireModule('orders'), validate(publicOrderSchema), asyncHandler(c.createOrder));
 
 export default router;
