@@ -21,7 +21,7 @@ est fixé au moment du commit, après vérification de `main`.
 | 6 | Exceptions individuelles (accorder ou retirer une permission, motif, date de fin) qui s'ajoutent aux rôles | oui | 706 |
 | 7 | Plusieurs établissements par compte, établissement par défaut, portée « Son établissement » sur l'ensemble | oui | 707 user_stores |
 | 8 | Sécurité et connexions : politique paramétrable (longueur du mot de passe, renouvellement, verrouillage, délai 2FA, inactivité, écran PIN), sessions et appareils, inscription libre supprimée | oui | 708 user_sessions |
-| 9 | Revue des accès en campagnes (décisions datées, rapport), comptes dormants | oui | à numéroter |
+| 9 | Revue des accès en campagnes (décisions datées, rapport), comptes dormants | oui | 709 |
 | 10 | Administration déléguée (gérer les comptes de sa portée) et approbation des changements sensibles (circuit « Changement de configuration ») | oui | à numéroter |
 
 ## Décisions prises
@@ -41,6 +41,10 @@ est fixé au moment du commit, après vérification de `main`.
   12. Sessions : une ligne user_sessions par jeton émis (la révocation reste revoked_tokens +
   token_version). Non fait : écran PIN limité à l'établissement du poste (aucun poste n'est rattaché
   à un établissement), réglage de la connexion Google/Microsoft à l'écran (variables du serveur).
+- **Revue des accès (lot 9)** : une campagne ouverte à la fois, reprenant les comptes actifs avec
+  une photo de leurs droits ; décision datée et signée par compte (confirmé, corrigé avec ce qui a
+  changé, désactivé) ; clôture seulement quand tout est décidé ; rapport CSV. Seuil des comptes
+  dormants dans la politique de sécurité (dormantDays, 60 jours par défaut).
 - **Exceptions individuelles (lot 6)** : une exception de module remplace les droits des rôles pour
   ce module seulement ; une exception d'action accorde ou retire une permission précise. Motif
   obligatoire, date de fin facultative (incluse), expirée = ignorée mais affichée. Refusée si elle ne
@@ -66,5 +70,5 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 6 — exceptions individuelles (mig 706), contrôlé à l'écran
 - [x] Lot 7 — établissements par compte, établissement actif (mig 707), contrôlé à l'écran
 - [x] Lot 8 — politique de sécurité, sessions et appareils, inscription libre supprimée (mig 708), contrôlé à l'écran
-- [ ] Lot 9
+- [x] Lot 9 — revue des accès en campagnes, comptes dormants (mig 709)
 - [ ] Lot 10
