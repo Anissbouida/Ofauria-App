@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight, Boxes } from 'lucide-react';
@@ -85,6 +86,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
   const [categoryIdFilter, setCategoryIdFilter] = useState<string>('');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'ok' | 'rupture'>('all');
   const [editingItem, setEditingItem] = useState<PackagingItem | null>(null);
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [stockDialog, setStockDialog] = useState<PackagingItem | null>(null);
 
@@ -205,7 +207,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             {paged.map((it: PackagingItem) => {
               const { stock, isRupture, isLow } = stockState(it);
               return (
-                <tr key={it.id}>
+                <tr key={it.id} onClick={() => navigate(`/stock/consumable/${it.id}`)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="ds-strong" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {it.name}
@@ -227,7 +229,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                     {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{currencySymbol()}/{it.unit}</span>
                   </td>
                   <td className="ds-num">
-                    <button type="button" onClick={() => setStockDialog(it)} title="Enregistrer un mouvement de stock"
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setStockDialog(it); }} title="Enregistrer un mouvement de stock"
                       style={{ border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontWeight: 700,
                         color: isRupture ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
                       {stock.toFixed(0)} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '12px' }}>{it.unit}</span>
@@ -237,7 +239,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                     )}
                   </td>
                   <td className="hidden lg:table-cell" style={{ color: 'var(--ds-muted)' }}>{it.supplier || '—'}</td>
-                  <td className="ds-actions">
+                  <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
                     {(isRupture || isLow) ? (
                       <button type="button" onClick={() => setStockDialog(it)} className={`${isRupture ? 'ds-btn-danger' : 'odoo-btn-primary'} ds-btn-sm`}
                         title="Enregistrer une entrée de stock">

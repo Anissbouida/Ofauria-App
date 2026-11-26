@@ -26,6 +26,7 @@ import CustomersPage from './features/customers/CustomersPage';
 import StockPage from './features/stock/StockPage';
 import IngredientDetailPage from './features/stock/IngredientDetailPage';
 import ProductDetailPage from './features/products/ProductDetailPage';
+import PackagingDetailPage from './features/packaging/PackagingDetailPage';
 import PriceHealthPage from './features/stock/PriceHealthPage';
 import RecipesPage from './features/recipes/RecipesPage';
 import NomenclaturePage from './features/recipes/NomenclaturePage';
@@ -138,6 +139,7 @@ export default function App() {
               <Route path="/stock/price-health" element={<PriceHealthPage />} />
               <Route path="/stock/:id" element={<IngredientDetailPage />} />
               <Route path="/products/:id" element={<ProductDetailPage />} />
+              <Route path="/stock/consumable/:id" element={<PackagingDetailPage />} />
               <Route path="/stock/bsi/:id" element={<BonSortiePrelevementPage />} />
               <Route path="/inventory" element={<LegacyRedirect from="inventory" to="/stock" />} />
               <Route path="/inventory/:id" element={<LegacyRedirect from="inventory" to="/stock/:id" />} />
