@@ -31,7 +31,7 @@ Limite assumée : un nouveau secteur se configure sans développement tant qu'il
 | Vocabulaire par profil | 26 clés |
 | Catalogue d'écrans | 4 écrans de Production |
 | Moteur de processus | Par type d'ordre de production |
-| Résolveur de configuration | Écrit, lectures non basculées (lot 2 du suivi) |
+| Résolveur de configuration | Écrit, lectures non basculées (lot 2 du suivi) — basculées depuis (§ 8) |
 | Garde « jamais le secteur » (`never-sector-guard.test.ts`) | Passe, mais ne connaît que 8 anciens codes |
 
 À noter : la branche de travail est à la migration 701, `main` plus loin. Tout démarre depuis `main` ; les numéros de migration sont attribués au moment de l'écriture.
@@ -347,8 +347,12 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 2.6 Réservations | Fait | Mig 722 : vue unique (commandes et ordres de fabrication) avec le disponible ; écran Stock › Rapports › Réservations |
 | 6.1 Déboursé | Fait | Mig 723 : budget par nature (matériaux, main-d'œuvre, engins, sous-traitance) comparé au réalisé, sur la fiche projet ; son total devient le budget du projet |
 | 2.2 / 2.7 Fiche article par blocs, écran de mouvement unique | Non fait (choix) | Refonte des écrans Stock existants (réserve, bons de sortie, pesée) utilisés chaque jour par Ofauria : à mener sur maquette validée, pas en aveugle |
-| 6.2 Ordre de transport distinct | Non fait (choix) | La demande de transport reste une commande avec une prestation tarifée par la grille ; un objet séparé n'apporte rien tant qu'aucun transporteur réel ne l'a demandé |
+| 6.2 Ordre de transport distinct | Fait | Mig 726 (voir plus bas) |
 | 2.2 / 2.7 Refonte des écrans Stock | Fait | Sur maquettes validées (page « Refonte Stock » du canevas). Mig 724 : Stock › Mouvements (liste unique par pièce), référentiel « Types de mouvement » (contrôle à réception, séparation des tâches, en plus des politiques), fiche article en blocs (lots et historique ; réserve et pesage, emplacements, réservé et disponible, fournisseurs, nutrition selon les capacités). Corrigé au passage : la fiche ne montrait que 50 lots |
 | Facturation des situations | Fait | Mig 725 : une situation validée se facture une fois (facture client, écritures habituelles) ; bouton « Facturer » |
 | Règles des mouvements à l'écran | Fait | Bon de sortie et réceptions affichent les règles effectives (séparation des tâches, quarantaine) |
-| Restent | — | Fiche des produits finis et consommables en blocs ; bascule de toutes les lectures de configuration sur le résolveur unique ; ordre de transport distinct (par choix) |
+| Fiches produit et consommable en blocs | Fait | Fiche produit (`/products/:id`) : stock et vitrine par établissement, lots (capacité Lots), numéros de série (capacité Séries), ventes sur 30 jours, fiches techniques ; fiche consommable (`/stock/consumable/:id`) : historique, fournisseurs. La modification garde le formulaire existant |
+| Réception en quarantaine | Fait | Stock › Quarantaine : lots retenus jusqu'au contrôle de réception et lots bloqués, lien vers le contrôle ; visible seulement quand la quarantaine à réception s'applique (Ofauria ne la voit pas) |
+| 1.5 Lecture unique de la configuration (lot 2) | Fait | `getParameter` (connexion de la transaction, défaut par appel) et `companyCountryCode` : les 14 lectures directes de `module_parameters` dispersées (achats, compta, TVA, sécurité, journal) passent par le résolveur ; garde `config-reads-guard` (seuls les outils de configuration lisent la table directement). Les politiques passaient déjà par `resolvePolicy` |
+| 6.2 Ordre de transport | Fait | Mig 726 : `transport_orders`, distinct de la commande. Trajet, marchandise, prix par la grille (ou saisi), tournée (chauffeur et véhicule de la tournée), enlèvement, preuve de livraison, facture émise une seule fois ; capacité `ordre_transport` (profil transport), écran Ventes › Ordres de transport. L'affectation du véhicule à la tournée existait déjà |
+| Restent | — | Rien dans la feuille de route. À valider par le métier : modèles comptables par profil (expert-comptable), écran de réception pour compte de client (stock déposant) |
