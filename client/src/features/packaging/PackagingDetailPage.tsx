@@ -52,7 +52,7 @@ export default function PackagingDetailPage() {
           </div>
         </section>
         <KpiGrid label="Chiffres clés">
-          <KpiCard label={`En stock (${it.unit})`} value={n(stock)} tone={stock <= 0 ? 'red' : stock < min ? 'orange' : undefined} sub={stock < min ? `Sous le seuil de ${n(min)}` : 'Au-dessus du seuil'} />
+          <KpiCard label={`En stock (${it.unit})`} value={n(stock)} tone={stock <= 0 ? 'red' : stock < min ? 'orange' : undefined} sub={stock <= 0 ? 'En rupture' : stock < min ? `Sous le seuil de ${n(min)}` : 'Au-dessus du seuil'} />
           <KpiCard label={`Seuil (${it.unit})`} value={n(min)} />
           <KpiCard label="Coût unitaire" value={money(Number(it.unit_cost || 0))} />
           <KpiCard label="Valeur du stock" value={money(stock * Number(it.unit_cost || 0))} />
