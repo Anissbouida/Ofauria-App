@@ -3,7 +3,7 @@ import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, User
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, useCapabilityScreens, type ModuleView } from '../../components/layout/ModuleShell';
-import { SALES_MAIN_TABS } from './SalesPage';
+import { SALES_MAIN_TABS, POS_TAB_KEYS } from './SalesPage';
 import '../projects/projects.css';
 import './sales.css';
 
@@ -13,7 +13,7 @@ import './sales.css';
  * boutons ; l'entrée active suit l'URL. Le point de vente reste plein écran (lien).
  */
 export default function SalesLayout() {
-  const { hasModule } = usePermissions();
+  const { hasModule, moduleActive } = usePermissions();
   const { user } = useAuth();
   // Devis : réservés à la direction, comme les commandes de professionnels (mig 354/365).
   const isDirection = user?.role === 'admin' || user?.role === 'manager';
@@ -25,7 +25,7 @@ export default function SalesLayout() {
     label: SALES_MAIN_TABS.find(t => t.key === key)!.label,
     icon, section: 'operations', group,
     href: key === 'sales' ? '/sales' : `/sales?tab=${key}`,
-    hidden: !hasModule('sales'),
+    hidden: !hasModule('sales') || (!moduleActive('pos') && (POS_TAB_KEYS as readonly string[]).includes(key)),
   });
   // Opérations rangées par flux (maquette 2026-11-13) : la caisse, puis la chaîne pro
   // devis → commande → livraison → facture, au lieu d'une liste à plat.
@@ -75,7 +75,7 @@ export default function SalesLayout() {
   ]);
   const tab = params.get('tab');
   const currentKey = pathname === '/sales'
-    ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) ? tab : 'sales'}`
+    ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) && (moduleActive('pos') || !(POS_TAB_KEYS as readonly string[]).includes(tab!)) ? tab : moduleActive('pos') ? 'sales' : 'invoices'}`
     : pathname === '/reports'
       ? `reports:${tab === 'menu' || tab === 'margins' || tab === 'builder' ? tab : 'overview'}`
       : pathname === '/orders' || pathname.startsWith('/orders/')

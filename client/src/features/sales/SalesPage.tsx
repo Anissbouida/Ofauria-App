@@ -121,6 +121,8 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 /** Écrans de la page Ventes, repris par la barre latérale du module (SalesLayout). */
 const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices', 'subscriptions', 'routes'] as const;
+/** Écrans de la caisse : n'existent que si le module Point de vente est actif pour la société. */
+export const POS_TAB_KEYS = ['sales', 'returns', 'sessions'] as const;
 /** Onglets qui suivent la période de la barre (et l'export CSV). */
 const DATED_TABS = new Set<string>(['sales', 'returns', 'sessions']);
 
@@ -152,12 +154,16 @@ export default function SalesPage() {
   const queryClient = useQueryClient();
   // Écran porté par l'URL (?tab=) et choisi dans la barre latérale du module Ventes (SalesLayout).
   const [params] = useSearchParams();
-  const { hasFeature } = usePermissions();
-  // Onglet d'une capacité éteinte (abonnements, tournées) : retour aux tickets (feuille de route, étape 1.4).
+  const { hasFeature, moduleActive } = usePermissions();
+  // Onglet d'une capacité éteinte (abonnements, tournées) : retour à l'écran d'accueil (feuille de route, étape 1.4).
+  // Sans le module Point de vente (BTP, services…), ni tickets, ni retours en caisse, ni sessions :
+  // l'accueil de Ventes devient les factures.
+  const posActive = moduleActive('pos');
   const requestedTab = params.get('tab') ?? '';
   const tabCap = requestedTab ? screenCapability('sales', `sales:${requestedTab}`) : undefined;
   const mainTab = (MAIN_TAB_KEYS as readonly string[]).includes(requestedTab) && (!tabCap || hasFeature(tabCap))
-    ? requestedTab as typeof MAIN_TAB_KEYS[number] : 'sales';
+    && (posActive || !(POS_TAB_KEYS as readonly string[]).includes(requestedTab))
+    ? requestedTab as typeof MAIN_TAB_KEYS[number] : posActive ? 'sales' : 'invoices';
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
