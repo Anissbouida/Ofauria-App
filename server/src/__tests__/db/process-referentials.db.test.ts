@@ -23,7 +23,11 @@ describe.skipIf(!hasTestDb)('Référentiels du procédé', () => {
   });
 
   afterAll(async () => {
-    await testPool().query(`UPDATE ref_entries SET is_active = false WHERE table_id = 'production_step_types' AND code = 'usinage_test'`).catch(() => undefined);
+    // Supprimée (et non désactivée) : une valeur désactivée en activation automatique serait
+    // réactivée par la synchronisation des secteurs et fausserait referentiels-sectoriels.
+    await testPool().query(`DELETE FROM ref_entries WHERE table_id = 'production_step_types' AND code = 'usinage_test'`)
+      .catch(() => testPool().query(`UPDATE ref_entries SET is_active = false, activation = 'forced_off' WHERE table_id = 'production_step_types' AND code = 'usinage_test'`))
+      .catch(() => undefined);
     await repos?.db.pool.end().catch(() => undefined);
     await closeTestPool();
   });
