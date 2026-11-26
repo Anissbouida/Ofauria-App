@@ -316,3 +316,6 @@ Décisions prises selon la recommandation (mandat du 25 novembre 2026 : « tu en
 | 3.1 Audit Ventes | Fait | Existant : devis par sections (lots), `order_items.qty_delivered` (reste à livrer), preuve de livraison sur le bon de livraison (signature, réserves) |
 | 3.2 Devis structuré | Existant | Sections du devis = lots ; lignes = ouvrages |
 | 3.3 Situations de travaux | Fait | Mig 713 ; écran Ventes › Situations de travaux ; calcul partagé ; contrôlé à l'écran sur un marché de démonstration (supprimé ensuite). À valider par le métier : TVA calculée sur le net après retenue et avance (règle de la maquette) |
+| 3.4 Grille tarifaire | Fait | Mig 714 ; écran Ventes › Paramétrage › Grilles tarifaires avec simulateur ; contrôlé à l'écran (400 kg × 1,50 = 600 HT), grille de contrôle supprimée ensuite. Preuve de livraison : existante |
+| 3.5 Reste à livrer | Existant | `order_items.qty_delivered`, livraisons partielles par bon de livraison |
+| 3.6 Documents | Reporté | Mentions par profil sur les modèles d'impression : à faire avec la phase 7 (modèles par profil) |

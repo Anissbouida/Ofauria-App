@@ -124,8 +124,8 @@ export default function FreightRatesPage() {
               <tbody>
                 {draft.brackets.map((b, i) => (
                   <tr key={i}>
-                    {(['upTo', 'unitPrice', 'flatPrice'] as const).map(k => (
-                      <td key={k}><input className="ds-input sm" type="number" min={0} aria-label={`${k} tranche ${i + 1}`} value={b[k]}
+                    {([['upTo', 'Borne'], ['unitPrice', 'Prix unitaire'], ['flatPrice', 'Forfait']] as const).map(([k, label]) => (
+                      <td key={k}><input className="ds-input sm" type="number" min={0} aria-label={`${label}, tranche ${i + 1}`} value={b[k]}
                         onChange={e => setDraft({ ...draft, brackets: draft.brackets.map((x, j) => j === i ? { ...x, [k]: e.target.value } : x) })} /></td>
                     ))}
                     <td><button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Retirer la tranche ${i + 1}`}
